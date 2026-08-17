@@ -43,9 +43,9 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 	parent.add_child(tilemap)
 	var w := int(data.width)
 	var h := int(data.height)
-	for x in w:
-		for y in h:
-			var index: int = data.tiles[x * h + y]  # column-major
+	for y in h:
+		for x in w:
+			var index: int = data.tiles[y * w + x]  # row-major (GetTile: y=index/width)
 			tilemap.set_cell(Vector2i(x, y), 0, Vector2i(index % 20, index / 20))
 
 	# zones
