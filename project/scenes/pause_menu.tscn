@@ -43,6 +43,10 @@ text = "Resume"
 custom_minimum_size = Vector2(200, 40)
 text = "Restart Map"
 
+[node name="Save" type="Button" parent="Panel/Menu"]
+custom_minimum_size = Vector2(200, 40)
+text = "Save Game"
+
 [node name="Maps" type="Button" parent="Panel/Menu"]
 custom_minimum_size = Vector2(200, 40)
 text = "Map Select"
@@ -53,5 +57,6 @@ text = "Quit to Title"
 
 [connection signal="pressed" from="Panel/Menu/Resume" to="." method="_on_resume_pressed"]
 [connection signal="pressed" from="Panel/Menu/Restart" to="." method="_on_restart_pressed"]
+[connection signal="pressed" from="Panel/Menu/Save" to="." method="_on_save_pressed"]
 [connection signal="pressed" from="Panel/Menu/Maps" to="." method="_on_maps_pressed"]
 [connection signal="pressed" from="Panel/Menu/Title" to="." method="_on_title_pressed"]

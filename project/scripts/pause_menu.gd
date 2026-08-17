@@ -32,6 +32,19 @@ func _on_resume_pressed() -> void:
 	close()
 
 
+func _on_save_pressed() -> void:
+	if GameState.save_game():
+		var note: Label = get_node_or_null("Panel/Menu/SaveNote")
+		if note == null:
+			note = Label.new()
+			note.name = "SaveNote"
+			note.text = "Saved!"
+			note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			get_node("Panel/Menu").add_child(note)
+		else:
+			note.text = "Saved!"
+
+
 func _on_restart_pressed() -> void:
 	get_tree().paused = false
 	GameState.reset_for_new_map()

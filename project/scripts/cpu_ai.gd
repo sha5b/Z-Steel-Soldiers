@@ -4,8 +4,8 @@ extends Node
 ## pushes for the enemy fort once strong. Busy units are never re-ordered
 ## (that made them wander frantically).
 
-const THINK_SECONDS := 4.0
-const ATTACK_UNITS := 7
+const THINK_SECONDS := [6.0, 4.0, 2.5]   # by difficulty
+const ATTACK_UNITS := [12, 7, 5]
 
 var team := 2
 var _accum := 0.0
@@ -20,7 +20,7 @@ func _process(delta: float) -> void:
 	if GameState.over:
 		return
 	_accum += delta
-	if _accum < THINK_SECONDS:
+	if _accum < THINK_SECONDS[clampi(GameState.ai_difficulty, 0, 2)]:
 		return
 	_accum = 0.0
 	_think()
@@ -41,7 +41,7 @@ func _think() -> void:
 			not_ours.append(z)
 
 	# strong enough (or map half taken): everyone who is idle rushes the fort
-	if units.size() >= ATTACK_UNITS or ours >= zones.size() - 1:
+	if units.size() >= ATTACK_UNITS[clampi(GameState.ai_difficulty, 0, 2)] or ours >= zones.size() - 1:
 		var fort := _enemy_fort()
 		if fort:
 			var center := fort.visual_center()

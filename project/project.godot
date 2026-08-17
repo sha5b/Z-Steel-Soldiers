@@ -20,6 +20,7 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 GameState="*res://scripts/game_state.gd"
 SelectionManager="*res://scripts/selection_manager.gd"
 MusicPlayer="*res://scripts/music_player.gd"
+Campaign="*res://scripts/campaign.gd"
 
 [display]
 

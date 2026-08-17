@@ -20,10 +20,13 @@ func _ready() -> void:
 			_map_list.append(f)
 	_map_list.sort()
 	_map_index = _map_list.find(chosen.get_file())
+	GameState.current_map = chosen
 	var data: Dictionary = MapLoader.load_map(self, chosen)
 	if data.is_empty():
 		push_error("empty map")
 		return
+	if not GameState.pending_load.is_empty():
+		_apply_load()
 	camera.position = Vector2(int(data.width), int(data.height)) * 8.0
 	# start on the player's fort when the map has one
 	for child in get_children():
@@ -313,6 +316,26 @@ func _run_flag_tests() -> void:
 			and robot1.global_position.distance_to(apc2.global_position) < 60.0
 		print("APC: loaded=%s hidden=%s arrived=%s unloaded_near=%s" % [
 			loaded, hidden, apc2.move_target == Vector2.ZERO, unloaded_near])
+	if "--save-test" in args:
+		GameState.money[1] = 321
+		GameState.zones[0].set_owner_team(1)
+		var saved: bool = GameState.save_game()
+		var snapshot: Dictionary = GameState.read_save()
+		GameState.money[1] = 0
+		GameState.zones[0].set_owner_team(0)
+		GameState.pending_load = snapshot
+		_apply_load()
+		print("SAVE: saved=%s money_restored=%d zone_owner=%d units=%d" % [
+			saved, GameState.money[1], GameState.zones[0].owner_team,
+			snapshot.get("units", []).size()])
+	if "--campaign-test" in args:
+		Campaign.start(false)
+		var first: String = Campaign.current_map_path()
+		var advanced: bool = Campaign.advance()
+		Campaign.load_progress()
+		print("CAMPAIGN: missions=%d first=%s advanced=%s resumed_mission=%d" % [
+			Campaign.missions.size(), first.get_file(), advanced, Campaign.mission])
+		Campaign.active = false
 	if "--win-test" in args:
 		var fort: FortBuilding = null
 		for c in get_children():
@@ -323,6 +346,36 @@ func _run_flag_tests() -> void:
 			fort.take_damage(fort.hp)
 			print("WIN: fort_alive=%s game_over=%s" % [fort.alive, GameState.over])
 
+
+
+## Restore a saved match: money, upgrades, zone owners, and units are
+## replayed over the freshly spawned map.
+func _apply_load() -> void:
+	var save: Dictionary = GameState.pending_load
+	GameState.pending_load = {}
+	GameState.money.clear()
+	for team in save.get("money", {}):
+		GameState.money[int(team)] = int(save.money[team])
+	for team in save.get("upgrades", {}):
+		GameState.upgrades[int(team)] = save.upgrades[team]
+	var owners: Array = save.get("zone_owners", [])
+	for i in mini(owners.size(), GameState.zones.size()):
+		GameState.zones[i].set_owner_team(int(owners[i]))
+	# replace spawned units with the saved roster
+	for u in get_tree().get_nodes_in_group("units"):
+		u.queue_free()
+	for su in save.get("units", []):
+		var unit: Node2D
+		if String(su.kind) == "robot":
+			unit = load("res://scenes/unit.tscn").instantiate()
+			unit.unit_name = String(su.type)
+		else:
+			unit = load("res://scenes/vehicle.tscn").instantiate()
+			unit.setup_vehicle(String(su.kind), String(su.type), int(su.team) if bool(su.manned) else 0)
+		unit.team = int(su.team)
+		unit.position = Vector2(float(su.x), float(su.y))
+		add_child(unit)
+		unit.hp = int(su.hp)
 
 
 func _cycle_map() -> void:
@@ -371,6 +424,18 @@ func _on_game_over(winning_team: int) -> void:
 		GameState.reset_for_new_map()
 		get_tree().change_scene_to_file("res://scenes/map_select.tscn"))
 	box.add_child(maps)
+	if Campaign.active and winning_team == GameState.player_team:
+		var next_btn := Button.new()
+		next_btn.text = "Next Mission"
+		next_btn.custom_minimum_size = Vector2(200, 40)
+		next_btn.pressed.connect(func():
+			GameState.reset_for_new_map()
+			if not Campaign.advance():
+				Campaign.active = false
+				get_tree().change_scene_to_file("res://scenes/title.tscn")
+			else:
+				get_tree().change_scene_to_file("res://scenes/campaign_brief.tscn"))
+		box.add_child(next_btn)
 	$CanvasLayer.add_child(overlay)
 	get_tree().paused = true
 

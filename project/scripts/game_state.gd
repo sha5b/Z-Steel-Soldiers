@@ -15,8 +15,13 @@ var vehicle_grid: AStarGrid2D      # vehicles: additionally no water
 var map_rect := Rect2(0.0, 0.0, 1024.0, 1376.0)
 var over := false
 var next_map := ""
+var current_map := ""
+var ai_difficulty := 1  # 0 easy, 1 normal, 2 hard
+var pending_load: Dictionary = {}  # applied by the map after spawning
 var upgrades := {}  # team -> {grenades: bool, rockets: bool}
 var _accum := 0.0
+
+const SAVE_PATH := "user://z_save.json"
 
 
 func reset_for_new_map() -> void:
@@ -27,6 +32,48 @@ func reset_for_new_map() -> void:
 	_accum = 0.0
 	money = {1: 200, 2: 200, 3: 200, 4: 200}
 	upgrades = {}
+	pending_load = {}
+
+
+## Collect live match state. Units are fully respawned on load; buildings
+## are matched back to map order (index-stable).
+func capture_save() -> Dictionary:
+	var units := []
+	for u in Engine.get_main_loop().root.get_tree().get_nodes_in_group("units"):
+		if u is Node2D and u.alive and u.kind != null:
+			units.append({
+				"kind": u.kind, "type": u.unit_name, "team": u.team,
+				"x": u.global_position.x, "y": u.global_position.y, "hp": u.hp,
+				"manned": u.get("manned") == true,
+			})
+	var zone_owners := []
+	for z in zones:
+		zone_owners.append(z.owner_team)
+	return {
+		"map": current_map, "money": money, "upgrades": upgrades,
+		"zone_owners": zone_owners, "units": units,
+	}
+
+
+func save_game() -> bool:
+	if current_map == "" or over:
+		return false
+	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(JSON.stringify(capture_save()))
+	return true
+
+
+func has_save() -> bool:
+	return FileAccess.file_exists(SAVE_PATH)
+
+
+func read_save() -> Dictionary:
+	if not has_save():
+		return {}
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+	return parsed if parsed is Dictionary else {}
 
 
 func grant_upgrade(team: int, kind: String) -> void:
