@@ -5,8 +5,10 @@ robot RTS — in Godot 4, as faithful to the original as possible using the
 assets and format knowledge from the open-source
 [Zod Engine](https://github.com/a-sf-mirror/zod_engine) project.
 
-> **Status:** 2D playable prototype — RTS camera, drag-select, orders,
-> original robot sprites walking on desert terrain.
+> **Status:** single-player feature-complete — all 57 original maps,
+> full unit roster, territory economy, production, campaign, save/load,
+> AI with difficulty, and a 17-check headless test suite. Multiplayer
+> intentionally out of scope. See `docs/ROADMAP.md`.
 
 ## Environment
 

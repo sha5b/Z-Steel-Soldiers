@@ -1,40 +1,46 @@
 # Roadmap — Z (1996) remake in Godot
 
-Principles: editor-first (scenes, input map, tilemaps, resources),
-data-driven unit stats, faithful vertical slice before breadth.
+Final state at close: single-player feature-complete. Multiplayer was
+deliberately left out (scope decision).
 
 ## Phase 0 — pivot to Z (1996) ✅
 
-- [x] Purge Steel Soldiers assets/tools
-- [x] Zod Engine asset pack in `assets_original/zod/` (gitignored)
-- [x] 2D project: RTS camera (edge pan/zoom), drag-select, right-click
-      orders, robots walking with original 16×16 sprites on desert tiles
+- [x] Zod Engine asset pack imported (gitignored, per-contributor copy)
+- [x] 2D project: RTS camera, drag-select, orders, original sprites
 
-## Phase 1 — real terrain & units ✅ (core)
+## Phase 1 — content & core loop ✅
 
-- [x] Zod `.map` format reversed (header/zones/objects/tiles) —
-      `tools/zod/map_to_json.py`
-- [x] MapLoader: TileMapLayer terrain from planet tilesets (5 planets),
-      zones, robots, building placeholders; 3 stock maps converted
-- [x] Territory system: zone flags (original animated flag sprites),
-      capture by presence (2 s), income ticking per zone, money HUD
-- [x] All 6 robot types with stand/walk/fire animations
-- [x] Voice lines (acknowledge) on orders
-- [ ] Unit stats as `.tres` resources; vehicles/cannons from map objects
-- [ ] Selection portraits + command UI; weapon sounds
-- [ ] Fire animations triggered on combat (needs combat system)
+- [x] Zod `.map` format reversed; all 57 original maps converted (all 5
+      planets) with tileinfo passability; 256×256 maps supported
+- [x] TileMapLayer terrain, rock scenery (zod sheet layout), bridges,
+      per-planet building sprites with ownership flags
+- [x] Territory: zone flags, capture by presence, income ticking
+- [x] All 6 robots + 5 vehicles + 4 cannons; manning; APC transport
+- [x] Forts as win/lose objectives; CPU opponent with difficulty
+- [x] A* pathfinding with robot/vehicle rule split (water, rocks)
 
-## Phase 2 — the game loop
+## Phase 2 — systems & polish ✅
 
-- [ ] Territory/flag income system; factory production queues
-- [ ] Combat: range, damage, deaths (die1-5 + wreck sprites)
-- [ ] Robots entering vehicles/guns; constructor building/repair
-- [ ] Zod map loader → playable stock multiplayer maps
-- [ ] CPU opponent (expand → produce → attack state machine)
+- [x] Production: robot/vehicle factories + fort production, queue UI
+      with progress, cancel with refund
+- [x] Pickups: grenades (+40% robot dmg) / rockets (+60% vehicle dmg)
+- [x] HUD: minimap (click/drag/right-click orders), selection portraits,
+      top bar (money/zones/clock), red-dotted order paths
+- [x] Idle humor animations; voice lines; looping music
+- [x] Facing/zod DirectionFromLoc; Y-sorted layering; jeep wheel layer
 
-## Phase 3 — campaign & polish
+## Phase 3 — game flow ✅
 
-- [ ] 20 campaign missions structure, briefings (Zod has map list)
-- [ ] Idle humor animations (beer, cigarette, pope...) as done in Z
-- [ ] Save/load, skirmish setup, balance pass
-- [ ] Optional: original music (MID → rendered), cutscene stills
+- [x] Title screen (splash art), map select (57 maps), ESC pause menu
+- [x] Save/load (pause Save, title Continue)
+- [x] Campaign: 57-mission chain, briefings, persistent progress
+- [x] AI difficulty (Easy/Normal/Hard)
+
+## Not done (known gaps for a future task)
+
+- Multiplayer (Zod's focus) — netcode not started
+- Original GUI chrome (production menu art exists, unused), water
+  animation, craters, unit shadows
+- Full soundtrack needs one run of `tools/zod/render_midi.sh`
+  (fluidsynth + soundfont required)
+- Weapon classes/splash, veterancy, destructible rocks/bridges
