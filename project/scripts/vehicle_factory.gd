@@ -13,6 +13,13 @@ func kind_key() -> String:
 	return "vehicle_factory"
 
 
+## 0..1 progress of the item currently building.
+func progress() -> float:
+	if queue.is_empty() or owner_team == 0:
+		return 0.0
+	return clampf(_accum / PRODUCE_SECONDS, 0.0, 1.0)
+
+
 func _process(delta: float) -> void:
 	var center := world_footprint().get_center()
 	for z in GameState.zones:

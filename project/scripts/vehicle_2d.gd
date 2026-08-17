@@ -7,6 +7,7 @@ extends Unit2D
 @export var manned := false
 
 var _asset_dir := ""
+var _wheels: AnimatedSprite2D
 var cargo: Array[Node] = []
 
 const APC_CAPACITY := 3
@@ -109,6 +110,41 @@ func _build_frames() -> void:
 	sprite.sprite_frames = frames
 	if not sprite.animation_finished.is_connected(_on_anim_finished):
 		sprite.animation_finished.connect(_on_anim_finished)
+	_build_wheels(team_name)
+
+
+## Jeep-style vehicles keep their wheels in separate 'under' sprites —
+## layer them beneath the body so it doesn't look like it's sliding.
+func _build_wheels(team_name: String) -> void:
+	if unit_name != "jeep":
+		return
+	if _wheels == null:
+		_wheels = AnimatedSprite2D.new()
+		_wheels.z_index = -1
+		_wheels.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		add_child(_wheels)
+	var frames := SpriteFrames.new()
+	var found := false
+	for d in DIRECTIONS:
+		var name := "wheels_%d" % d
+		frames.add_animation(name)
+		frames.set_animation_speed(name, 12.0)
+		frames.set_animation_loop(name, true)
+		var frame := 0
+		while true:
+			var path := "%s/under_%s_r%03d_n%02d.png" % [_asset_dir, team_name, d * 45, frame]
+			if not ResourceLoader.exists(path):
+				break
+			frames.add_frame(name, load(path))
+			frame += 1
+		if frame == 0:
+			frames.remove_animation(name)
+		else:
+			found = true
+	if not found:
+		_wheels.sprite_frames = null
+	else:
+		_wheels.sprite_frames = frames
 
 
 func _anim_path(anim: String, team_name: String, deg: int, frame: int) -> String:
@@ -154,8 +190,19 @@ func _steer(delta: float) -> void:
 		_last_dir = _angle_to_dir(velocity.angle())
 		_play("base" if manned else "empty", _last_dir)
 		global_position += velocity * delta
+		global_position = global_position.clamp(
+			GameState.map_rect.position, GameState.map_rect.end)
 	else:
 		_play("base" if manned else "empty", _last_dir)
+	if _wheels and _wheels.sprite_frames:
+		var wname := "wheels_%d" % _last_dir
+		if _wheels.sprite_frames.has_animation(wname):
+			if velocity.length_squared() > 1.0:
+				if _wheels.animation != wname or not _wheels.is_playing():
+					_wheels.play(wname)
+			else:
+				_wheels.stop()
+				_wheels.frame = 0
 
 
 func _combat() -> void:

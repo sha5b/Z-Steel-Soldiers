@@ -109,6 +109,21 @@ func update_flag(for_team: int) -> void:
 		_flag.play("wave")
 
 
+func _process(_delta: float) -> void:
+	# non-fort buildings (radar, repair) follow their zone's owner so the
+	# flag recolors on capture; factories override with their own loop
+	if is_fort:
+		return
+	var center := world_footprint().get_center()
+	for z in GameState.zones:
+		if z.world_rect().has_point(center):
+			if z.owner_team != owner_team:
+				owner_team = z.owner_team
+				team = owner_team
+				update_flag(owner_team)
+			break
+
+
 func take_damage(amount: int) -> void:
 	if not alive or not is_fort:
 		return

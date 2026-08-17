@@ -158,6 +158,44 @@ func _run_flag_tests() -> void:
 			print("PATH: solid_cells=%d waypoints=%d crossed_solid=%d/%d arrived=%s dist=%.1f" % [
 				solid, u4.waypoints.size(), crossed_solid, total,
 				u4.move_target == Vector2.ZERO, dist])
+	if "--dir-test" in args:
+		# zod convention: r000 faces +X (right), r090 down, r180 left, r270 up
+		var dirs := {
+			0.0: 0, PI / 2.0: 6, PI: 4, -PI / 2.0: 2,
+			PI / 4.0: 7, -PI / 4.0: 1, 3.0 * PI / 4.0: 5, -3.0 * PI / 4.0: 3,
+		}
+		var bad := 0
+		for ang in dirs:
+			var got: int = Unit2D._angle_to_dir(ang)
+			if got != dirs[ang]:
+				bad += 1
+		print("DIR: mismatches=%d of 8" % bad)
+	if "--near-test" in args:
+		var jeep3: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+		jeep3.setup_vehicle("vehicle", "jeep", 0)
+		jeep3.position = Vector2(700, 700)
+		add_child(jeep3)
+		var walker: Unit2D = load("res://scenes/unit.tscn").instantiate()
+		walker.team = 1
+		walker.position = Vector2(500, 700)
+		add_child(walker)
+		walker.enter_target = jeep3
+		walker.move_to(jeep3.global_position)
+		var instant: bool = jeep3.manned  # must NOT be manned before walking
+		for i in 400:
+			walker._process(0.05)
+			if jeep3.manned or not is_instance_valid(walker):
+				break
+		print("NEAR: instant=%s manned_after_walk=%s" % [instant, jeep3.manned])
+	if "--flag-test" in args:
+		var radar: Building2D = Building2D.new()
+		radar.setup(2, 0, "desert")
+		var zr: Node2D = GameState.zones[0]
+		radar.position = zr.position + zr.world_rect().get_center()
+		add_child(radar)
+		zr.owner_team = GameState.player_team
+		radar._process(0.0)
+		print("FLAG: radar team=%d (want %d)" % [radar.team, GameState.player_team])
 	if "--apc-test" in args:
 		var apc2: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 		apc2.setup_vehicle("vehicle", "apc", 1)
@@ -234,22 +272,22 @@ func _pick_select(screen_pos: Vector2) -> void:
 
 
 func _on_order(world_position: Vector2) -> void:
-	# ordering robots onto an empty vehicle/cannon mans it (Z mechanic);
-	# onto a friendly manned APC loads them as passengers
+	# ordering robots toward an empty vehicle/cannon mans it once they walk
+	# up to it; toward a friendly manned APC loads them as passengers
 	var empty_vehicle: Node2D = _find_empty_vehicle(world_position)
 	var apc := _find_apc(world_position)
 	var units := SelectionManager.selected.duplicate()
 	units.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())
 	for i in units.size():
 		var u: Node2D = units[i]
-		if empty_vehicle and u is Unit2D and u.kind == "robot":
-			empty_vehicle.enter(u)
-			u.queue_free()
-			SelectionManager.clear_selection()
-			return
-		if apc and u is Unit2D and u.kind == "robot" and u.team == apc.team:
-			if apc.load_robot(u):
-				SelectionManager.drop_from_selection(u)
+		if u is Unit2D and u.kind == "robot":
+			if empty_vehicle:
+				u.enter_target = empty_vehicle
+				u.move_to(empty_vehicle.global_position)
+				continue
+			if apc and u.team == apc.team:
+				u.enter_target = apc
+				u.move_to(apc.global_position)
 				continue
 		var ring := int(sqrt(float(units.size())))
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0

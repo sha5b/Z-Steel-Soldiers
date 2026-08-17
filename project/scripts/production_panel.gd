@@ -10,15 +10,28 @@ const VEHICLE_ORDER := ["jeep", "light", "medium", "heavy", "apc"]
 
 var _wired: Node = null
 var _box: HBoxContainer
+var _queue_row: HBoxContainer
+var _progress: ProgressBar
 var _built_for := ""
+var _queue_cache: Array = []
 
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	position.y -= size.y
+	var col := VBoxContainer.new()
+	add_child(col)
 	_box = HBoxContainer.new()
 	_box.add_theme_constant_override("separation", 6)
-	add_child(_box)
+	col.add_child(_box)
+	_progress = ProgressBar.new()
+	_progress.custom_minimum_size = Vector2(200, 12)
+	_progress.show_percentage = false
+	_progress.visible = false
+	col.add_child(_progress)
+	_queue_row = HBoxContainer.new()
+	_queue_row.add_theme_constant_override("separation", 2)
+	col.add_child(_queue_row)
 	hide()
 
 
@@ -29,10 +42,34 @@ func _process(_delta: float) -> void:
 		if _wired and queue_requested.is_connected(_wired.queue_unit):
 			queue_requested.disconnect(_wired.queue_unit)
 		_wired = factory
+		_queue_cache.clear()
 		if factory:
 			queue_requested.connect(factory.queue_unit)
-	if factory and _built_for != factory.kind_key():
-		_build_buttons(factory)
+	if factory:
+		if _built_for != factory.kind_key():
+			_build_buttons(factory)
+		_update_queue(factory)
+
+
+func _update_queue(factory: Node) -> void:
+	var q: Array = factory.queue
+	if q != _queue_cache:
+		_queue_cache = q.duplicate()
+		for c in _queue_row.get_children():
+			c.queue_free()
+		for type_name in q:
+			var icon := TextureRect.new()
+			icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			icon.custom_minimum_size = Vector2(20, 20)
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			var path := _icon_path(String(type_name))
+			if ResourceLoader.exists(path):
+				icon.texture = load(path)
+			_queue_row.add_child(icon)
+	var prog: float = factory.progress()
+	_progress.visible = not q.is_empty() and prog > 0.0
+	_progress.value = prog * 100.0
 
 
 func _selected_factory() -> Node:

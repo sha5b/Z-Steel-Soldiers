@@ -15,8 +15,9 @@ func _draw() -> void:
 	var wide: bool = unit.get("kind") != null and unit.kind != "robot"
 	var rx := 15.0 if wide else 11.0
 	var ry := 9.0 if wide else 11.0
+	var center := Vector2(0, 6)  # at the unit's feet
 	if unit.get("selected"):
-		draw_ellipse(Vector2.ZERO, rx, ry, color, false, 1.6)
+		draw_ellipse(center, rx, ry, color, false, 1.6)
 	if unit.get("hp") != null and unit.get("max_hp") != null:
 		var hp: int = unit.hp
 		var max_hp: int = unit.max_hp

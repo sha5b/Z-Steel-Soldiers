@@ -27,6 +27,7 @@ var _fire_timer := 0.0
 var _target: Node2D = null
 var move_target := Vector2.ZERO
 var waypoints := PackedVector2Array()
+var enter_target: Node2D = null
 var _idle_time := 0.0
 var _flavoring := false
 var carried := false
@@ -171,6 +172,7 @@ func _process(delta: float) -> void:
 	_fire_timer = maxf(0.0, _fire_timer - delta)
 	_combat()
 	_steer(delta)
+	_try_enter()
 	if kind == "robot":
 		_idle(delta)
 	ring.queue_redraw()
@@ -291,6 +293,24 @@ func move_to(world_pos: Vector2) -> void:
 	waypoints = GameState.request_path(global_position, world_pos)
 	if team == GameState.player_team:
 		_play_voice("acknowledge")
+		PathIndicator.show_path(get_parent(), waypoints)
+
+
+## Man/load the assigned vehicle once actually adjacent to it.
+func _try_enter() -> void:
+	if enter_target == null or not is_instance_valid(enter_target) or not enter_target.alive:
+		enter_target = null
+		return
+	if global_position.distance_to(enter_target.global_position) > 16.0:
+		return
+	var v := enter_target
+	enter_target = null
+	if v is Vehicle2D and v.alive:
+		if not v.manned:
+			v.enter(self)
+			queue_free()
+		elif v.is_apc() and v.team == team:
+			v.load_robot(self)
 
 
 func portrait_path() -> String:
@@ -342,9 +362,14 @@ func _play(anim: String, dir: int, once := false) -> void:
 		sprite.stop()
 
 
+## Zod DirectionFromLoc: sector of atan2 (y-down) + PI/8, mapped
+## counter-clockwise; sprite r000 faces +X (right), r090 down, r180 left, r270 up.
 static func _angle_to_dir(angle: float) -> int:
-	var deg := fmod(rad_to_deg(angle) + 90.0 + 22.5, 360.0)
-	return int(deg / 45.0) % DIRECTIONS
+	var a := angle
+	if a < 0.0:
+		a += TAU
+	a += PI / 8.0
+	return wrapi(8 - int(a / (PI / 4.0)), 0, DIRECTIONS)
 
 
 static func team_color(team: int) -> Color:

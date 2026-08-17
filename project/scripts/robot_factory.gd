@@ -16,6 +16,12 @@ func kind_key() -> String:
 	return "robot_factory"
 
 
+## 0..1 progress of the item currently building (auto-mode included).
+func progress() -> float:
+	var building: bool = auto_mode or not queue.is_empty()
+	return clampf(_accum / PRODUCE_SECONDS, 0.0, 1.0) if building and owner_team != 0 else 0.0
+
+
 func _process(delta: float) -> void:
 	# factory belongs to whoever owns the zone it stands in
 	var center := world_footprint().get_center()
