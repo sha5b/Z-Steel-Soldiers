@@ -23,6 +23,9 @@ static func _dir_for(vkind: String, type_name: String) -> String:
 	match type_name:
 		"jeep": return "res://assets/z/vehicles_jeep"
 		"light": return "res://assets/z/vehicles_light"
+		"medium": return "res://assets/z/vehicles_medium"
+		"heavy": return "res://assets/z/vehicles_heavy"
+		"apc": return "res://assets/z/vehicles_apc"
 		"gatling": return "res://assets/z/cannons_gatling"
 	return "res://assets/z/vehicles_jeep"
 

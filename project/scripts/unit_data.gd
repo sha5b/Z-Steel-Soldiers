@@ -10,8 +10,11 @@ const ROBOTS := {
 	"laser":  {"hp": 44, "damage": 10, "range": 85.0, "cooldown": 1.30, "speed": 56.0, "cost": 90},
 }
 const VEHICLES := {
-	"jeep":   {"hp": 60, "damage": 5, "range": 62.0, "cooldown": 0.55, "speed": 95.0, "cost": 0},
-	"light":  {"hp": 90, "damage": 9, "range": 78.0, "cooldown": 1.00, "speed": 75.0, "cost": 0},
+	"jeep":   {"hp": 60,  "damage": 5,  "range": 62.0, "cooldown": 0.55, "speed": 95.0, "cost": 0},
+	"light":  {"hp": 90,  "damage": 9,  "range": 78.0, "cooldown": 1.00, "speed": 75.0, "cost": 0},
+	"medium": {"hp": 130, "damage": 14, "range": 88.0, "cooldown": 1.40, "speed": 62.0, "cost": 0},
+	"heavy":  {"hp": 190, "damage": 22, "range": 96.0, "cooldown": 2.00, "speed": 50.0, "cost": 0},
+	"apc":    {"hp": 150, "damage": 0,  "range": 0.0,  "cooldown": 9.9, "speed": 80.0, "cost": 0},
 }
 const CANNONS := {
 	"gatling": {"hp": 55, "damage": 3, "range": 95.0, "cooldown": 0.35, "speed": 0.0, "cost": 0},

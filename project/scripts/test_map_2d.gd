@@ -98,6 +98,34 @@ func _run_flag_tests() -> void:
 			GameState.game_over.connect(func(winner): print("WINNER: %d" % winner))
 			fort.take_damage(fort.hp)
 			print("WIN: fort_alive=%s game_over=%s" % [fort.alive, GameState.over])
+	if "--prod-test" in args:
+		# simulate: capture a factory zone for the player, queue a psycho,
+		# run the factory until it spawns
+		var f2: RobotFactory = null
+		for c in get_children():
+			if c is RobotFactory:
+				f2 = c
+				break
+		if f2:
+			var zone_hit: Node2D = null
+			for z3 in GameState.zones:
+				if z3.world_rect().has_point(f2.global_position + f2.size * 0.5):
+					zone_hit = z3
+					break
+			zone_hit.owner_team = GameState.player_team
+			GameState.money[GameState.player_team] = 500
+			f2._process(0.1)  # sync owner from zone before queueing
+			var ok: bool = f2.queue_unit("psycho")
+			var count_before := get_tree().get_nodes_in_group("units").size()
+			for i in 40:
+				f2._process(0.5)
+			var psychos := 0
+			for u3 in get_tree().get_nodes_in_group("units"):
+				if u3 is Unit2D and u3.unit_name == "psycho" and u3.team == GameState.player_team:
+					psychos += 1
+			print("PROD: queued=%s units %d -> %d psychos=%d queue_left=%d" % [
+				ok, count_before, get_tree().get_nodes_in_group("units").size(),
+				psychos, f2.queue.size()])
 
 
 func _update_money(_team: int, amount: int) -> void:
@@ -140,6 +168,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _pick_select(screen_pos: Vector2) -> void:
 	var world := SelectionManager.screen_to_world(screen_pos)
+	# player factories first (selecting one opens the production panel)
+	for c in get_children():
+		if c is RobotFactory and c.owner_team == GameState.player_team \
+				and Rect2(c.position, c.size).has_point(world):
+			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
+			return
 	var best: Node2D = null
 	for unit in get_tree().get_nodes_in_group("selectable"):
 		if unit is Node2D and unit.global_position.distance_to(world) < 14.0:

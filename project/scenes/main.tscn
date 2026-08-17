@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/test_map_2d.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/rts_camera2d.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/selection_rect.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/production_panel.gd" id="4"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1")
@@ -32,3 +33,14 @@ offset_right = 200.0
 offset_bottom = 40.0
 theme_override_font_sizes/font_size = 22
 text = "$ 200"
+
+[node name="ProductionPanel" type="PanelContainer" parent="CanvasLayer"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -100.0
+offset_right = 620.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("4")
