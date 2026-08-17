@@ -1,34 +1,29 @@
 class_name RobotFactory
-extends ColorRect
+extends Building2D
 ## Robot factory: belongs to the team owning its zone. Player factories
-## produce whatever is queued from the production panel; CPU factories
+## produce the queue from the production panel; CPU factories
 ## auto-produce grunts when affordable.
 
 const PRODUCE_SECONDS := 8.0
 const COST := UnitData.ROBOTS.grunt.cost
 
-var owner_team := 0
 var queue: Array[String] = []
 var auto_mode := false
-var selected := false
 var _accum := 0.0
-
-
-func _init() -> void:
-	mouse_filter = MOUSE_FILTER_IGNORE
-	color = Color(0.6, 0.6, 0.35)
 
 
 func _process(delta: float) -> void:
 	# factory belongs to whoever owns the zone it stands in
+	var center := world_footprint().get_center()
 	for z in GameState.zones:
-		if z.world_rect().has_point(global_position + size * 0.5):
+		if z.world_rect().has_point(center):
 			owner_team = z.owner_team
 			break
+	if owner_team != team:
+		team = owner_team
+		update_flag(owner_team)
 	if owner_team == 0:
-		color = Color(0.45, 0.45, 0.45)
 		return
-	color = Color(0.6, 0.6, 0.35) if owner_team == 1 else Color(0.45, 0.5, 0.65)
 	_accum += delta
 	if _accum < PRODUCE_SECONDS:
 		return
@@ -50,17 +45,11 @@ func queue_unit(type_name: String) -> bool:
 	return true
 
 
-func set_selected(value: bool) -> void:
-	selected = value
-	color = Color(0.85, 0.8, 0.4) if value and owner_team == GameState.player_team else \
-		(Color(0.6, 0.6, 0.35) if owner_team == 1 else Color(0.45, 0.5, 0.65))
-
-
 func _spawn(type_name: String) -> void:
 	var unit: Unit2D = load("res://scenes/unit.tscn").instantiate()
 	unit.unit_name = type_name
 	unit.team = owner_team
-	unit.position = position + size + Vector2(16, 8)
+	unit.position = global_position + Vector2(48, 40)
 	var map := get_parent()
 	if map is Node2D:
 		map.add_child(unit)

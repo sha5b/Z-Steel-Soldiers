@@ -18,7 +18,7 @@ func _ready() -> void:
 	# start on the player's fort when the map has one
 	for child in get_children():
 		if child is FortBuilding and child.team == GameState.player_team:
-			camera.position = child.global_position + child.size * 0.5
+			camera.position = child.visual_center()
 			break
 	camera.bounds = Rect2(0.0, 0.0, float(data.width) * 16.0, float(data.height) * 16.0)
 	GameState.money_changed.connect(_update_money)
@@ -109,7 +109,7 @@ func _run_flag_tests() -> void:
 		if f2:
 			var zone_hit: Node2D = null
 			for z3 in GameState.zones:
-				if z3.world_rect().has_point(f2.global_position + f2.size * 0.5):
+				if z3.world_rect().has_point(f2.world_footprint().get_center()):
 					zone_hit = z3
 					break
 			zone_hit.owner_team = GameState.player_team
@@ -171,7 +171,7 @@ func _pick_select(screen_pos: Vector2) -> void:
 	# player factories first (selecting one opens the production panel)
 	for c in get_children():
 		if c is RobotFactory and c.owner_team == GameState.player_team \
-				and Rect2(c.position, c.size).has_point(world):
+				and c.world_footprint().has_point(world):
 			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
 	var best: Node2D = null

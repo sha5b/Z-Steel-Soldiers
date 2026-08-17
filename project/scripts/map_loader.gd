@@ -83,29 +83,22 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 					parent.add_child(cannon)
 			"building":
 				var id := int(o.id)
+				var planet := String(data.terrain)
+				var node: Building2D
 				if id == 0 or id == 1:  # fort_front / fort_back
 					var fort := FortBuilding.new()
-					fort.setup(int(o.owner))
-					fort.position = pos - Vector2(2.5, 2) * TILE
-					fort.size = Vector2(5, 4) * TILE
-					fort.name = "Fort_T%d" % int(o.owner)
-					parent.add_child(fort)
+					fort.setup(id, int(o.owner), planet)
+					node = fort
 				elif id == 4:  # robot_factory
 					var f := RobotFactory.new()
-					f.position = pos - Vector2(3, 3) * TILE * 0.5
-					f.size = Vector2(3, 3) * TILE
-					f.name = "RobotFactory"
-					parent.add_child(f)
+					f.setup(id, int(o.owner), planet)
+					node = f
 				else:
-					var b := ColorRect.new()
-					var bname: String = BUILDING_COLORS.keys()[id] if id < BUILDING_COLORS.size() else "radar"
-					var bsize: Vector2i = BUILDING_SIZES.get(bname, Vector2i(2, 2))
-					b.color = BUILDING_COLORS.get(bname, Color(0.5, 0.5, 0.5))
-					b.position = pos - Vector2(bsize) * TILE * 0.5
-					b.size = Vector2(bsize) * TILE
-					b.mouse_filter = Control.MOUSE_FILTER_IGNORE
-					b.name = "Building_%s" % bname
-					parent.add_child(b)
+					node = Building2D.new()
+					node.setup(id, int(o.owner), planet)
+				node.position = pos
+				node.name = "Building_T%d_%d" % [int(o.owner), id]
+				parent.add_child(node)
 	# one CPU brain per non-player team that owns a fort
 	var ai_teams := {}
 	for o in data.objects:

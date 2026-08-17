@@ -151,7 +151,7 @@ func _find_target() -> Node2D:
 	# enemy buildings (forts) in range
 	for b in get_tree().get_nodes_in_group("buildings"):
 		if b is Node2D and b.alive and b.team != 0 and b.team != team:
-			var d: float = global_position.distance_squared_to(b.global_position + b.size * 0.5)
+			var d: float = global_position.distance_squared_to(b.visual_center())
 			if d < best_d * best_d:
 				best_d = sqrt(d)
 				best = b

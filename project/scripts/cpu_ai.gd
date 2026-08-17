@@ -41,7 +41,7 @@ func _think() -> void:
 	if units.size() >= ATTACK_UNITS or ours >= zones.size() - 1:
 		var fort := _enemy_fort()
 		if fort:
-			var center := fort.global_position + fort.size * 0.5
+			var center := fort.visual_center()
 			var ring := int(sqrt(float(units.size())))
 			for i in units.size():
 				var u: Node2D = units[i]
