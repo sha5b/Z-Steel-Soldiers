@@ -13,7 +13,16 @@ var zones: Array[Node] = []
 var nav_grid: AStarGrid2D
 var map_rect := Rect2(0.0, 0.0, 1024.0, 1376.0)
 var over := false
+var next_map := ""
 var _accum := 0.0
+
+
+func reset_for_new_map() -> void:
+	zones.clear()
+	nav_grid = null
+	over = false
+	_accum = 0.0
+	money = {1: 200, 2: 200, 3: 200, 4: 200}
 
 
 func _process(delta: float) -> void:

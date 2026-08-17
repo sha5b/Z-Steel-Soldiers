@@ -2,14 +2,25 @@ extends Node2D
 ## Z test map: loads a converted Zod map (terrain, zones, objects), wires
 ## drag-select, right-click orders, and the money HUD.
 
-@export var map_json := "res://assets/maps/p02_bb_orig01.json"
+@export var map_json := "res://assets/maps/p08_bb_p08m01.json"
+
+var _map_list: PackedStringArray = []
+var _map_index := 0
 
 @onready var camera: RtsCamera2D = $RtsCamera2D
 
 
 func _ready() -> void:
 	SelectionManager.order_issued.connect(_on_order)
-	var data: Dictionary = MapLoader.load_map(self, map_json)
+	var chosen: String = GameState.next_map if GameState.next_map != "" else map_json
+	var all_maps := DirAccess.get_files_at("res://assets/maps")
+	_map_list = PackedStringArray()
+	for f in all_maps:
+		if String(f).ends_with(".json"):
+			_map_list.append(f)
+	_map_list.sort()
+	_map_index = _map_list.find(chosen.get_file())
+	var data: Dictionary = MapLoader.load_map(self, chosen)
 	if data.is_empty():
 		push_error("empty map")
 		return
@@ -219,6 +230,16 @@ func _run_flag_tests() -> void:
 
 
 
+func _cycle_map() -> void:
+	if _map_list.is_empty():
+		return
+	_map_index = wrapi(_map_index + 1, 0, _map_list.size())
+	GameState.next_map = "res://assets/maps/" + _map_list[_map_index]
+	print("MAP SWITCH -> ", _map_list[_map_index])
+	GameState.reset_for_new_map()
+	get_tree().reload_current_scene()
+
+
 func _on_game_over(winning_team: int) -> void:
 	var overlay := Label.new()
 	overlay.text = "VICTORY!" if winning_team == GameState.player_team else "DEFEAT"
@@ -231,6 +252,9 @@ func _on_game_over(winning_team: int) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and event.keycode == KEY_M:
+		_cycle_map()
+		return
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:

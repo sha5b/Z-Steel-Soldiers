@@ -41,9 +41,14 @@ func _ready() -> void:
 	var ts: Vector2 = _sprite.texture.get_size()
 	_sprite.centered = false
 	_sprite.position = Vector2(-ts.x * 0.25, -ts.y * 0.5)  # origin = footprint center
+	if building_id == 7:  # horizontal bridge: rotate the vertical strip
+		_sprite.rotation_degrees = 90
+		_sprite.position = Vector2(-ts.y * 0.25, ts.x * 0.5) - Vector2(0, ts.x)
 	add_child(_sprite)
 
 	_flag = AnimatedSprite2D.new()
+	if building_id == 6 or building_id == 7:
+		_flag.visible = false  # bridges carry no flag
 	_flag.sprite_frames = _flag_frames(TEAM_NAMES.get(team, "null"))
 	_flag.position = Vector2(0, -ts.y * 0.5 - 4)
 	_flag.scale = Vector2(2, 2)
@@ -79,12 +84,16 @@ func _texture_path(destroyed: bool) -> String:
 	match building_id:
 		0: return "res://assets/z/buildings/fort/fort_%s_%s%s.png" % [planet, "front", "_destroyed" if destroyed else ""]
 		1: return "res://assets/z/buildings/fort/fort_%s_%s%s.png" % [planet, "back", "_destroyed" if destroyed else ""]
+		6: return "res://assets/z/planets/bridge_%s.png" % planet
+		7: return "res://assets/z/planets/bridge_%s.png" % planet
 		var d: return "res://assets/z/buildings/%s/base_%s%s.png" % [DIRS[building_id], planet, "_destroyed" if destroyed else ""]
 
 
 func world_footprint() -> Rect2:
 	# ground area under the sprite (world px), origin-centered
 	var ts: Vector2 = _sprite.texture.get_size() if _sprite else Vector2(64, 64)
+	if building_id == 7:
+		ts = Vector2(ts.y, ts.x)  # rotated horizontal bridge
 	var half := ts * 0.25
 	return Rect2(global_position - half, half * 2.0)
 

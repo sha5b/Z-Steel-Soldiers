@@ -61,6 +61,37 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 	GameState.nav_grid = grid
 	GameState.map_rect = Rect2(0.0, 0.0, float(w) * TILE, float(h) * TILE)
 
+	# rock scenery layer: one tile per rock item from the planet's rock
+	# sheet (sheet layout from zod orock.cpp: 6x6 grid of 16px pieces;
+	# (3,3) is the standalone rock, (1,1) the mid-cluster top)
+	var rock_cells := {}
+	for o in data.objects:
+		if String(o.type) == "map_item" and int(o.id) == 1:
+			rock_cells[Vector2i(int(o.x), int(o.y))] = true
+	if not rock_cells.is_empty():
+		var rocks_layer := TileMapLayer.new()
+		rocks_layer.name = "Rocks"
+		rocks_layer.z_index = 1
+		var rock_set := TileSet.new()
+		rock_set.tile_size = Vector2i(TILE, TILE)
+		var rock_src := TileSetAtlasSource.new()
+		rock_src.texture = load("res://assets/z/planets/rocks_%s.png" % String(data.terrain))
+		rock_src.texture_region_size = Vector2i(TILE, TILE)
+		for index in 36:
+			rock_src.create_tile(Vector2i(index % 6, index / 6))
+		rock_set.add_source(rock_src)
+		rocks_layer.tile_set = rock_set
+		parent.add_child(rocks_layer)
+		for cell in rock_cells:
+			var alone := true
+			for n in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				if rock_cells.has(cell + n):
+					alone = false
+					break
+			rocks_layer.set_cell(cell, 0, Vector2i(3, 3) if alone else Vector2i(1, 1))
+			if grid != null:
+				grid.set_point_solid(cell, true)
+
 	# zones
 	for z in data.zones:
 		var zone := Zone.new()
@@ -73,8 +104,10 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 		var pos := Vector2(int(o.x) * TILE + 8, int(o.y) * TILE + 8)
 		match String(o.type):
 			"robot":
+				var rnames := ["grunt", "psycho", "sniper", "tough", "pyro", "laser"]
+				var rtype: String = rnames[int(o.id)] if int(o.id) < rnames.size() else "grunt"
 				var unit: Node = load("res://scenes/unit.tscn").instantiate()
-				unit.unit_name = ["grunt", "psycho", "sniper", "tough", "pyro", "laser"][int(o.id)]
+				unit.unit_name = rtype
 				unit.team = int(o.owner)
 				unit.position = pos
 				parent.add_child(unit)
@@ -102,6 +135,18 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 					var fort := FortBuilding.new()
 					fort.setup(id, int(o.owner), planet)
 					node = fort
+				elif id == 6 or id == 7:  # bridge_vert / bridge_horz
+					var bridge := Building2D.new()
+					bridge.setup(id, 0, planet)
+					node = bridge
+					# bridges are walkable across water
+					var span := Vector2i(2, 8) if id == 6 else Vector2i(8, 2)
+					var lo := Vector2i(int(o.x) - span.x / 2, int(o.y) - span.y / 2)
+					for bx in span.x:
+						for by in span.y:
+							var cell := lo + Vector2i(bx, by)
+							if grid != null and grid.region.has_point(cell):
+								grid.set_point_solid(cell, false)
 				elif id == 4:  # robot_factory
 					var f := RobotFactory.new()
 					f.setup(id, int(o.owner), planet)
