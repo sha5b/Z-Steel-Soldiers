@@ -7,6 +7,43 @@ extends Unit2D
 @export var manned := false
 
 var _asset_dir := ""
+var cargo: Array[Node] = []
+
+const APC_CAPACITY := 3
+
+
+func is_apc() -> bool:
+	return unit_name == "apc"
+
+
+func load_robot(robot: Unit2D) -> bool:
+	if not is_apc() or not manned or cargo.size() >= APC_CAPACITY:
+		return false
+	cargo.append(robot)
+	robot.carried = true
+	robot.set_selected(false)
+	robot.visible = false
+	robot.velocity = Vector2.ZERO
+	robot.move_target = Vector2.ZERO
+	SelectionManager.drop_from_selection(robot)
+	return true
+
+
+func unload() -> void:
+	for i in cargo.size():
+		var robot: Node = cargo[i]
+		if not is_instance_valid(robot):
+			continue
+		robot.carried = false
+		robot.visible = true
+		robot.global_position = global_position + Vector2(
+			(i - (cargo.size() - 1) * 0.5) * 18.0, 20.0)
+	cargo.clear()
+
+
+func _on_arrived() -> void:
+	if is_apc() and not cargo.is_empty():
+		unload()
 
 
 func setup_vehicle(vkind: String, type_name: String, owner_team: int) -> void:
@@ -27,6 +64,9 @@ static func _dir_for(vkind: String, type_name: String) -> String:
 		"heavy": return "res://assets/z/vehicles_heavy"
 		"apc": return "res://assets/z/vehicles_apc"
 		"gatling": return "res://assets/z/cannons_gatling"
+		"gun": return "res://assets/z/cannons_gun"
+		"howitzer": return "res://assets/z/cannons_howitzer"
+		"missile_cannon": return "res://assets/z/cannons_missile"
 	return "res://assets/z/vehicles_jeep"
 
 
@@ -88,8 +128,29 @@ func _process(delta: float) -> void:
 	_fire_timer = maxf(0.0, _fire_timer - delta)
 	if manned:
 		_combat()
-	_play("base" if manned else "empty", _last_dir)
-	move_and_slide()
+	_steer(delta)
+	ring.queue_redraw()
+
+
+func _steer(delta: float) -> void:
+	if move_target != Vector2.ZERO:
+		var next: Vector2 = waypoints[0] if not waypoints.is_empty() else move_target
+		var offset := next - global_position
+		if offset.length() <= (6.0 if not waypoints.is_empty() else 4.0):
+			if not waypoints.is_empty():
+				waypoints.remove_at(0)
+			else:
+				move_target = Vector2.ZERO
+				velocity = Vector2.ZERO
+				_on_arrived()
+		else:
+			velocity = offset.normalized() * speed
+	if velocity.length_squared() > 1.0:
+		_last_dir = _angle_to_dir(velocity.angle())
+		_play("base" if manned else "empty", _last_dir)
+		global_position += velocity * delta
+	else:
+		_play("base" if manned else "empty", _last_dir)
 
 
 func _combat() -> void:

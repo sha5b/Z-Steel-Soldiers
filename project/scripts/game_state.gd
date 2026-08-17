@@ -57,10 +57,8 @@ func request_path(from: Vector2, to: Vector2) -> PackedVector2Array:
 	var path := nav_grid.get_point_path(a, b)
 	if path.is_empty():
 		return PackedVector2Array([to])
-	var world_path := PackedVector2Array()
-	world_path.resize(path.size())
-	for i in path.size():
-		world_path[i] = path[i] * cs  # grid -> world space
+	# get_point_path already returns world coordinates (cell * cell_size)
+	var world_path := path.duplicate()
 	# land exactly on the clicked point, unless it sits inside a solid cell
 	if not nav_grid.is_point_solid(Vector2i((to / cs).floor())):
 		world_path[world_path.size() - 1] = to

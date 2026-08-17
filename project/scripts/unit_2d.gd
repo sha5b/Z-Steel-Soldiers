@@ -29,6 +29,7 @@ var move_target := Vector2.ZERO
 var waypoints := PackedVector2Array()
 var _idle_time := 0.0
 var _flavoring := false
+var carried := false
 
 
 func _steer(delta: float) -> void:
@@ -159,17 +160,22 @@ func _build_frames() -> void:
 
 
 func _process(delta: float) -> void:
+	if carried:
+		return
 	voice_cooldown = maxf(0.0, voice_cooldown - delta)
 	if not alive:
 		return
 	_fire_timer = maxf(0.0, _fire_timer - delta)
 	_combat()
 	_steer(delta)
-	_idle(delta)
+	if kind == "robot":
+		_idle(delta)
 	ring.queue_redraw()
 
 
 func _idle(delta: float) -> void:
+	if kind != "robot":
+		return
 	if velocity.length_squared() > 1.0 or _target:
 		_idle_time = 0.0
 		_flavoring = false

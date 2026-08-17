@@ -158,6 +158,26 @@ func _run_flag_tests() -> void:
 			print("PATH: solid_cells=%d waypoints=%d crossed_solid=%d/%d arrived=%s dist=%.1f" % [
 				solid, u4.waypoints.size(), crossed_solid, total,
 				u4.move_target == Vector2.ZERO, dist])
+	if "--apc-test" in args:
+		var apc2: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+		apc2.setup_vehicle("vehicle", "apc", 1)
+		apc2.position = Vector2(300, 300)
+		add_child(apc2)
+		var robot1: Unit2D = load("res://scenes/unit.tscn").instantiate()
+		robot1.team = 1
+		robot1.position = Vector2(300, 300)
+		add_child(robot1)
+		var loaded: bool = apc2.load_robot(robot1)
+		var hidden: bool = not robot1.visible and robot1.carried
+		apc2.move_to(Vector2(500, 500))
+		for i in 400:
+			apc2._process(0.05)
+			if apc2.move_target == Vector2.ZERO:
+				break
+		var unloaded_near: bool = robot1.visible and not robot1.carried \
+			and robot1.global_position.distance_to(apc2.global_position) < 60.0
+		print("APC: loaded=%s hidden=%s arrived=%s unloaded_near=%s" % [
+			loaded, hidden, apc2.move_target == Vector2.ZERO, unloaded_near])
 
 
 
@@ -214,8 +234,10 @@ func _pick_select(screen_pos: Vector2) -> void:
 
 
 func _on_order(world_position: Vector2) -> void:
-	# ordering a robot onto an empty vehicle/cannon mans it (Z mechanic)
+	# ordering robots onto an empty vehicle/cannon mans it (Z mechanic);
+	# onto a friendly manned APC loads them as passengers
 	var empty_vehicle: Node2D = _find_empty_vehicle(world_position)
+	var apc := _find_apc(world_position)
 	var units := SelectionManager.selected.duplicate()
 	units.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())
 	for i in units.size():
@@ -225,9 +247,21 @@ func _on_order(world_position: Vector2) -> void:
 			u.queue_free()
 			SelectionManager.clear_selection()
 			return
+		if apc and u is Unit2D and u.kind == "robot" and u.team == apc.team:
+			if apc.load_robot(u):
+				SelectionManager.drop_from_selection(u)
+				continue
 		var ring := int(sqrt(float(units.size())))
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0
 		u.move_to(world_position + offset)
+
+
+func _find_apc(world_position: Vector2) -> Vehicle2D:
+	for v in get_tree().get_nodes_in_group("units"):
+		if v is Vehicle2D and v.is_apc() and v.manned and v.alive and v.team != 0 \
+				and v.global_position.distance_to(world_position) < 24.0:
+			return v
+	return null
 
 
 func _find_empty_vehicle(world_position: Vector2) -> Node2D:

@@ -30,6 +30,12 @@ func clear_selection() -> void:
 	selection_changed.emit(selected)
 
 
+func drop_from_selection(unit: Node) -> void:
+	if unit in selected:
+		selected.erase(unit)
+		selection_changed.emit(selected)
+
+
 func select_area(world_rect: Rect2) -> void:
 	if not Input.is_key_pressed(KEY_SHIFT):
 		clear_selection()

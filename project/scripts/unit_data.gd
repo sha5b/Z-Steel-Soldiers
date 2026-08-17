@@ -17,7 +17,10 @@ const VEHICLES := {
 	"apc":    {"hp": 150, "damage": 0,  "range": 0.0,  "cooldown": 9.9, "speed": 80.0, "cost": 0},
 }
 const CANNONS := {
-	"gatling": {"hp": 55, "damage": 3, "range": 95.0, "cooldown": 0.35, "speed": 0.0, "cost": 0},
+	"gatling":  {"hp": 55,  "damage": 3,  "range": 95.0,  "cooldown": 0.35, "speed": 0.0, "cost": 0},
+	"gun":      {"hp": 75,  "damage": 8,  "range": 110.0, "cooldown": 0.90, "speed": 0.0, "cost": 0},
+	"howitzer": {"hp": 80,  "damage": 18, "range": 170.0, "cooldown": 2.60, "speed": 0.0, "cost": 0},
+	"missile_cannon": {"hp": 70, "damage": 26, "range": 200.0, "cooldown": 3.40, "speed": 0.0, "cost": 0},
 }
 
 
