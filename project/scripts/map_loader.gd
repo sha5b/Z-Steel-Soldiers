@@ -65,14 +65,38 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 				unit.team = int(o.owner)
 				unit.position = pos
 				parent.add_child(unit)
+			"vehicle":
+				var vnames := ["jeep", "light", "medium", "heavy", "apc", "missile_launcher", "crane"]
+				var vtype: String = vnames[int(o.id)] if int(o.id) < vnames.size() else "jeep"
+				if Vehicle2D.dir_exists("vehicle", vtype):
+					var veh: Node = load("res://scenes/vehicle.tscn").instantiate()
+					veh.setup_vehicle("vehicle", vtype, int(o.owner))
+					veh.position = pos
+					parent.add_child(veh)
+			"cannon":
+				var cnames := ["gatling", "gun", "howitzer", "missile_cannon"]
+				var ctype: String = cnames[int(o.id)] if int(o.id) < cnames.size() else "gatling"
+				if Vehicle2D.dir_exists("cannon", ctype):
+					var cannon: Node = load("res://scenes/vehicle.tscn").instantiate()
+					cannon.setup_vehicle("cannon", ctype, int(o.owner))
+					cannon.position = pos
+					parent.add_child(cannon)
 			"building":
-				var b := ColorRect.new()
-				var bname: String = BUILDING_COLORS.keys()[int(o.id)] if int(o.id) < BUILDING_COLORS.size() else "radar"
-				var bsize: Vector2i = BUILDING_SIZES.get(bname, Vector2i(2, 2))
-				b.color = BUILDING_COLORS.get(bname, Color(0.5, 0.5, 0.5))
-				b.position = pos - Vector2(bsize) * TILE * 0.5
-				b.size = Vector2(bsize) * TILE
-				b.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				b.name = "Building_%s" % bname
-				parent.add_child(b)
+				var id := int(o.id)
+				if id == 4:  # robot_factory
+					var f := RobotFactory.new()
+					f.position = pos - Vector2(3, 3) * TILE * 0.5
+					f.size = Vector2(3, 3) * TILE
+					f.name = "RobotFactory"
+					parent.add_child(f)
+				else:
+					var b := ColorRect.new()
+					var bname: String = BUILDING_COLORS.keys()[id] if id < BUILDING_COLORS.size() else "radar"
+					var bsize: Vector2i = BUILDING_SIZES.get(bname, Vector2i(2, 2))
+					b.color = BUILDING_COLORS.get(bname, Color(0.5, 0.5, 0.5))
+					b.position = pos - Vector2(bsize) * TILE * 0.5
+					b.size = Vector2(bsize) * TILE
+					b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+					b.name = "Building_%s" % bname
+					parent.add_child(b)
 	return data

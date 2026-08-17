@@ -31,3 +31,11 @@ func register_zone(zone: Node) -> void:
 
 func player_money() -> int:
 	return money.get(player_team, 0)
+
+
+func spend(team: int, amount: int) -> bool:
+	if money.get(team, 0) < amount:
+		return false
+	money[team] -= amount
+	money_changed.emit(team, money[team])
+	return true
