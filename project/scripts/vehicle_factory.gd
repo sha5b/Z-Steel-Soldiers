@@ -48,6 +48,16 @@ func queue_unit(type_name: String) -> bool:
 	return true
 
 
+func cancel_at(index: int) -> void:
+	if index < 0 or index >= queue.size():
+		return
+	var type_name: String = queue.pop_front() if index == 0 else queue.pop_at(index)
+	var stats: Dictionary = UnitData.VEHICLES.get(type_name, {})
+	if not stats.is_empty() and owner_team != 0:
+		GameState.money[owner_team] += int(stats.cost)
+		GameState.money_changed.emit(owner_team, GameState.money[owner_team])
+
+
 func _spawn(type_name: String) -> void:
 	if not Vehicle2D.dir_exists("vehicle", type_name):
 		return

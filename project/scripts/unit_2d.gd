@@ -236,7 +236,7 @@ func _find_target() -> Node2D:
 func _shoot(target: Node2D, to_target: Vector2) -> void:
 	_play("fire", _last_dir, true)
 	_tracer(global_position + to_target.normalized() * 10.0, target.global_position)
-	target.take_damage(damage)
+	target.take_damage(int(round(damage * GameState.robot_damage_mult(team))))
 
 
 func _tracer(from: Vector2, to: Vector2) -> void:
@@ -290,7 +290,9 @@ func _on_anim_finished() -> void:
 
 func move_to(world_pos: Vector2) -> void:
 	move_target = world_pos
-	waypoints = GameState.request_path(global_position, world_pos)
+	waypoints = GameState.request_path(global_position, world_pos, kind)
+	if waypoints.is_empty():
+		move_target = Vector2.ZERO  # unreachable (e.g. water for vehicles)
 	if team == GameState.player_team:
 		_play_voice("acknowledge")
 		PathIndicator.show_path(get_parent(), waypoints)

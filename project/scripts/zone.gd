@@ -76,7 +76,9 @@ func _build_visuals() -> void:
 func _process(delta: float) -> void:
 	var occupying := 0
 	for u in get_tree().get_nodes_in_group("units"):
-		if world_rect().has_point(u.global_position):
+		# neutral hardware (empty vehicles) does not hold territory
+		if u is Node2D and u.alive and u.team != 0 \
+				and world_rect().has_point(u.global_position):
 			occupying = u.team
 			break
 	if occupying != 0 and occupying != owner_team:

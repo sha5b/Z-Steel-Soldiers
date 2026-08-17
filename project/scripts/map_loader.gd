@@ -89,8 +89,34 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 					alone = false
 					break
 			rocks_layer.set_cell(cell, 0, Vector2i(3, 3) if alone else Vector2i(1, 1))
-			if grid != null:
-				grid.set_point_solid(cell, true)
+			grid.set_point_solid(cell, true)
+			if GameState.vehicle_grid != null:
+				GameState.vehicle_grid.set_point_solid(cell, true)
+
+	# vehicle grid: same as robots but water is impassable (zod PF_WATER).
+	# Built after rocks so rock cells block wheels too.
+	var vgrid := AStarGrid2D.new()
+	vgrid.region = grid.region
+	vgrid.cell_size = grid.cell_size
+	vgrid.diagonal_mode = grid.diagonal_mode
+	vgrid.update()
+	for y in h:
+		for x in w:
+			var solid: bool = grid.is_point_solid(Vector2i(x, y)) \
+				or (data.water != null and bool(data.water[y * w + x]))
+			if solid:
+				vgrid.set_point_solid(Vector2i(x, y), true)
+	GameState.vehicle_grid = vgrid
+
+	# grenade/rocket pickups
+	for o in data.objects:
+		if String(o.type) == "map_item":
+			var pid := int(o.id)
+			if pid == 2 or pid == 3:
+				var pickup := Pickup.new()
+				pickup.pickup_type = "grenades" if pid == 2 else "rockets"
+				pickup.position = Vector2(int(o.x) * TILE + 8, int(o.y) * TILE + 8)
+				parent.add_child(pickup)
 
 	# zones
 	for z in data.zones:

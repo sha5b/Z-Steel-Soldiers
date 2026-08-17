@@ -102,15 +102,6 @@ func _run_flag_tests() -> void:
 				if u is Node2D and u.team == 2 and u.move_target != Vector2.ZERO:
 					moved_after += 1
 			print("AI: enemy robots with orders %d -> %d" % [moved, moved_after])
-	if "--win-test" in args:
-		var fort: FortBuilding = null
-		for c in get_children():
-			if c is FortBuilding and c.team == 2:
-				fort = c
-		if fort:
-			GameState.game_over.connect(func(winner): print("WINNER: %d" % winner))
-			fort.take_damage(fort.hp)
-			print("WIN: fort_alive=%s game_over=%s" % [fort.alive, GameState.over])
 	if "--prod-test" in args:
 		# simulate: capture a factory zone for the player, queue a psycho,
 		# run the factory until it spawns
@@ -145,30 +136,51 @@ func _run_flag_tests() -> void:
 			print("PATH: no grid")
 		else:
 			var solid := 0
+			var open_cells := PackedVector2Array()
 			for y in grid.region.size.y:
 				for x in grid.region.size.x:
-					if grid.is_point_solid(Vector2i(x, y)):
+					if not grid.is_point_solid(Vector2i(x, y)):
+						open_cells.append(Vector2(x, y))
+					else:
 						solid += 1
-			var u4: Unit2D = load("res://scenes/unit.tscn").instantiate()
-			u4.team = 1
-			u4.position = Vector2(8, 8)
-			add_child(u4)
-			u4.move_to(Vector2(63.5 * 16, 85.5 * 16))  # far corner
-			var crossed_solid := 0
-			var total := 0
-			for i in 3000:
-				u4._process(0.05)
-				if i % 5 == 0:
-					var cell := Vector2i((u4.position / 16.0).floor())
-					if grid.is_point_solid(cell):
-						crossed_solid += 1
-					total += 1
-				if u4.move_target == Vector2.ZERO:
+			# pick a routable pair (maps can have disconnected landmasses)
+			var start_px := Vector2.ZERO
+			var goal := Vector2.ZERO
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 42
+			for attempt in 200:
+				var a2: Vector2 = open_cells[rng.randi_range(0, open_cells.size() - 1)]
+				var b2: Vector2 = open_cells[rng.randi_range(0, open_cells.size() - 1)]
+				if a2.distance_to(b2) < 60.0:
+					continue
+				var probe := GameState.request_path(a2 * 16.0 + Vector2(8, 8), b2 * 16.0 + Vector2(8, 8), "robot")
+				if not probe.is_empty():
+					start_px = a2 * 16.0 + Vector2(8, 8)
+					goal = b2 * 16.0 + Vector2(8, 8)
 					break
-			var dist: float = u4.position.distance_to(Vector2(63.5 * 16, 85.5 * 16))
-			print("PATH: solid_cells=%d waypoints=%d crossed_solid=%d/%d arrived=%s dist=%.1f" % [
-				solid, u4.waypoints.size(), crossed_solid, total,
-				u4.move_target == Vector2.ZERO, dist])
+			if goal == Vector2.ZERO:
+				print("PATH: no routable pair found")
+			else:
+				var u4: Unit2D = load("res://scenes/unit.tscn").instantiate()
+				u4.team = 1
+				u4.position = start_px
+				add_child(u4)
+				u4.move_to(goal)
+				var crossed_solid := 0
+				var total := 0
+				for i in 6000:
+					u4._process(0.05)
+					if i % 5 == 0:
+						var cell := Vector2i((u4.position / 16.0).floor())
+						if grid.is_point_solid(cell):
+							crossed_solid += 1
+						total += 1
+					if u4.move_target == Vector2.ZERO:
+						break
+				var dist: float = u4.position.distance_to(goal)
+				print("PATH: solid_cells=%d waypoints=%d crossed_solid=%d/%d arrived=%s dist=%.1f" % [
+					solid, u4.waypoints.size(), crossed_solid, total,
+					u4.move_target == Vector2.ZERO, dist])
 	if "--dir-test" in args:
 		# zod convention: r000 faces +X (right), r090 down, r180 left, r270 up
 		var dirs := {
@@ -207,6 +219,80 @@ func _run_flag_tests() -> void:
 		zr.owner_team = GameState.player_team
 		radar._process(0.0)
 		print("FLAG: radar team=%d (want %d)" % [radar.team, GameState.player_team])
+	if "--pickup-test" in args:
+		var pk := Pickup.new()
+		pk.pickup_type = "grenades"
+		pk.position = Vector2(400, 400)
+		add_child(pk)
+		var collector: Unit2D = load("res://scenes/unit.tscn").instantiate()
+		collector.team = 1
+		collector.position = Vector2(370, 400)
+		add_child(collector)
+		var mult_before: float = GameState.robot_damage_mult(1)
+		collector.move_to(Vector2(400, 400))
+		for i in 100:
+			collector._process(0.05)
+			pk._process(0.05)
+			if not is_instance_valid(pk):
+				break
+		print("PICKUP: granted=%s mult %.1f -> %.1f" % [
+			GameState.has_upgrade(1, "grenades"), mult_before,
+			GameState.robot_damage_mult(1)])
+	if "--fortprod-test" in args:
+		var fort2: FortBuilding = null
+		for c in get_children():
+			if c is FortBuilding and c.team == GameState.player_team:
+				fort2 = c
+				break
+		if fort2:
+			GameState.money[1] = 500
+			var ok2: bool = fort2.queue_unit("psycho")
+			var count0 := get_tree().get_nodes_in_group("units").size()
+			for i in 40:
+				fort2._process(0.5)
+			var psychos2 := 0
+			for u5 in get_tree().get_nodes_in_group("units"):
+				if u5 is Unit2D and u5.unit_name == "psycho" and u5.team == 1:
+					psychos2 += 1
+			print("FORTPROD: queued=%s units %d -> %d psychos=%d" % [
+				ok2, count0, get_tree().get_nodes_in_group("units").size(), psychos2])
+	if "--cancel-test" in args:
+		var fort3: FortBuilding = null
+		for c in get_children():
+			if c is FortBuilding and c.team == GameState.player_team:
+				fort3 = c
+				break
+		if fort3:
+			GameState.money[1] = 500
+			fort3.queue_unit("grunt")
+			fort3.queue_unit("sniper")
+			var money_mid: int = GameState.money[1]
+			fort3.cancel_at(1)  # refund the sniper ($80)
+			print("CANCEL: queue=%s money %d -> %d (sniper refund %d)" % [
+				fort3.queue, money_mid, GameState.money[1], 80])
+	if "--vehpath-test" in args:
+		var rg: AStarGrid2D = GameState.nav_grid
+		var vg: AStarGrid2D = GameState.vehicle_grid
+		var water_cell := Vector2i(-1, -1)
+		for y in rg.region.size.y:
+			for x in rg.region.size.x:
+				var c2 := Vector2i(x, y)
+				if not rg.is_point_solid(c2) and vg.is_point_solid(c2):
+					water_cell = c2
+					break
+			if water_cell.x >= 0:
+				break
+		if water_cell.x < 0:
+			print("VEHPATH: no water cells on map")
+		else:
+			var water_px := Vector2(water_cell) * 16.0 + Vector2(8, 8)
+			var rpath := GameState.request_path(water_px + Vector2(200, 0), water_px, "robot")
+			var vpath := GameState.request_path(water_px + Vector2(200, 0), water_px, "vehicle")
+			var vehicle_refused: bool = vpath.is_empty()
+			var vends_on_water: bool = not vehicle_refused \
+				and vg.is_point_solid(Vector2i((vpath[vpath.size() - 1] / 16.0).floor()))
+			print("VEHPATH: water=%s robot_got_path=%s vehicle_refused=%s vehicle_ends_water=%s" % [
+				water_cell, not rpath.is_empty(), vehicle_refused, vends_on_water])
 	if "--apc-test" in args:
 		var apc2: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 		apc2.setup_vehicle("vehicle", "apc", 1)
@@ -227,6 +313,15 @@ func _run_flag_tests() -> void:
 			and robot1.global_position.distance_to(apc2.global_position) < 60.0
 		print("APC: loaded=%s hidden=%s arrived=%s unloaded_near=%s" % [
 			loaded, hidden, apc2.move_target == Vector2.ZERO, unloaded_near])
+	if "--win-test" in args:
+		var fort: FortBuilding = null
+		for c in get_children():
+			if c is FortBuilding and c.team == 2:
+				fort = c
+		if fort:
+			GameState.game_over.connect(func(winner): print("WINNER: %d" % winner))
+			fort.take_damage(fort.hp)
+			print("WIN: fort_alive=%s game_over=%s" % [fort.alive, GameState.over])
 
 
 
@@ -278,9 +373,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _pick_select(screen_pos: Vector2) -> void:
 	var world := SelectionManager.screen_to_world(screen_pos)
-	# player factories first (selecting one opens the production panel)
+	# player factories and fort first (selecting opens the production panel)
 	for c in get_children():
 		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == GameState.player_team \
+				and c.world_footprint().has_point(world):
+			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
+			return
+		if c is FortBuilding and c.team == GameState.player_team \
 				and c.world_footprint().has_point(world):
 			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return

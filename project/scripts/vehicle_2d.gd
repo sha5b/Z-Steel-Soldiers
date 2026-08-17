@@ -217,7 +217,7 @@ func _combat() -> void:
 			_fire_timer = cooldown
 			_play("fire", _last_dir, true)
 			_tracer(global_position + to_target.normalized() * 10.0, _target.global_position)
-			_target.take_damage(damage)
+			_target.take_damage(int(round(damage * GameState.vehicle_damage_mult(team))))
 
 
 func enter(robot: Unit2D) -> void:

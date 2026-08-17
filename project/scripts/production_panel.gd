@@ -57,16 +57,19 @@ func _update_queue(factory: Node) -> void:
 		_queue_cache = q.duplicate()
 		for c in _queue_row.get_children():
 			c.queue_free()
-		for type_name in q:
-			var icon := TextureRect.new()
-			icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			icon.custom_minimum_size = Vector2(20, 20)
-			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-			var path := _icon_path(String(type_name))
-			if ResourceLoader.exists(path):
-				icon.texture = load(path)
-			_queue_row.add_child(icon)
+		for idx in q.size():
+			var btn := Button.new()
+			btn.custom_minimum_size = Vector2(26, 26)
+			btn.tooltip_text = "Right-click to cancel"
+			var icon_path := _icon_path(String(q[idx]))
+			if ResourceLoader.exists(icon_path):
+				btn.icon = load(icon_path)
+				btn.expand_icon = true
+			var i := idx
+			btn.gui_input.connect(func(ev):
+				if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT:
+					factory.cancel_at(i))
+			_queue_row.add_child(btn)
 	var prog: float = factory.progress()
 	_progress.visible = not q.is_empty() and prog > 0.0
 	_progress.value = prog * 100.0
@@ -77,6 +80,8 @@ func _selected_factory() -> Node:
 		if node is RobotFactory and node.owner_team == GameState.player_team:
 			return node
 		if node is VehicleFactory and node.owner_team == GameState.player_team:
+			return node
+		if node is FortBuilding and node.team == GameState.player_team:
 			return node
 	return null
 
