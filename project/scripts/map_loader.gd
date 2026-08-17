@@ -59,6 +59,7 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 			if data.passable != null and not bool(data.passable[y * w + x]):
 				grid.set_point_solid(Vector2i(x, y), true)
 	GameState.nav_grid = grid
+	GameState.map_rect = Rect2(0.0, 0.0, float(w) * TILE, float(h) * TILE)
 
 	# zones
 	for z in data.zones:
@@ -105,6 +106,10 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 					var f := RobotFactory.new()
 					f.setup(id, int(o.owner), planet)
 					node = f
+				elif id == 5:  # vehicle_factory
+					var vf := VehicleFactory.new()
+					vf.setup(id, int(o.owner), planet)
+					node = vf
 				else:
 					node = Building2D.new()
 					node.setup(id, int(o.owner), planet)

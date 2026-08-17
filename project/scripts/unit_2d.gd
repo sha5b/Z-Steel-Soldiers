@@ -48,6 +48,8 @@ func _steer(delta: float) -> void:
 		_last_dir = _angle_to_dir(velocity.angle())
 		_play("walk", _last_dir)
 		global_position += velocity * delta
+		global_position = global_position.clamp(
+			GameState.map_rect.position, GameState.map_rect.end)
 	else:
 		_play("fire" if _target else "stand", _last_dir)
 
@@ -156,7 +158,8 @@ func _build_frames() -> void:
 			if n == 0:
 				frames.remove_animation(fname)
 	sprite.sprite_frames = frames
-	sprite.animation_finished.connect(_on_anim_finished)
+	if not sprite.animation_finished.is_connected(_on_anim_finished):
+		sprite.animation_finished.connect(_on_anim_finished)
 
 
 func _process(delta: float) -> void:

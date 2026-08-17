@@ -12,6 +12,10 @@ var auto_mode := false
 var _accum := 0.0
 
 
+func kind_key() -> String:
+	return "robot_factory"
+
+
 func _process(delta: float) -> void:
 	# factory belongs to whoever owns the zone it stands in
 	var center := world_footprint().get_center()

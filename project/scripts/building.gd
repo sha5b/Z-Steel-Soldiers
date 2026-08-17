@@ -22,6 +22,7 @@ var owner_team := 0  # factories: follows zone owner
 var _sprite: Sprite2D
 var _flag: AnimatedSprite2D
 var _hp_bar: ColorRect
+var _hp_bar_max_w := 64.0
 
 
 func setup(id: int, owner_team_value: int, planet_name: String) -> void:
@@ -55,8 +56,10 @@ func _ready() -> void:
 		_hp_bar = ColorRect.new()
 		_hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_hp_bar.color = Color(0.2, 1.0, 0.2)
-		_hp_bar.size = Vector2(64, 3)
-		_hp_bar.position = Vector2(-32, -ts.y * 0.5 - 10)
+		var bar_w := ts.x * 0.5  # match the building footprint width
+		_hp_bar_max_w = bar_w
+		_hp_bar.size = Vector2(bar_w, 5)
+		_hp_bar.position = Vector2(-bar_w * 0.5, -ts.y * 0.5 - 12)
 		add_child(_hp_bar)
 
 
@@ -115,7 +118,7 @@ func take_damage(amount: int) -> void:
 		var tween := create_tween()
 		tween.tween_property(_sprite, "modulate", Color.WHITE, 0.15)
 	if _hp_bar:
-		_hp_bar.size.x = 64.0 * clampf(float(hp) / float(max_hp), 0.0, 1.0)
+		_hp_bar.size.x = maxf(4.0, _hp_bar_max_w * clampf(float(hp) / float(max_hp), 0.0, 1.0))
 	if hp <= 0:
 		alive = false
 		remove_from_group("buildings")

@@ -11,6 +11,7 @@ var player_team := 1
 var money := {1: 200, 2: 200, 3: 200, 4: 200}
 var zones: Array[Node] = []
 var nav_grid: AStarGrid2D
+var map_rect := Rect2(0.0, 0.0, 1024.0, 1376.0)
 var over := false
 var _accum := 0.0
 
@@ -50,6 +51,10 @@ func request_path(from: Vector2, to: Vector2) -> PackedVector2Array:
 	if nav_grid == null:
 		return PackedVector2Array([to])
 	var cs: Vector2 = nav_grid.cell_size
+	var r := nav_grid.region
+	# clamp the goal into the map — never path (or walk) off the terrain
+	var max_px := Vector2(r.position + r.size) * cs
+	to = to.clamp(Vector2(r.position) * cs, max_px - cs * 0.5)
 	var a := _open_cell(Vector2i((from / cs).floor()))
 	var b := _open_cell(Vector2i((to / cs).floor()))
 	if a.x < 0 or b.x < 0:

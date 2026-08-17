@@ -218,7 +218,7 @@ func _pick_select(screen_pos: Vector2) -> void:
 	var world := SelectionManager.screen_to_world(screen_pos)
 	# player factories first (selecting one opens the production panel)
 	for c in get_children():
-		if c is RobotFactory and c.owner_team == GameState.player_team \
+		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == GameState.player_team \
 				and c.world_footprint().has_point(world):
 			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return

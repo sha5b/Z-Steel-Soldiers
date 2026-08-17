@@ -42,8 +42,9 @@ func _make_slot() -> PanelContainer:
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	slot.add_child(box)
 	var icon := TextureRect.new()
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
-	icon.custom_minimum_size = Vector2(32, 32)
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.custom_minimum_size = Vector2(30, 30)
 	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	box.add_child(icon)
 	var hp_bg := ColorRect.new()

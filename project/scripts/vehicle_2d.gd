@@ -98,7 +98,7 @@ func _build_frames() -> void:
 				if anim == "empty":
 					break
 			if frame == 0:
-				frames.remove_animation(name)
+				frames.remove_animation(name)  # missing direction
 	frames.add_animation("wasted")
 	frames.set_animation_loop("wasted", false)
 	for i in 2:
@@ -107,7 +107,8 @@ func _build_frames() -> void:
 			frames.add_frame("wasted", load(path))
 			break
 	sprite.sprite_frames = frames
-	sprite.animation_finished.connect(_on_anim_finished)
+	if not sprite.animation_finished.is_connected(_on_anim_finished):
+		sprite.animation_finished.connect(_on_anim_finished)
 
 
 func _anim_path(anim: String, team_name: String, deg: int, frame: int) -> String:
@@ -117,7 +118,11 @@ func _anim_path(anim: String, team_name: String, deg: int, frame: int) -> String
 		"base":
 			return "%s/base_%s_r%03d_n%02d.png" % [_asset_dir, team_name, deg, frame]
 		"fire":
-			return "%s/fire_%s_r%03d_n%02d.png" % [_asset_dir, team_name, deg, frame]
+			# cannons have team-coloured fire, vehicles a shared one
+			var team_path := "%s/fire_%s_r%03d_n%02d.png" % [_asset_dir, team_name, deg, frame]
+			if ResourceLoader.exists(team_path):
+				return team_path
+			return "%s/fire_r%03d_n%02d.png" % [_asset_dir, deg, frame]
 	return ""
 
 
