@@ -23,10 +23,19 @@ assets and format knowledge from the open-source
 
 | Path                | Purpose                                             |
 |---------------------|-----------------------------------------------------|
-| `docs/`             | Research notes, roadmap                             |
+| `docs/`             | Research notes, roadmap, asset conventions          |
 | `project/`          | Godot project (2D)                                  |
-| `assets_original/`  | Full Zod Engine asset set (gitignored, 84 MB)       |
-| `project/assets/z/` | Working subset of Z sprites (gitignored)            |
+| `assets_original/gog/` | Extracted GOG release: sfx, soundtrack, HUD art (gitignored, 383 MB) |
+| `assets_original/zod/` | Zod Engine asset set — unit/map sprites (gitignored, 84 MB) |
+| `project/assets/z/` | Working asset set, built by `tools/gog/convert_assets.py` (gitignored) |
+
+Project code layout: `scripts/core` (autoloads: ContentDB, Fx, GameState,
+SelectionManager, MusicPlayer, Campaign), `scripts/content` (definition
+tables), `scripts/entities` (units, buildings, effects), `scripts/game`
+(match flow, map loader, AI, self-tests), `scripts/ui` (HUD). Adding
+content (units, buildings, pickups, effects, maps) is documented in
+`docs/ASSET_CONVENTIONS.md` — mostly drop-in folders plus one table
+entry.
 
 ## Asset licensing
 

@@ -32,6 +32,26 @@ Also in the Zod repo (useful later): `blank_maps/`, `*.map` files
 (Zod's text map format) and `zod_engine` source for map/physics
 reference.
 
+## 2b. GOG retail extract (in `assets_original/gog/`)
+
+From our purchased `setup_z_2.3.0.8.exe` (Inno Setup; extracted with
+`innoextract -I app`). This is the Win32 port build, but it carries the
+original game data alongside port-specific resources:
+
+| Path                      | Contents                                          |
+|---------------------------|---------------------------------------------------|
+| `LEVEL01.MAP`–`LEVEL25.MAP` | original level data (root)                      |
+| `<PLANET>.BLK` + `.PAL`   | 5 tilesets + palettes: ARCTIC, CITY, DESERT, JUNGLE, VOLCANIC |
+| `BRIDGE/BUILD/CPUPLR/GROUP/OBJECT*.DAT` | map object/unit placement data per level |
+| `audio/`                  | 590 `.RAW` PCM sound effects + voices             |
+| root `*.ogg` (242)        | music + voice lines, port re-encodes              |
+| `CUTS/`                   | 47 `.jvi`+`.jvv` cutscene video pairs             |
+| `PNG/`, `Maps/`, `Fonts/` | port UI art, level-select thumbnails, fonts       |
+| `CHARS.BIN`               | port character/unit metadata                      |
+
+Only file skipped: `__support/.../vcredist_x86_2012.exe` (duplicate,
+no asset value).
+
 ## 3. Game facts to recreate (Z, 1996)
 
 - 2D tile maps on 5 planets; screen ~640×480 in original; units are

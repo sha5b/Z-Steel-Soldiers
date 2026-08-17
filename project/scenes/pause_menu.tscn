@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scripts/pause_menu.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="1"]
 
 [node name="PauseMenu" type="Control"]
 anchors_preset = 15
@@ -14,49 +14,68 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0, 0, 0, 0.55)
 
-[node name="Panel" type="PanelContainer" parent="."]
+[node name="Panel" type="Control" parent="."]
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -130.0
-offset_top = -140.0
+offset_top = -160.0
 offset_right = 130.0
-offset_bottom = 140.0
+offset_bottom = 160.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Menu" type="VBoxContainer" parent="Panel"]
+[node name="Margin" type="MarginContainer" parent="Panel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 10
+
+[node name="Menu" type="VBoxContainer" parent="Panel/Margin"]
+layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="PauseLabel" type="Label" parent="Panel/Menu"]
+[node name="PauseLabel" type="Label" parent="Panel/Margin/Menu"]
+layout_mode = 2
 theme_override_font_sizes/font_size = 26
 text = "Paused"
 horizontal_alignment = 1
 
-[node name="Resume" type="Button" parent="Panel/Menu"]
+[node name="Resume" type="Button" parent="Panel/Margin/Menu"]
 custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
 text = "Resume"
 
-[node name="Restart" type="Button" parent="Panel/Menu"]
+[node name="Restart" type="Button" parent="Panel/Margin/Menu"]
 custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
 text = "Restart Map"
 
-[node name="Save" type="Button" parent="Panel/Menu"]
+[node name="Save" type="Button" parent="Panel/Margin/Menu"]
 custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
 text = "Save Game"
 
-[node name="Maps" type="Button" parent="Panel/Menu"]
+[node name="Maps" type="Button" parent="Panel/Margin/Menu"]
 custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
 text = "Map Select"
 
-[node name="Title" type="Button" parent="Panel/Menu"]
+[node name="Title" type="Button" parent="Panel/Margin/Menu"]
 custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
 text = "Quit to Title"
 
-[connection signal="pressed" from="Panel/Menu/Resume" to="." method="_on_resume_pressed"]
-[connection signal="pressed" from="Panel/Menu/Restart" to="." method="_on_restart_pressed"]
-[connection signal="pressed" from="Panel/Menu/Save" to="." method="_on_save_pressed"]
-[connection signal="pressed" from="Panel/Menu/Maps" to="." method="_on_maps_pressed"]
-[connection signal="pressed" from="Panel/Menu/Title" to="." method="_on_title_pressed"]
+[connection signal="pressed" from="Panel/Margin/Menu/Resume" to="." method="_on_resume_pressed"]
+[connection signal="pressed" from="Panel/Margin/Menu/Restart" to="." method="_on_restart_pressed"]
+[connection signal="pressed" from="Panel/Margin/Menu/Save" to="." method="_on_save_pressed"]
+[connection signal="pressed" from="Panel/Margin/Menu/Maps" to="." method="_on_maps_pressed"]
+[connection signal="pressed" from="Panel/Margin/Menu/Title" to="." method="_on_title_pressed"]

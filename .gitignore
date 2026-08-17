@@ -18,3 +18,6 @@ Thumbs.db
 
 __pycache__/
 *.pyc
+
+# GOG installer (copyrighted, never committed)
+setup_*.exe
