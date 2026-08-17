@@ -1,46 +1,34 @@
-# Z: Steel Soldiers — Godot Remake
+# Z (1996) — Godot Remake
 
-A fan remake of *Z: Steel Soldiers* (The Bitmap Brothers, 2001) in Godot 4,
-built as faithfully as possible to the original using assets extracted from
-the official free demo and community-ripped sound packs.
+A fan remake of the original **Z** (The Bitmap Brothers, 1996) — the 2D
+robot RTS — in Godot 4, as faithful to the original as possible using the
+assets and format knowledge from the open-source
+[Zod Engine](https://github.com/a-sf-mirror/zod_engine) project.
 
-> **Status:** research & asset pipeline phase. See `docs/RESEARCH.md` and
-> `docs/ROADMAP.md`.
+> **Status:** 2D playable prototype — RTS camera, drag-select, orders,
+> original robot sprites walking on desert terrain.
 
 ## Environment
 
 - Godot **4.7.1 stable** (Flatpak: `org.godotengine.Godot`)
   ```bash
-  flatpak run org.godotengine.Godot
+  flatpak run org.godotengine.Godot   # open project/project.godot, press F5
   ```
-- Python 3 (asset tooling in `tools/`)
+- Controls: WASD/arrows/edge pan, wheel zoom, drag = box select,
+  right-click = move order.
 
 ## Repository layout
 
-| Path                | Purpose                                              |
-|---------------------|------------------------------------------------------|
-| `docs/`             | Research notes, format documentation, roadmap        |
-| `tools/scrape/`     | Web scrapers for community asset sites               |
-| `tools/zss/`        | Original-format tools (decryptor, converters)         |
-| `assets_original/`  | Extracted demo assets + downloaded sounds (gitignored)|
-| `project/`          | The Godot project (to be created)                    |
+| Path                | Purpose                                             |
+|---------------------|-----------------------------------------------------|
+| `docs/`             | Research notes, roadmap                             |
+| `project/`          | Godot project (2D)                                  |
+| `assets_original/`  | Full Zod Engine asset set (gitignored, 84 MB)       |
+| `project/assets/z/` | Working subset of Z sprites (gitignored)            |
 
-## Asset pipeline
+## Asset licensing
 
-```bash
-# 1. one-time: scrape the Sounds Resource manifest (already committed)
-python3 tools/scrape/scrape_sounds.py
-
-# 2. download English voice + SFX packs into assets_original/sounds/
-python3 tools/scrape/download_sounds.py          # or: ... all
-
-# 3. decrypt demo assets (from an extracted demo install, see docs)
-python3 tools/zss/decrypt_assets.py <src> assets_original/demo
-```
-
-## Licensing
-
-The Godot code in this repository is original. All game assets from the demo
-and rip sites remain © The Bitmap Brothers / their current holders; they live
-in `assets_original/` which is **gitignored** — every contributor extracts
-their own copy locally. Do not redistribute them.
+The original Z graphics/sounds are © The Bitmap Brothers. They are
+extracted via the Zod Engine asset pack, kept **gitignored** in
+`assets_original/` and `project/assets/` — every contributor copies them
+locally. Do not redistribute. The code in this repo is original.

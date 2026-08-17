@@ -1,8 +1,8 @@
 extends Node
-## Autoload: owns unit selection, drag-rectangle state and order dispatch.
+## Autoload: owns unit selection, drag-rectangle state and order dispatch (2D).
 
 signal selection_changed(units: Array)
-signal order_issued(world_position: Vector3)
+signal order_issued(world_position: Vector2)
 
 var selected: Array[Node] = []
 var drag_start := Vector2.ZERO
@@ -30,25 +30,27 @@ func clear_selection() -> void:
 	selection_changed.emit(selected)
 
 
-func select_area(rect: Rect2) -> void:
+func select_area(world_rect: Rect2) -> void:
 	if not Input.is_key_pressed(KEY_SHIFT):
 		clear_selection()
-	var camera := get_viewport().get_camera_3d()
 	for unit in get_tree().get_nodes_in_group("selectable"):
-		var screen := camera.unproject_position(unit.global_position)
-		if rect.has_point(screen):
+		if world_rect.has_point(unit.global_position):
 			selected.append(unit)
-			unit.set_selected(true)
 	_cleanup()
 	selection_changed.emit(selected)
 
 
-func issue_order(world_position: Vector3) -> void:
+func issue_order(world_position: Vector2) -> void:
 	order_issued.emit(world_position)
 
 
 func get_drag_rect() -> Rect2:
 	return Rect2(drag_start, drag_current - drag_start).abs()
+
+
+func screen_to_world(screen_pos: Vector2) -> Vector2:
+	var canvas: Transform2D = Engine.get_main_loop().root.get_canvas_transform()
+	return canvas.affine_inverse() * screen_pos
 
 
 func _cleanup() -> void:
