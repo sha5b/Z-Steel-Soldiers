@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Z Remake (1996)"
 config/description="Fan remake of Z (The Bitmap Brothers, 1996) using Zod Engine assets"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]

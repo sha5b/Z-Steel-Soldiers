@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/test_map_2d.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/rts_camera2d.gd" id="2"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/minimap.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/top_bar.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/selection_bar.gd" id="7"]
+[ext_resource type="PackedScene" path="res://scenes/pause_menu.tscn" id="8"]
 
 [node name="Main" type="Node2D"]
 y_sort_enabled = true
@@ -23,6 +24,8 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 script = ExtResource("3")
+
+[node name="PauseMenu" parent="CanvasLayer" instance=ExtResource("8")]
 
 [node name="HUD" type="Control" parent="CanvasLayer"]
 anchors_preset = 15

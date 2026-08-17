@@ -336,12 +336,41 @@ func _cycle_map() -> void:
 
 
 func _on_game_over(winning_team: int) -> void:
-	var overlay := Label.new()
-	overlay.text = "VICTORY!" if winning_team == GameState.player_team else "DEFEAT"
-	overlay.add_theme_font_size_override("font_size", 64)
-	overlay.add_theme_color_override("font_color", Color(1, 0.9, 0.3))
-	overlay.set_anchors_preset(Control.PRESET_CENTER)
-	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var overlay := Control.new()
+	overlay.process_mode = Node.PROCESS_MODE_ALWAYS
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	var dim := ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.6)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(dim)
+	var box := VBoxContainer.new()
+	box.set_anchors_preset(Control.PRESET_CENTER)
+	box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	box.grow_vertical = Control.GROW_DIRECTION_BOTH
+	box.add_theme_constant_override("separation", 14)
+	overlay.add_child(box)
+	var label := Label.new()
+	label.text = "VICTORY!" if winning_team == GameState.player_team else "DEFEAT"
+	label.add_theme_font_size_override("font_size", 64)
+	label.add_theme_color_override("font_color", Color(1, 0.9, 0.3))
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(label)
+	var again := Button.new()
+	again.text = "Play Again"
+	again.custom_minimum_size = Vector2(200, 40)
+	again.pressed.connect(func():
+		GameState.reset_for_new_map()
+		get_tree().change_scene_to_file("res://scenes/main.tscn"))
+	box.add_child(again)
+	var maps := Button.new()
+	maps.text = "Map Select"
+	maps.custom_minimum_size = Vector2(200, 40)
+	maps.pressed.connect(func():
+		GameState.reset_for_new_map()
+		get_tree().change_scene_to_file("res://scenes/map_select.tscn"))
+	box.add_child(maps)
 	$CanvasLayer.add_child(overlay)
 	get_tree().paused = true
 
@@ -349,6 +378,11 @@ func _on_game_over(winning_team: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_M:
 		_cycle_map()
+		return
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		var pause := get_node_or_null("CanvasLayer/PauseMenu")
+		if pause and not GameState.over:
+			pause.toggle()
 		return
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
