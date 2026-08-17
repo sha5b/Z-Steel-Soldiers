@@ -77,7 +77,7 @@ func _think() -> void:
 
 func _prune_claims() -> void:
 	for z in _zone_claims.keys():
-		var u: Node = _zone_claims[z]
+		var u = _zone_claims[z]  # untyped: may hold a freed instance
 		var stale: bool = (not is_instance_valid(u)) or (not u.alive) \
 			or z.owner_team == team  # captured — release the claim
 		if stale:

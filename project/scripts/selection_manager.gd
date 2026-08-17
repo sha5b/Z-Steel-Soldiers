@@ -62,7 +62,9 @@ func screen_to_world(screen_pos: Vector2) -> Vector2:
 func screen_to_world_rect(screen_rect: Rect2) -> Rect2:
 	var canvas: Transform2D = Engine.get_main_loop().root.get_canvas_transform()
 	var inv: Transform2D = canvas.affine_inverse()
-	return Rect2(inv * screen_rect.position, inv * screen_rect.size)
+	var a := inv * screen_rect.position
+	var b := inv * (screen_rect.position + screen_rect.size)
+	return Rect2(a, b - a).abs()
 
 
 func _cleanup() -> void:
