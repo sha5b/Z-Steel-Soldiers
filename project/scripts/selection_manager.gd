@@ -53,6 +53,12 @@ func screen_to_world(screen_pos: Vector2) -> Vector2:
 	return canvas.affine_inverse() * screen_pos
 
 
+func screen_to_world_rect(screen_rect: Rect2) -> Rect2:
+	var canvas: Transform2D = Engine.get_main_loop().root.get_canvas_transform()
+	var inv: Transform2D = canvas.affine_inverse()
+	return Rect2(inv * screen_rect.position, inv * screen_rect.size)
+
+
 func _cleanup() -> void:
 	selected = selected.filter(func(u): return is_instance_valid(u))
 	for u in selected:

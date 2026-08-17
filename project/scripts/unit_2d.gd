@@ -5,6 +5,7 @@ extends CharacterBody2D
 
 const DIRECTIONS := 8
 const TEAM_NAMES := {1: "red", 2: "blue", 3: "green", 4: "yellow"}
+const IDLE_FLAVORS := ["beer", "cigarette", "pope", "look_around", "head_stretch", "beat_ground"]
 
 @export var unit_name := "grunt"
 @export var team := 1
@@ -26,6 +27,8 @@ var _fire_timer := 0.0
 var _target: Node2D = null
 var move_target := Vector2.ZERO
 var waypoints := PackedVector2Array()
+var _idle_time := 0.0
+var _flavoring := false
 
 
 func _steer(delta: float) -> void:
@@ -118,6 +121,39 @@ func _build_frames() -> void:
 		die += 1
 	if die == 0:
 		frames.remove_animation("die")
+	# idle humor animations (some directional, some not)
+	for flavor in IDLE_FLAVORS:
+		var d_frames := 0
+		for d in DIRECTIONS:
+			var n := 0
+			var fname := "%s_%d" % [flavor, d]
+			frames.add_animation(fname)
+			frames.set_animation_loop(fname, false)
+			frames.set_animation_speed(fname, 6.0)
+			while true:
+				var fpath := "res://assets/z/robots/%s_%s_r%03d_n%02d.png" % [flavor, team_name, d * 45, n]
+				if not ResourceLoader.exists(fpath):
+					break
+				frames.add_frame(fname, load(fpath))
+				n += 1
+			if n == 0:
+				frames.remove_animation(fname)
+			else:
+				d_frames = maxi(d_frames, n)
+		if d_frames == 0:
+			var n := 0
+			var fname := "%s_0" % flavor
+			frames.add_animation(fname)
+			frames.set_animation_loop(fname, false)
+			frames.set_animation_speed(fname, 6.0)
+			while true:
+				var fpath := "res://assets/z/robots/%s_%s_n%02d.png" % [flavor, team_name, n]
+				if not ResourceLoader.exists(fpath):
+					break
+				frames.add_frame(fname, load(fpath))
+				n += 1
+			if n == 0:
+				frames.remove_animation(fname)
 	sprite.sprite_frames = frames
 	sprite.animation_finished.connect(_on_anim_finished)
 
@@ -129,7 +165,30 @@ func _process(delta: float) -> void:
 	_fire_timer = maxf(0.0, _fire_timer - delta)
 	_combat()
 	_steer(delta)
+	_idle(delta)
 	ring.queue_redraw()
+
+
+func _idle(delta: float) -> void:
+	if velocity.length_squared() > 1.0 or _target:
+		_idle_time = 0.0
+		_flavoring = false
+		return
+	if _flavoring:
+		return
+	_idle_time += delta
+	if _idle_time > randf_range(5.0, 12.0):
+		_flavoring = true
+		_idle_time = 0.0
+		var flavor: String = IDLE_FLAVORS.pick_random()
+		var name := "%s_%d" % [flavor, _last_dir]
+		if not sprite.sprite_frames or not sprite.sprite_frames.has_animation(name):
+			name = "%s_0" % flavor
+		if sprite.sprite_frames and sprite.sprite_frames.has_animation(name) \
+				and sprite.sprite_frames.get_frame_count(name) > 0:
+			sprite.play(name)
+		else:
+			_flavoring = false
 
 
 func _combat() -> void:
@@ -213,6 +272,9 @@ func _on_anim_finished() -> void:
 		var tween := create_tween()
 		tween.tween_property(self, "modulate:a", 0.0, 0.8)
 		tween.tween_callback(queue_free)
+	elif _flavoring:
+		_flavoring = false
+		_idle_time = 0.0
 
 
 func move_to(world_pos: Vector2) -> void:
@@ -220,6 +282,15 @@ func move_to(world_pos: Vector2) -> void:
 	waypoints = GameState.request_path(global_position, world_pos)
 	if team == GameState.player_team:
 		_play_voice("acknowledge")
+
+
+func portrait_path() -> String:
+	match kind:
+		"robot":
+			return "res://assets/z/robots/stand_%s_r180.png" % TEAM_NAMES.get(team, "red")
+		"cannon", "vehicle":
+			return "res://assets/z/vehicles_%s/empty_r180.png" % unit_name
+	return ""
 
 
 func _play_voice(prefix: String) -> void:

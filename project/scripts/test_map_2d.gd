@@ -5,7 +5,6 @@ extends Node2D
 @export var map_json := "res://assets/maps/p02_bb_orig01.json"
 
 @onready var camera: RtsCamera2D = $RtsCamera2D
-@onready var money_label: Label = $CanvasLayer/HUD/MoneyLabel
 
 
 func _ready() -> void:
@@ -21,9 +20,12 @@ func _ready() -> void:
 			camera.position = child.visual_center()
 			break
 	camera.bounds = Rect2(0.0, 0.0, float(data.width) * 16.0, float(data.height) * 16.0)
-	GameState.money_changed.connect(_update_money)
 	GameState.game_over.connect(_on_game_over)
-	_update_money(GameState.player_team, GameState.player_money())
+	var minimap := get_node_or_null("CanvasLayer/HUD/MiniMap")
+	if minimap:
+		var tileset: Texture2D = load(MapLoader.PLANET_TILESETS.get(String(data.terrain), MapLoader.PLANET_TILESETS.desert))
+		minimap.build(data, tileset)
+		minimap.move_order.connect(func(world: Vector2): SelectionManager.issue_order(world))
 	if "--capture-test" in OS.get_cmdline_args() or "--capture-test" in OS.get_cmdline_user_args():
 		print("MAP OK: %dx%d terrain-cells=%d zones=%d units=%d" % [
 			data.width, data.height,
@@ -157,11 +159,6 @@ func _run_flag_tests() -> void:
 				solid, u4.waypoints.size(), crossed_solid, total,
 				u4.move_target == Vector2.ZERO, dist])
 
-
-
-func _update_money(_team: int, amount: int) -> void:
-	if money_label:
-		money_label.text = "$ %d" % amount
 
 
 func _on_game_over(winning_team: int) -> void:
