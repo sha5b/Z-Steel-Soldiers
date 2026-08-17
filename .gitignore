@@ -1,0 +1,14 @@
+# Godot editor cache
+.godot/
+*.translation
+
+# Original game assets — copyrighted, extracted locally, never committed.
+# See docs/RESEARCH.md#licensing.
+assets_original/
+
+# Scraped/downloaded raw data
+tools/scrape/data/*.zip
+
+# OS
+.DS_Store
+Thumbs.db
