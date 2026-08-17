@@ -71,7 +71,7 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 	if not rock_cells.is_empty():
 		var rocks_layer := TileMapLayer.new()
 		rocks_layer.name = "Rocks"
-		rocks_layer.z_index = 1
+		rocks_layer.y_sort_enabled = true  # per-tile Y-sort with units/buildings
 		var rock_set := TileSet.new()
 		rock_set.tile_size = Vector2i(TILE, TILE)
 		var rock_src := TileSetAtlasSource.new()
