@@ -45,9 +45,9 @@ func _think() -> void:
 			var ring := int(sqrt(float(units.size())))
 			for i in units.size():
 				var u: Node2D = units[i]
-				u.move_target = center + Vector2(
+				u.move_to(center + Vector2(
 					((i % ring) - (ring - 1) * 0.5) * 18.0,
-					((i / ring) - (ring - 1) * 0.5) * 18.0)
+					((i / ring) - (ring - 1) * 0.5) * 18.0))
 			return
 
 	# otherwise: send each idle-ish unit to the nearest zone we don't own
@@ -62,7 +62,7 @@ func _think() -> void:
 			if u2.global_position.distance_squared_to(zc) < nearest.global_position.distance_squared_to(zc):
 				nearest = u2
 		assignable.erase(nearest)
-		nearest.move_target = zc + Vector2(randf_range(-40, 40), randf_range(-40, 40))
+		nearest.move_to(zc + Vector2(randf_range(-40, 40), randf_range(-40, 40)))
 
 
 func _own_units() -> Array[Node]:

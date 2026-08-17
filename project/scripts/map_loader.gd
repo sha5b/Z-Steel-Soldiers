@@ -48,6 +48,18 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 			var index: int = data.tiles[y * w + x]  # row-major (GetTile: y=index/width)
 			tilemap.set_cell(Vector2i(x, y), 0, Vector2i(index % 20, index / 20))
 
+	# navigation grid from tileinfo passability + building footprints
+	var grid := AStarGrid2D.new()
+	grid.region = Rect2i(0, 0, w, h)
+	grid.cell_size = Vector2(TILE, TILE)
+	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_AT_LEAST_ONE_WALKABLE
+	grid.update()
+	for y in h:
+		for x in w:
+			if data.passable != null and not bool(data.passable[y * w + x]):
+				grid.set_point_solid(Vector2i(x, y), true)
+	GameState.nav_grid = grid
+
 	# zones
 	for z in data.zones:
 		var zone := Zone.new()
@@ -99,6 +111,14 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 				node.position = pos
 				node.name = "Building_T%d_%d" % [int(o.owner), id]
 				parent.add_child(node)
+				if node is FortBuilding:
+					# forts block movement
+					var fp := node.world_footprint()
+					var lo := Vector2i((fp.position / TILE).floor())
+					var hi := Vector2i(((fp.position + fp.size) / TILE).ceil())
+					for bx in range(maxi(lo.x, 0), mini(hi.x, w)):
+						for by in range(maxi(lo.y, 0), mini(hi.y, h)):
+							grid.set_point_solid(Vector2i(bx, by), true)
 	# one CPU brain per non-player team that owns a fort
 	var ai_teams := {}
 	for o in data.objects:

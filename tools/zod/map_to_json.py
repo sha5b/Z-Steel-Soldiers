@@ -31,8 +31,23 @@ from pathlib import Path
 TERRAIN = ["desert", "volcanic", "arctic", "city", "jungle", "city2"]
 OBJ_TYPES = ["rock", "bridge", "building", "cannon", "vehicle", "robot", "animal", "map_item"]
 
+# palette_tile_info (packed, 12 bytes/tile x 480):
+#   is_water, is_passable, is_usable, is_road, is_effect, is_water_effect,
+#   u16 next_tile_in_effect, takes_tank_tracks, i16 crater_type, is_starter
+TILEINFO_FIELDS = struct.Struct("<6BHBhB")
 
-def convert(path: Path) -> dict:
+
+def load_tileinfo(tileinfo_path: Path) -> list[dict]:
+    raw = tileinfo_path.read_bytes()
+    out = []
+    for off in range(0, len(raw), TILEINFO_FIELDS.size):
+        w, p, u, r, e, we, nxt, _tracks, _crater, _starter = \
+            TILEINFO_FIELDS.unpack_from(raw, off)
+        out.append({"water": bool(w), "passable": bool(p), "road": bool(r)})
+    return out
+
+
+def convert(path: Path, tileinfo_dir: Path | None = None) -> dict:
     d = path.read_bytes()
     if len(d) < 62:
         raise ValueError("too small")
@@ -64,11 +79,22 @@ def convert(path: Path) -> dict:
     if off != len(d):
         raise ValueError(f"trailing data: consumed {off} of {len(d)}")
 
+    terrain_name = TERRAIN[terrain] if terrain < len(TERRAIN) else "desert"
+    passable = None
+    water = None
+    if tileinfo_dir is not None:
+        ti = tileinfo_dir / f"{terrain_name}.tileinfo"
+        if ti.exists():
+            info = load_tileinfo(ti)
+            passable = [1 if info[t]["passable"] else 0 for t in tiles]
+            water = [1 if info[t]["water"] else 0 for t in tiles]
+
     return {
         "name": name, "width": width, "height": height,
-        "terrain": TERRAIN[terrain] if terrain < len(TERRAIN) else terrain,
+        "terrain": terrain_name,
         "player_count": player_count,
         "zones": zones, "objects": objects, "tiles": tiles,
+        "passable": passable, "water": water,
     }
 
 
@@ -77,12 +103,15 @@ def main() -> None:
         sys.exit(__doc__)
     src = Path(sys.argv[1])
     dst = Path(sys.argv[2]) if len(sys.argv) > 2 else src.with_suffix(".json")
-    data = convert(src)
+    tileinfo_dir = Path(sys.argv[3]) if len(sys.argv) > 3 else None
+    data = convert(src, tileinfo_dir)
     dst.write_text(json.dumps(data))
     from collections import Counter
     kinds = Counter(f"{o['type']}:{o['id']}" for o in data["objects"])
+    blocked = sum(1 for p in data["passable"] or [] if not p)
     print(f"{src.name}: {data['width']}x{data['height']} {data['terrain']} "
-          f"| {len(data['zones'])} zones | {len(data['objects'])} objects -> {dst}")
+          f"| {len(data['zones'])} zones | {len(data['objects'])} objects "
+          f"| {blocked} blocked cells -> {dst}")
     for k, c in kinds.most_common(10):
         print(f"   {c:3d}x {k}")
 

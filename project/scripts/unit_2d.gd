@@ -24,23 +24,28 @@ var voice_cooldown := 0.0
 var _last_dir := 0
 var _fire_timer := 0.0
 var _target: Node2D = null
-var move_target: Vector2
+var move_target := Vector2.ZERO
+var waypoints := PackedVector2Array()
 
 
 func _steer(delta: float) -> void:
 	if move_target != Vector2.ZERO:
-		var offset := move_target - global_position
-		if offset.length() <= 4.0:
-			move_target = Vector2.ZERO
-			velocity = Vector2.ZERO
+		var next: Vector2 = waypoints[0] if not waypoints.is_empty() else move_target
+		var offset := next - global_position
+		if offset.length() <= (6.0 if not waypoints.is_empty() else 4.0):
+			if not waypoints.is_empty():
+				waypoints.remove_at(0)
+			else:
+				move_target = Vector2.ZERO
+				velocity = Vector2.ZERO
 		else:
 			velocity = offset.normalized() * speed
 	if velocity.length_squared() > 1.0:
 		_last_dir = _angle_to_dir(velocity.angle())
 		_play("walk", _last_dir)
+		global_position += velocity * delta
 	else:
 		_play("fire" if _target else "stand", _last_dir)
-	move_and_slide()
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var ring: Node2D = $SelectionRing
@@ -212,6 +217,7 @@ func _on_anim_finished() -> void:
 
 func move_to(world_pos: Vector2) -> void:
 	move_target = world_pos
+	waypoints = GameState.request_path(global_position, world_pos)
 	if team == GameState.player_team:
 		_play_voice("acknowledge")
 

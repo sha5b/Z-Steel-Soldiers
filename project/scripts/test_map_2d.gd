@@ -126,6 +126,37 @@ func _run_flag_tests() -> void:
 			print("PROD: queued=%s units %d -> %d psychos=%d queue_left=%d" % [
 				ok, count_before, get_tree().get_nodes_in_group("units").size(),
 				psychos, f2.queue.size()])
+	if "--path-test" in args:
+		var grid: AStarGrid2D = GameState.nav_grid
+		if grid == null:
+			print("PATH: no grid")
+		else:
+			var solid := 0
+			for y in grid.region.size.y:
+				for x in grid.region.size.x:
+					if grid.is_point_solid(Vector2i(x, y)):
+						solid += 1
+			var u4: Unit2D = load("res://scenes/unit.tscn").instantiate()
+			u4.team = 1
+			u4.position = Vector2(8, 8)
+			add_child(u4)
+			u4.move_to(Vector2(63.5 * 16, 85.5 * 16))  # far corner
+			var crossed_solid := 0
+			var total := 0
+			for i in 3000:
+				u4._process(0.05)
+				if i % 5 == 0:
+					var cell := Vector2i((u4.position / 16.0).floor())
+					if grid.is_point_solid(cell):
+						crossed_solid += 1
+					total += 1
+				if u4.move_target == Vector2.ZERO:
+					break
+			var dist: float = u4.position.distance_to(Vector2(63.5 * 16, 85.5 * 16))
+			print("PATH: solid_cells=%d waypoints=%d crossed_solid=%d/%d arrived=%s dist=%.1f" % [
+				solid, u4.waypoints.size(), crossed_solid, total,
+				u4.move_target == Vector2.ZERO, dist])
+
 
 
 func _update_money(_team: int, amount: int) -> void:
