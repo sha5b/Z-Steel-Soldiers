@@ -24,6 +24,23 @@ var voice_cooldown := 0.0
 var _last_dir := 0
 var _fire_timer := 0.0
 var _target: Node2D = null
+var move_target: Vector2
+
+
+func _steer(delta: float) -> void:
+	if move_target != Vector2.ZERO:
+		var offset := move_target - global_position
+		if offset.length() <= 4.0:
+			move_target = Vector2.ZERO
+			velocity = Vector2.ZERO
+		else:
+			velocity = offset.normalized() * speed
+	if velocity.length_squared() > 1.0:
+		_last_dir = _angle_to_dir(velocity.angle())
+		_play("walk", _last_dir)
+	else:
+		_play("fire" if _target else "stand", _last_dir)
+	move_and_slide()
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var ring: Node2D = $SelectionRing
@@ -106,13 +123,8 @@ func _process(delta: float) -> void:
 		return
 	_fire_timer = maxf(0.0, _fire_timer - delta)
 	_combat()
-	if velocity.length_squared() > 1.0:
-		_last_dir = _angle_to_dir(velocity.angle())
-		_play("walk", _last_dir)
-	else:
-		_play("fire" if _target else "stand", _last_dir)
+	_steer(delta)
 	ring.queue_redraw()
-	move_and_slide()
 
 
 func _combat() -> void:
@@ -136,6 +148,13 @@ func _find_target() -> Node2D:
 			if d < best_d * best_d:
 				best_d = sqrt(d)
 				best = u
+	# enemy buildings (forts) in range
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b is Node2D and b.alive and b.team != 0 and b.team != team:
+			var d: float = global_position.distance_squared_to(b.global_position + b.size * 0.5)
+			if d < best_d * best_d:
+				best_d = sqrt(d)
+				best = b
 	return best
 
 
@@ -192,9 +211,9 @@ func _on_anim_finished() -> void:
 
 
 func move_to(world_pos: Vector2) -> void:
-	var offset := (world_pos - global_position)
-	velocity = offset.normalized() * speed if offset.length() > 4.0 else Vector2.ZERO
-	_play_voice("acknowledge")
+	move_target = world_pos
+	if team == GameState.player_team:
+		_play_voice("acknowledge")
 
 
 func _play_voice(prefix: String) -> void:

@@ -83,7 +83,14 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 					parent.add_child(cannon)
 			"building":
 				var id := int(o.id)
-				if id == 4:  # robot_factory
+				if id == 0 or id == 1:  # fort_front / fort_back
+					var fort := FortBuilding.new()
+					fort.setup(int(o.owner))
+					fort.position = pos - Vector2(2.5, 2) * TILE
+					fort.size = Vector2(5, 4) * TILE
+					fort.name = "Fort_T%d" % int(o.owner)
+					parent.add_child(fort)
+				elif id == 4:  # robot_factory
 					var f := RobotFactory.new()
 					f.position = pos - Vector2(3, 3) * TILE * 0.5
 					f.size = Vector2(3, 3) * TILE
@@ -99,4 +106,14 @@ static func load_map(parent: Node, json_path: String) -> Dictionary:
 					b.mouse_filter = Control.MOUSE_FILTER_IGNORE
 					b.name = "Building_%s" % bname
 					parent.add_child(b)
+	# one CPU brain per non-player team that owns a fort
+	var ai_teams := {}
+	for o in data.objects:
+		if String(o.type) == "building" and int(o.id) in [0, 1] and int(o.owner) != 0:
+			ai_teams[int(o.owner)] = true
+	for t in ai_teams:
+		if t != GameState.player_team:
+			var ai := CpuAi.new(t)
+			ai.name = "CpuAi_T%d" % t
+			parent.add_child(ai)
 	return data

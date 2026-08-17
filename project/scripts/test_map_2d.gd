@@ -15,8 +15,14 @@ func _ready() -> void:
 		push_error("empty map")
 		return
 	camera.position = Vector2(int(data.width), int(data.height)) * 8.0
+	# start on the player's fort when the map has one
+	for child in get_children():
+		if child is FortBuilding and child.team == GameState.player_team:
+			camera.position = child.global_position + child.size * 0.5
+			break
 	camera.bounds = Rect2(0.0, 0.0, float(data.width) * 16.0, float(data.height) * 16.0)
 	GameState.money_changed.connect(_update_money)
+	GameState.game_over.connect(_on_game_over)
 	_update_money(GameState.player_team, GameState.player_money())
 	if "--capture-test" in OS.get_cmdline_args() or "--capture-test" in OS.get_cmdline_user_args():
 		print("MAP OK: %dx%d terrain-cells=%d zones=%d units=%d" % [
@@ -70,11 +76,44 @@ func _run_flag_tests() -> void:
 		print("FACTORY: units %d -> %d money %d -> %d" % [
 			before, get_tree().get_nodes_in_group("units").size(),
 			money_before, GameState.player_money()])
+	if "--ai-test" in args:
+		var ai := get_node_or_null("CpuAi_T2")
+		if ai:
+			var moved := 0
+			for u in get_tree().get_nodes_in_group("units"):
+				if u is Node2D and u.team == 2 and u.move_target != Vector2.ZERO:
+					moved += 1
+			ai._think()
+			var moved_after := 0
+			for u in get_tree().get_nodes_in_group("units"):
+				if u is Node2D and u.team == 2 and u.move_target != Vector2.ZERO:
+					moved_after += 1
+			print("AI: enemy robots with orders %d -> %d" % [moved, moved_after])
+	if "--win-test" in args:
+		var fort: FortBuilding = null
+		for c in get_children():
+			if c is FortBuilding and c.team == 2:
+				fort = c
+		if fort:
+			GameState.game_over.connect(func(winner): print("WINNER: %d" % winner))
+			fort.take_damage(fort.hp)
+			print("WIN: fort_alive=%s game_over=%s" % [fort.alive, GameState.over])
 
 
 func _update_money(_team: int, amount: int) -> void:
 	if money_label:
 		money_label.text = "$ %d" % amount
+
+
+func _on_game_over(winning_team: int) -> void:
+	var overlay := Label.new()
+	overlay.text = "VICTORY!" if winning_team == GameState.player_team else "DEFEAT"
+	overlay.add_theme_font_size_override("font_size", 64)
+	overlay.add_theme_color_override("font_color", Color(1, 0.9, 0.3))
+	overlay.set_anchors_preset(Control.PRESET_CENTER)
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$CanvasLayer.add_child(overlay)
+	get_tree().paused = true
 
 
 func _unhandled_input(event: InputEvent) -> void:
