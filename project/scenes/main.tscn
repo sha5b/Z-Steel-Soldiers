@@ -1,0 +1,40 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/test_map.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/rts_camera.tscn" id="2"]
+[ext_resource type="Script" path="res://scripts/selection_rect.gd" id="3"]
+
+[sub_resource type="BoxShape3D" id="groundshape"]
+size = Vector3(256, 1, 256)
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Ground" type="StaticBody3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, -0.5, 128)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ground"]
+shape = SubResource("groundshape")
+
+[node name="GroundMesh" type="MeshInstance3D" parent="Ground"]
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 128)
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.866, 0.25, -0.433, 0, 0.866, 0.5, 0.5, -0.433, 0.75, 128, 100, 128)
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+
+[node name="RtsCamera" parent="." instance=ExtResource("2")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 128, 0, 128)
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="SelectionRect" type="Control" parent="CanvasLayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("3")
