@@ -10,16 +10,19 @@ data-driven unit stats, faithful vertical slice before breadth.
 - [x] 2D project: RTS camera (edge pan/zoom), drag-select, right-click
       orders, robots walking with original 16×16 sprites on desert tiles
 
-## Phase 1 — real terrain & units
+## Phase 1 — real terrain & units ✅ (core)
 
-- [ ] TileMapLayer terrain from planet tilesets (`planets/*.bmp` +
-      `.tileinfo`); map loader for Zod `*.map` text format
-- [ ] Unit resource data (speed, hp, weapon, cost) as `.tres`
-- [ ] All robot types + fire animations; vehicles (jeep/tanks/APC);
-      cannons; fort/flag buildings with capture logic
-- [ ] Selection portraits + command UI (Control scenes), HUD with money
-- [ ] Sound: voice lines on select/order (assets/sounds), weapons fx,
-      music
+- [x] Zod `.map` format reversed (header/zones/objects/tiles) —
+      `tools/zod/map_to_json.py`
+- [x] MapLoader: TileMapLayer terrain from planet tilesets (5 planets),
+      zones, robots, building placeholders; 3 stock maps converted
+- [x] Territory system: zone flags (original animated flag sprites),
+      capture by presence (2 s), income ticking per zone, money HUD
+- [x] All 6 robot types with stand/walk/fire animations
+- [x] Voice lines (acknowledge) on orders
+- [ ] Unit stats as `.tres` resources; vehicles/cannons from map objects
+- [ ] Selection portraits + command UI; weapon sounds
+- [ ] Fire animations triggered on combat (needs combat system)
 
 ## Phase 2 — the game loop
 

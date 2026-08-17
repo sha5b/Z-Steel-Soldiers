@@ -1,29 +1,45 @@
 extends Node2D
-## Z test map: repeated desert tileset ground, robot squad, drag-select and
-## right-click orders. Placeholder flag/fort props from original sprites.
+## Z test map: loads a converted Zod map (terrain, zones, objects), wires
+## drag-select, right-click orders, and the money HUD.
 
-const UNIT := preload("res://scenes/unit.tscn")
+@export var map_json := "res://assets/maps/p02_bb_orig01.json"
 
 @onready var camera: RtsCamera2D = $RtsCamera2D
+@onready var money_label: Label = $CanvasLayer/HUD/MoneyLabel
 
 
 func _ready() -> void:
 	SelectionManager.order_issued.connect(_on_order)
-	var tex := load("res://assets/z/planets/desert.png")
-	if tex:
-		$Ground.texture = tex
-	for i in 8:
-		var u := UNIT.instantiate()
-		u.unit_name = "grunt"
-		u.team = 1
-		u.position = Vector2(200.0 + (i % 4) * 24.0, 180.0 + (i / 4) * 24.0)
-		add_child(u)
-	for i in 4:
-		var u := UNIT.instantiate()
-		u.unit_name = "grunt"
-		u.team = 2
-		u.position = Vector2(900.0 + (i % 2) * 24.0, 900.0 + (i / 2) * 24.0)
-		add_child(u)
+	var data: Dictionary = MapLoader.load_map(self, map_json)
+	if data.is_empty():
+		push_error("empty map")
+		return
+	camera.position = Vector2(int(data.width), int(data.height)) * 8.0
+	camera.bounds = Rect2(0.0, 0.0, float(data.width) * 16.0, float(data.height) * 16.0)
+	GameState.money_changed.connect(_update_money)
+	_update_money(GameState.player_team, GameState.player_money())
+	if "--capture-test" in OS.get_cmdline_args() or "--capture-test" in OS.get_cmdline_user_args():
+		print("MAP OK: %dx%d terrain-cells=%d zones=%d units=%d" % [
+			data.width, data.height,
+			$Terrain.get_used_cells().size() if has_node("Terrain") else -1,
+			GameState.zones.size(),
+			get_tree().get_nodes_in_group("units").size()])
+		var u: Node2D = null
+		for unit in get_tree().get_nodes_in_group("units"):
+			if unit.team == GameState.player_team:
+				u = unit
+				break
+		var z: Node2D = GameState.zones[0]
+		u.position = z.position + z.world_rect().get_center()
+		for i in 30:
+			z._process(0.1)  # simulate 3 seconds of capture
+			GameState._process(1.0)  # and income ticks
+		print("CAPTURE: owner=%d money=%d" % [z.owner_team, GameState.player_money()])
+
+
+func _update_money(_team: int, amount: int) -> void:
+	if money_label:
+		money_label.text = "$ %d" % amount
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -50,11 +66,15 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _pick_select(screen_pos: Vector2) -> void:
 	var world := SelectionManager.screen_to_world(screen_pos)
+	var best: Node2D = null
 	for unit in get_tree().get_nodes_in_group("selectable"):
-		if unit.global_position.distance_to(world) < 12.0:
-			SelectionManager.toggle_select(unit, Input.is_key_pressed(KEY_SHIFT))
-			return
-	SelectionManager.clear_selection()
+		if unit is Node2D and unit.global_position.distance_to(world) < 14.0:
+			if best == null or unit.global_position.distance_squared_to(world) < best.global_position.distance_squared_to(world):
+				best = unit
+	if best:
+		SelectionManager.toggle_select(best, Input.is_key_pressed(KEY_SHIFT))
+	else:
+		SelectionManager.clear_selection()
 
 
 func _on_order(world_position: Vector2) -> void:

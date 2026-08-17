@@ -13,13 +13,19 @@ const TEAM_NAMES := {1: "red", 2: "blue", 3: "green", 4: "yellow"}
 
 var selected := false
 var _last_dir := 0
+var voice_cooldown := 0.0
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var ring: Node2D = $SelectionRing
 
 
+func _process(delta: float) -> void:
+	voice_cooldown = maxf(0.0, voice_cooldown - delta)
+
+
 func _ready() -> void:
 	add_to_group("selectable")
+	add_to_group("units")
 	scale = Vector2(sprite_scale, sprite_scale)
 	_build_frames()
 	set_selected(false)
@@ -49,6 +55,22 @@ func _build_frames() -> void:
 					break
 			if frame == 0:
 				frames.remove_animation(name)  # missing direction
+	# weapon fire animation, per robot type
+	for d in DIRECTIONS:
+		var deg := d * 45
+		var name := "fire_%d" % d
+		frames.add_animation(name)
+		frames.set_animation_speed(name, 10.0)
+		frames.set_animation_loop(name, true)
+		var frame := 0
+		while true:
+			var path := "res://assets/z/robots_%s/fire_%s_r%03d_n%02d.png" % [unit_name, team_name, deg, frame]
+			if not ResourceLoader.exists(path):
+				break
+			frames.add_frame(name, load(path))
+			frame += 1
+		if frame == 0:
+			frames.remove_animation(name)
 	sprite.sprite_frames = frames
 
 
@@ -65,6 +87,22 @@ func move_to(world_pos: Vector2) -> void:
 	# simple direct steering; formation offsets and pathing come later
 	var offset := (world_pos - global_position)
 	velocity = offset.normalized() * SPEED if offset.length() > 4.0 else Vector2.ZERO
+	_play_voice("acknowledge")
+
+
+func _play_voice(prefix: String) -> void:
+	if voice_cooldown > 0.0:
+		return
+	voice_cooldown = 1.0
+	var n := 10
+	var path := "res://assets/z/sounds/%s_%02d.wav" % [prefix, randi() % n]
+	if ResourceLoader.exists(path):
+		var player := AudioStreamPlayer.new()
+		player.stream = load(path)
+		player.bus = "Master"
+		add_child(player)
+		player.finished.connect(player.queue_free)
+		player.play()
 
 
 func set_selected(value: bool) -> void:
