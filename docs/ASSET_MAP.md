@@ -37,7 +37,14 @@ asset — see `project/assets_map.json` for the machine-readable form.
 | hud backdrop | 156 | minimap radar frame per planet | **WIRED** |  |
 | hud main_hud_side | 156 | - | **COPIED, NOT WIRED** | the original's full side HUD chrome |
 | hud a/b/d/g buttons | 156 | - | **COPIED, NOT WIRED** | original in-game action buttons |
-| menus+main_menu_gui buttons | 0 | UiTheme button chrome | **WIRED** | nine-piece composed styleboxes |
+| GOG Buttons.png | 0 | menu button plates (all states) | **WIRED (GOG)** | 2x3 grid of 32x32 faces; UiTheme atlas-regions + margins, tint/offset per state |
+| GOG Box* menu chrome | 0 | menu panel 3-slice | **WIRED (GOG)** | OriginalPanel; BoxInfo/BoxDivide + IP* 2x + TTAch copied, spare |
+| GOG planet thumbs | 0 | campaign brief + map select icons | **WIRED (GOG)** | 320x200, base + alt lighting pass |
+| GOG menu plaques | 0 | - | **COPIED (GOG), NOT WIRED** | 64x128 section headers + 64x64 exit icon |
+| GOG PMHSprites | 0 | - | **COPIED (GOG), NOT WIRED** | in-game HUD atlas: panel outline, round buttons, arrows, unit medallions |
+| GOG Font.png + Fonts/*.fnt | 0 | - | **COPIED (GOG), NOT WIRED** | Mac-port AHF bitmap font; superseded by zod per-char sets |
+| zod fonts | 0 | menu font (BMFont) via tools/zod/pack_fonts.py | **WIRED** | 83 chars each; $ ( ) & # absent - engine fallback covers |
+| menus+main_menu_gui buttons | 0 | UiTheme fallback chrome + list/popup art | **WIRED** | nine-piece styleboxes back the GOG plates; list_* skins ItemList/popups |
 | production_gui | 48 | production panel (object buttons, labels, entry bars) | **WIRED** |  |
 | cursors | 196 | default in-game pointer | **PARTLY WIRED** | animated contextual set (attack/grenade/enter/...) available |
 | sfx | 0 | all weapon/explosion/UI sounds | **WIRED (GOG)** | 115 sounds, RAW->wav 11025Hz u8 |

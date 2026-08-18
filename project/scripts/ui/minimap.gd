@@ -55,10 +55,10 @@ func _layout() -> void:
 	var inner := Rect2(Vector2(FRAME_PAD, FRAME_PAD),
 		size - Vector2(FRAME_PAD, FRAME_PAD) * 2.0)
 	if _backdrop:
-		# 1x original art displayed at 2x like everything else
-		var bs: Vector2 = _backdrop.get_size() * 2.0
+		# backdrop art at its natural 1x size on the 640x480 canvas
+		var bs: Vector2 = _backdrop.get_size()
 		size = bs
-		var pad := FRAME_PAD * 2.0
+		var pad := FRAME_PAD
 		inner = Rect2(Vector2(pad, pad), bs - Vector2(pad, pad) * 2.0)
 	var aspect := float(map_size.x) / float(map_size.y)
 	var radar := inner.size

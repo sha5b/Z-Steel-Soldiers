@@ -2137,13 +2137,90 @@
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
   {
+   "category": "GOG Buttons.png",
+   "zod_source": "gog/PNG/Buttons.png",
+   "file_count": 0,
+   "prefixes": {},
+   "game_usage": "menu button plates (all states)",
+   "status": "WIRED (GOG)",
+   "notes": "2x3 grid of 32x32 faces; UiTheme atlas-regions + margins, tint/offset per state",
+   "parity_diff_vs_working_set": null,
+   "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
+  },
+  {
+   "category": "GOG Box* menu chrome",
+   "zod_source": "gog/PNG/Box*.png",
+   "file_count": 0,
+   "prefixes": {},
+   "game_usage": "menu panel 3-slice",
+   "status": "WIRED (GOG)",
+   "notes": "OriginalPanel; BoxInfo/BoxDivide + IP* 2x + TTAch copied, spare",
+   "parity_diff_vs_working_set": null,
+   "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
+  },
+  {
+   "category": "GOG planet thumbs",
+   "zod_source": "gog/PNG/{ARTIC,CITY,DESERT,JUNGLE,VOLCAN}*.png",
+   "file_count": 0,
+   "prefixes": {},
+   "game_usage": "campaign brief + map select icons",
+   "status": "WIRED (GOG)",
+   "notes": "320x200, base + alt lighting pass",
+   "parity_diff_vs_working_set": null,
+   "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
+  },
+  {
+   "category": "GOG menu plaques",
+   "zod_source": "gog/PNG/{options,audio,credits,Exit}.png",
+   "file_count": 0,
+   "prefixes": {},
+   "game_usage": "-",
+   "status": "COPIED (GOG), NOT WIRED",
+   "notes": "64x128 section headers + 64x64 exit icon",
+   "parity_diff_vs_working_set": null,
+   "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
+  },
+  {
+   "category": "GOG PMHSprites",
+   "zod_source": "gog/PNG/PMHSprites.png",
+   "file_count": 0,
+   "prefixes": {},
+   "game_usage": "-",
+   "status": "COPIED (GOG), NOT WIRED",
+   "notes": "in-game HUD atlas: panel outline, round buttons, arrows, unit medallions",
+   "parity_diff_vs_working_set": null,
+   "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
+  },
+  {
+   "category": "GOG Font.png + Fonts/*.fnt",
+   "zod_source": "gog/PNG/Font.png, gog/Fonts",
+   "file_count": 0,
+   "prefixes": {},
+   "game_usage": "-",
+   "status": "COPIED (GOG), NOT WIRED",
+   "notes": "Mac-port AHF bitmap font; superseded by zod per-char sets",
+   "parity_diff_vs_working_set": null,
+   "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
+  },
+  {
+   "category": "zod fonts",
+   "zod_source": "zod/fonts/{yellow_menu,big_white,...}",
+   "file_count": 0,
+   "prefixes": {},
+   "game_usage": "menu font (BMFont) via tools/zod/pack_fonts.py",
+   "status": "WIRED",
+   "notes": "83 chars each; $ ( ) & # absent - engine fallback covers",
+   "parity_diff_vs_working_set": null,
+   "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
+  },
+  {
    "category": "menus+main_menu_gui buttons",
    "zod_source": "other/menus, other/main_menu_gui",
    "file_count": 0,
    "prefixes": {},
-   "game_usage": "UiTheme button chrome",
+   "game_usage": "UiTheme fallback chrome + list/popup art",
    "status": "WIRED",
-   "notes": "nine-piece composed styleboxes",
+   "notes": "nine-piece styleboxes back the GOG plates; list_* skins ItemList/popups",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },

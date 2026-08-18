@@ -16,7 +16,7 @@ const LABELS := {
 
 var _wired: Node = null
 var _title: TextureRect
-var _box: HBoxContainer
+var _box: GridContainer
 var _queue_row: HBoxContainer
 var _progress: ProgressBar
 var _built_for := ""
@@ -25,29 +25,30 @@ var _queue_cache: Array = []
 
 func _ready() -> void:
 	UiTheme.apply(self)
-	# bottom-center, at the panel art's natural 640x256
+	# bottom-center, on the narrow 384x256 original panel
 	set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	OriginalPanel.attach(self)
+	OriginalPanel.attach(self, true)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 76)
-	margin.add_theme_constant_override("margin_right", 76)
-	margin.add_theme_constant_override("margin_top", 10)
-	margin.add_theme_constant_override("margin_bottom", 10)
+	margin.add_theme_constant_override("margin_left", 72)
+	margin.add_theme_constant_override("margin_right", 72)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_bottom", 8)
 	add_child(margin)
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	margin.add_child(col)
 	_title = TextureRect.new()
 	_title.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
-	_title.custom_minimum_size = Vector2(0, 24)
+	_title.custom_minimum_size = Vector2(0, 20)
 	col.add_child(_title)
-	_box = HBoxContainer.new()
-	_box.add_theme_constant_override("separation", 8)
-	_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_box = GridContainer.new()
+	(_box as GridContainer).columns = 4
+	_box.add_theme_constant_override("h_separation", 4)
+	_box.add_theme_constant_override("v_separation", 4)
 	col.add_child(_box)
 	_progress = ProgressBar.new()
-	_progress.custom_minimum_size = Vector2(204, 24)
+	_progress.custom_minimum_size = Vector2(180, 16)
 	_progress.show_percentage = false
 	_progress.visible = false
 	_progress.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -86,7 +87,7 @@ func _update_queue(factory: Node) -> void:
 			c.queue_free()
 		for idx in q.size():
 			var btn := Button.new()
-			btn.custom_minimum_size = Vector2(52, 56)
+			btn.custom_minimum_size = Vector2(40, 44)
 			btn.tooltip_text = "Right-click to cancel"
 			var parts: PackedStringArray = String(q[idx]).split(":")
 			var icon_path := _icon_path(parts[0], parts[1])
@@ -130,11 +131,11 @@ func _build_buttons(factory: Node) -> void:
 		var type_name := parts[1]
 		var stats: Dictionary = ContentDB.def_for(kind, type_name)
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(88, 72)
+		btn.custom_minimum_size = Vector2(56, 60)
 		btn.tooltip_text = "%s (%s) L%d\nHP %d  DMG %d\n$%d" % [
 			type_name.capitalize(), kind, factory.level,
 			stats.hp, stats.damage, stats.cost]
-		btn.text = "$%d" % stats.cost
+		btn.text = "%d" % stats.cost
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		_object_button_chrome(btn)

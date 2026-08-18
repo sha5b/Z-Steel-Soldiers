@@ -11,7 +11,7 @@ var _upgrades: HBoxContainer
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 24)
-	_money = _label("$ 200")
+	_money = _label("credits 200")
 	_zones = _label("zones -")
 	_clock = _label("0:00")
 	_upgrades = HBoxContainer.new()
@@ -21,7 +21,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	elapsed += delta
-	_money.text = "$ %d" % GameState.player_money()
+	_money.text = "credits %d" % GameState.player_money()
 	var counts := {}
 	for z in GameState.zones:
 		if z.owner_team != 0:
@@ -29,7 +29,7 @@ func _process(delta: float) -> void:
 	var mine: int = counts.get(GameState.player_team, 0)
 	var total: int = GameState.zones.size()
 	var theirs: int = counts.get(2, 0) if GameState.player_team != 2 else counts.get(1, 0)
-	_zones.text = "zones %d/%d (them %d)" % [mine, total, theirs]
+	_zones.text = "zones %d of %d - them %d" % [mine, total, theirs]
 	_clock.text = "%d:%02d" % [int(elapsed) / 60, int(elapsed) % 60]
 	_sync_upgrades()
 
@@ -61,6 +61,6 @@ func _sync_upgrades() -> void:
 func _label(text: String) -> Label:
 	var l := Label.new()
 	l.text = text
-	l.add_theme_font_size_override("font_size", 18)
+	l.add_theme_font_size_override("font_size", 16)  # 2x the 8px bitmap font
 	add_child(l)
 	return l

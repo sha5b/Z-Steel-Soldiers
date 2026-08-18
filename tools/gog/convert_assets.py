@@ -29,7 +29,14 @@ MUSIC = ["AA16.ogg", "aC16.ogg", "aJ16.ogg", "ipBATTLE16.ogg",
 
 UI = ["Background.png", "Splash.png", "BoxLeft.png", "BoxRight.png",
       "BoxCentreWide.png", "BoxCentreNarrow.png", "BoxDivide.png",
-      "BoxInfo.png", "BoxInfo2.png", "Buttons.png"]
+      "BoxInfo.png", "BoxInfo2.png", "Buttons.png", "PMHSprites.png"]
+
+# 320x200 world thumbs for the campaign/map screens (pairs: base + alt
+# lighting pass). Palette-mode PNGs; Godot imports them as-is.
+PLANETS = ["ARTIC", "CITY", "DESERT", "JUNGLE", "VOLCAN"]
+
+# 64x128 Mac-port menu plaques + 64x64 exit button art.
+PLAQUES = ["options.png", "audio.png", "credits.png", "Exit.png"]
 
 
 def raw_to_wav(raw_path: Path, wav_path: Path) -> None:
@@ -69,6 +76,26 @@ def main() -> None:
             shutil.copy2(src, dst)
             n += 1
     print(f"ui: {n} HUD/background images copied")
+
+    (PROJ / "ui" / "planets").mkdir(parents=True, exist_ok=True)
+    n = 0
+    for base in PLANETS:
+        for variant in ["", "2"]:
+            src = GOG / "PNG" / f"{base}{variant}.png"
+            dst = PROJ / "ui" / "planets" / f"{base.lower()}{variant}.png"
+            if src.exists() and not dst.exists():
+                shutil.copy2(src, dst)
+                n += 1
+    print(f"planets: {n} world thumbnails copied")
+
+    (PROJ / "ui" / "plaques").mkdir(parents=True, exist_ok=True)
+    n = 0
+    for name in PLAQUES:
+        src, dst = GOG / "PNG" / name, PROJ / "ui" / "plaques" / name
+        if src.exists() and not dst.exists():
+            shutil.copy2(src, dst)
+            n += 1
+    print(f"plaques: {n} menu plaques copied")
 
     # zod-sourced explosion wavs are superseded by EXP1/EXP2/OBJDEST3
     removed = 0

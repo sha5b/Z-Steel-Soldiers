@@ -19,8 +19,8 @@ var _entries := {}  # building node -> button
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_CENTER_RIGHT)
-	custom_minimum_size = Vector2(150, 0)
-	add_theme_constant_override("separation", 4)
+	custom_minimum_size = Vector2(118, 0)
+	add_theme_constant_override("separation", 3)
 
 
 func _process(delta: float) -> void:
@@ -60,7 +60,7 @@ func _sync() -> void:
 
 func _make_entry(node: Node) -> Button:
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(150, 30)
+	btn.custom_minimum_size = Vector2(118, 24)
 	btn.tooltip_text = "Select building (right-click map with it selected to set the rally point)"
 	var icon_path: String = LABELS.get(node.kind_key(), "")
 	if icon_path != "" and ResourceLoader.exists(icon_path):

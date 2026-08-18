@@ -13,7 +13,9 @@ const ZOOM_STEP := 1.15
 
 
 func _ready() -> void:
-	zoom = Vector2(0.7, 0.7)
+	# 640x480 base viewport: 1.4 keeps the same world view the old
+	# 1280x720 canvas had at 0.7
+	zoom = Vector2(1.4, 1.4)
 	position_smoothing_enabled = true
 	make_current()
 

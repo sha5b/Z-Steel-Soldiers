@@ -4,7 +4,7 @@ extends HBoxContainer
 ## (original stand sprite + HP bar); click a portrait to select only that
 ## unit. Shows "+N" when overflowing.
 
-const MAX_PORTRAITS := 14
+const MAX_PORTRAITS := 12
 
 
 func _process(_delta: float) -> void:
@@ -34,28 +34,28 @@ func _sync(units: Array) -> void:
 			if path != "" and ResourceLoader.exists(path):
 				icon.texture = load(path)
 			if u.get("max_hp") != null and u.get("hp") != null:
-				hp.size.x = 28.0 * clampf(float(u.hp) / float(u.max_hp), 0.0, 1.0)
+				hp.size.x = 24.0 * clampf(float(u.hp) / float(u.max_hp), 0.0, 1.0)
 
 
 func _make_slot() -> PanelContainer:
 	var slot := PanelContainer.new()
-	slot.custom_minimum_size = Vector2(34, 40)
+	slot.custom_minimum_size = Vector2(28, 34)
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	slot.add_child(box)
 	var icon := TextureRect.new()
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.custom_minimum_size = Vector2(30, 30)
+	icon.custom_minimum_size = Vector2(24, 24)
 	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	box.add_child(icon)
 	var hp_bg := ColorRect.new()
 	hp_bg.color = Color(0, 0, 0, 0.6)
-	hp_bg.custom_minimum_size = Vector2(28, 3)
+	hp_bg.custom_minimum_size = Vector2(24, 3)
 	box.add_child(hp_bg)
 	var hp := ColorRect.new()
 	hp.color = Color(0.2, 1.0, 0.2)
-	hp.custom_minimum_size = Vector2(28, 3)
+	hp.custom_minimum_size = Vector2(24, 3)
 	hp.position = Vector2(0, 0)
 	box.add_child(hp)
 	slot.set_meta("icon", icon)

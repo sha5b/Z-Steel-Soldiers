@@ -20,15 +20,59 @@ static func should_run() -> bool:
 	for flag in ["capture", "combat", "factory", "ai", "path", "dir", "near", "flag",
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
-			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2"]:
+			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2", "ui"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
 
 
+## Test helper: `--screenshot [delay]` captures the viewport and quits —
+## run windowed (not --headless), scene path picks the screen.
+static func maybe_screenshot(ctx: Node, out := "screenshot_tmp.png") -> void:
+	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	if "--screenshot" not in args:
+		return
+	var i := args.find("--screenshot")
+	var delay := 1.0
+	if i + 1 < args.size() and String(args[i + 1]).is_valid_float():
+		delay = float(args[i + 1])
+	await ctx.get_tree().create_timer(delay).timeout
+	var image := ctx.get_viewport().get_texture().get_image()
+	image.save_png("/home/sha5b/Documents/GitHub/Z-Steel-Soldiers/" + out)
+	print("SCREENSHOT: saved ", out, " ", image.get_size())
+	ctx.get_tree().quit()
+
+
 static func run(ctx: Node) -> void:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	var tree := ctx.get_tree()
+	if "--ui-test" in args:
+		# the original-art UI kit: gold menu font, GOG button plates, planets
+		var fails: PackedStringArray = []
+		var menu_font := UiTheme.font()
+		if menu_font == null:
+			fails.append("menu font missing")
+		else:
+			for c in "ContinueCampaignQuickStart0123456789:-!VICTORY":
+				if not menu_font.has_char(c.unicode_at(0)):
+					fails.append("font char %s" % c)
+		var plate := UiTheme.button("normal")
+		if plate == null or plate.texture == null \
+				or plate.texture.get_size() != Vector2(32, 32):
+			fails.append("button plate")
+		for kind in ["normal", "hover", "pressed"]:
+			if UiTheme.button(kind) == UiTheme.button("normal") and kind != "normal":
+				fails.append("plate state %s not distinct" % kind)
+		for planet in ["artic", "city", "desert", "jungle", "volcan"]:
+			if not ResourceLoader.exists(
+					"res://assets/z/ui/planets/%s.png" % planet):
+				fails.append("planet %s" % planet)
+		for art in ["res://assets/z/ui/Buttons.png",
+				"res://assets/z/ui/PMHSprites.png",
+				"res://assets/z/ui/plaques/options.png"]:
+			if not ResourceLoader.exists(art):
+				fails.append(art)
+		print("UI: %s" % (",".join(fails) if fails.size() > 0 else "all original-art kit present"))
 	if "--capture-test" in args:
 		var u: Unit2D = null
 		for unit in tree.get_nodes_in_group("units"):

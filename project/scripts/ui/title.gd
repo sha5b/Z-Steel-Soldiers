@@ -13,6 +13,7 @@ func _ready() -> void:
 	if ResourceLoader.exists(path):
 		splash.texture = load(path)
 	continue_btn.visible = GameState.has_save()
+	await SelfTests.maybe_screenshot(self, "screenshot_title.png")
 
 
 func _on_continue_pressed() -> void:
