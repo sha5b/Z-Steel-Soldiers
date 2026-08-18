@@ -2,16 +2,10 @@
 class_name Zone
 extends Node2D
 ## Territory sector (from Zod map zone rects): flag at center, capture by
-## presence, feeds GameState income.
+## presence, feeds GameState income. Team colours come from Teams; the
+## flag is master art + palette-swap material.
 
 const CAPTURE_SECONDS := 2.0
-const FLAG_COLORS := {
-	0: Color(0.85, 0.85, 0.85, 0.9),
-	1: Color(1.0, 0.3, 0.25, 0.9),
-	2: Color(0.3, 0.55, 1.0, 0.9),
-	3: Color(0.35, 0.9, 0.35, 0.9),
-	4: Color(1.0, 0.9, 0.25, 0.9),
-}
 
 @export var zone_rect := Rect2i()
 @export var owner_team := 0
@@ -21,15 +15,6 @@ var _capture_progress := 0.0
 var _flag: AnimatedSprite2D
 var _overlay: ColorRect
 var _border: ColorRect
-
-
-static func team_name(team: int) -> String:
-	match team:
-		1: return "red"
-		2: return "blue"
-		3: return "green"
-		4: return "yellow"
-		_: return "null"
 
 
 func _ready() -> void:
@@ -49,27 +34,17 @@ func _build_visuals() -> void:
 	_overlay.position = world.position
 	_overlay.size = world.size
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_overlay.color = FLAG_COLORS.get(owner_team, FLAG_COLORS[0])
+	_overlay.color = Teams.zone_color(owner_team)
 	_overlay.color.a = 0.05
 	add_child(_overlay)
 
 	_flag = AnimatedSprite2D.new()
-	var frames := SpriteFrames.new()
-	var team_str := team_name(owner_team)
-	frames.add_animation("wave")
-	frames.set_animation_loop("wave", true)
-	frames.set_animation_speed("wave", 6.0)
-	var loaded := 0
-	for i in 4:
-		var path := "res://assets/z/flags/flag_%s_n%02d.png" % [team_str, i]
-		if ResourceLoader.exists(path):
-			frames.add_frame("wave", load(path))
-			loaded += 1
-	_flag.sprite_frames = frames if loaded > 0 else null
+	_flag.sprite_frames = AnimLibrary.flag_frames(owner_team == 0)
+	Teams.apply(_flag, owner_team)
 	_flag.position = world.get_center()
 	_flag.scale = Vector2(2, 2)
 	add_child(_flag)
-	if loaded > 0:
+	if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
 		_flag.play("wave")
 
 
@@ -117,10 +92,10 @@ func _draw() -> void:
 		return
 	# team-coloured outline with corner pins and markers that travel
 	# the perimeter — the original territory look
-	var color: Color = FLAG_COLORS.get(owner_team, Color(0.85, 0.85, 0.85))
+	var color: Color = Teams.zone_color(owner_team)
 	if _capturing_team != 0:
 		# contested: blink between owner and capturer
-		var taker: Color = FLAG_COLORS.get(_capturing_team, Color.WHITE)
+		var taker: Color = Teams.zone_color(_capturing_team)
 		color = color.lerp(taker, 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.01))
 	draw_rect(r, Color(color.r, color.g, color.b, 0.55), false, 2.0)
 	for corner in [r.position, r.position + Vector2(r.size.x, 0),
@@ -156,15 +131,10 @@ func set_owner_team(team: int) -> void:
 		Fx.announce("territory_lost")
 	owner_team = team
 	if _overlay:
-		_overlay.color = FLAG_COLORS.get(team, FLAG_COLORS[0])
+		_overlay.color = Teams.zone_color(team)
 		_overlay.color.a = 0.10
-	if _flag and _flag.sprite_frames:
-		var frames: SpriteFrames = _flag.sprite_frames
-		for i in frames.get_frame_count("wave"):
-			frames.remove_frame("wave", 0)
-		var team_str := team_name(team)
-		for i in 4:
-			var path := "res://assets/z/flags/flag_%s_n%02d.png" % [team_str, i]
-			if ResourceLoader.exists(path):
-				frames.add_frame("wave", load(path))
-		_flag.play("wave")
+	if _flag:
+		_flag.sprite_frames = AnimLibrary.flag_frames(team == 0)
+		Teams.apply(_flag, team)
+		if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
+			_flag.play("wave")

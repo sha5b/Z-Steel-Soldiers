@@ -92,7 +92,8 @@ func _update_queue(factory: Node) -> void:
 			var parts: PackedStringArray = String(q[idx]).split(":")
 			var icon_path := _icon_path(parts[0], parts[1])
 			if ResourceLoader.exists(icon_path):
-				btn.icon = load(icon_path)
+				btn.icon = Teams.tinted_texture(load(icon_path),
+					GameState.player_team)
 				btn.expand_icon = true
 			var i := idx
 			btn.gui_input.connect(func(ev):
@@ -141,7 +142,8 @@ func _build_buttons(factory: Node) -> void:
 		_object_button_chrome(btn)
 		var icon_path := _icon_path(kind, type_name)
 		if ResourceLoader.exists(icon_path):
-			btn.icon = load(icon_path)
+			btn.icon = Teams.tinted_texture(load(icon_path),
+				GameState.player_team)
 			btn.expand_icon = true
 		btn.pressed.connect(func(): queue_requested.emit(String(item)))
 		_box.add_child(btn)

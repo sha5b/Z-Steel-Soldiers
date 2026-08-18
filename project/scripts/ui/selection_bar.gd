@@ -32,7 +32,8 @@ func _sync(units: Array) -> void:
 		if u != null and is_instance_valid(u) and u.has_method("portrait_path"):
 			var path: String = u.portrait_path()
 			if path != "" and ResourceLoader.exists(path):
-				icon.texture = load(path)
+				icon.texture = Teams.tinted_texture(load(path),
+					int(u.get("team")))
 			if u.get("max_hp") != null and u.get("hp") != null:
 				hp.size.x = 24.0 * clampf(float(u.hp) / float(u.max_hp), 0.0, 1.0)
 

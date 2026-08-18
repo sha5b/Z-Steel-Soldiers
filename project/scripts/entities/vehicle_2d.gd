@@ -120,6 +120,10 @@ func _build_frames() -> void:
 	sprite.sprite_frames = AnimLibrary.vehicle_frames(_asset_dir, team, _damaged)
 	if not sprite.animation_finished.is_connected(_on_anim_finished):
 		sprite.animation_finished.connect(_on_anim_finished)
+	# hull art mixes neutral (empty) and team paint — the palette swap is
+	# a no-op on neutral pixels, so one material covers both states
+	Teams.apply(sprite, team)
+	Teams.apply(ring, team)
 	_build_layer()
 	if unit_name == "jeep":
 		var wset: Dictionary = AnimLibrary.jeep_wheel_set(_asset_dir, team, manned)
@@ -148,6 +152,12 @@ func _build_frames() -> void:
 					_doors.visible = false)
 			add_child(_doors)
 			move_child(_doors, ring.get_index())
+	# one-shot layers keep their build-time material — refresh the tint
+	# for the current team (capture/eject swaps materials, not frames)
+	if _doors:
+		Teams.apply(_doors, team)
+	if _cones:
+		Teams.apply(_cones, team)
 
 
 ## The turret / gun layer for tanks, missile launchers, APC scanners and
@@ -169,6 +179,7 @@ func _build_layer() -> void:
 		add_child(_layer)
 		move_child(_layer, ring.get_index())  # above hull, below ring
 		_layer.animation_finished.connect(_on_layer_finished)
+	Teams.apply(_layer, team)  # neutral turret tops pass through untouched
 	_layer_canvas_off = lset.get("canvas_off", PackedVector2Array())
 	_layer_hull_off = lset.get("hull_off", PackedVector2Array())
 	_layer_aim_off = lset.get("aim_off", PackedVector2Array())
@@ -356,6 +367,10 @@ func _sync_wheels() -> void:
 		if _wheels.animation != wname or not _wheels.is_playing():
 			_wheels.play(wname)
 	else:
+		# a jeep that never moved has no animation set yet — frame 0 of
+		# an empty animation renders nothing, so pick the facing first
+		if _wheels.animation != wname:
+			_wheels.animation = wname
 		_wheels.stop()
 		_wheels.frame = 0
 

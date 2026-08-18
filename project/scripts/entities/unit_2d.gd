@@ -71,6 +71,8 @@ func _build_frames() -> void:
 	sprite.sprite_frames = AnimLibrary.robot_frames(unit_name, team)
 	if not sprite.animation_finished.is_connected(_on_anim_finished):
 		sprite.animation_finished.connect(_on_anim_finished)
+	Teams.apply(sprite, team)
+	Teams.apply(ring, team)  # ring draws the team-coloured HP bar art
 
 
 func _process(delta: float) -> void:

@@ -28,7 +28,10 @@ func _process(delta: float) -> void:
 			counts[z.owner_team] = counts.get(z.owner_team, 0) + 1
 	var mine: int = counts.get(GameState.player_team, 0)
 	var total: int = GameState.zones.size()
-	var theirs: int = counts.get(2, 0) if GameState.player_team != 2 else counts.get(1, 0)
+	var theirs := 0
+	for t in counts:
+		if t != GameState.player_team:
+			theirs += counts[t]
 	_zones.text = "zones %d of %d - them %d" % [mine, total, theirs]
 	_clock.text = "%d:%02d" % [int(elapsed) / 60, int(elapsed) % 60]
 	_sync_upgrades()
@@ -46,12 +49,15 @@ func _sync_upgrades() -> void:
 	_upgrades.set_meta("shown", wanted)
 	for c in _upgrades.get_children():
 		c.queue_free()
-	for kind in wanted:
+	for _kind in wanted:
+		# only grenade art ships in the original HUD; rockets are the
+		# same crate line, shown with its icon
 		var icon_path := "res://assets/z/ui/hud/icon_grenade_%s.png" % [
 			AnimLibrary.team_name(GameState.player_team)]
 		if ResourceLoader.exists(icon_path):
 			var tex := TextureRect.new()
-			tex.texture = load(icon_path)
+			tex.texture = Teams.tinted_texture(load(icon_path),
+				GameState.player_team)
 			tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			tex.custom_minimum_size = Vector2(26, 26)
 			tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

@@ -35,7 +35,7 @@ func _zoom_by(factor: float) -> void:
 
 func _process(delta: float) -> void:
 	var dir := Input.get_vector("cam_left", "cam_right", "cam_forward", "cam_back")
-	var move := Vector2(dir.x, dir.y) * PAN_SPEED * delta / zoom.x
+	var move := dir * PAN_SPEED * delta / zoom.x
 	if enable_edge_pan:
 		var vp := get_viewport().get_visible_rect()
 		var m := get_viewport().get_mouse_position()
@@ -47,6 +47,26 @@ func _process(delta: float) -> void:
 			move.y -= PAN_SPEED * delta / zoom.x
 		elif m.y > vp.size.y - EDGE_MARGIN:
 			move.y += PAN_SPEED * delta / zoom.x
-	position = Vector2(
-		clampf(position.x + move.x, bounds.position.x, bounds.end.x),
-		clampf(position.y + move.y, bounds.position.y, bounds.end.y))
+	_clamp_move(move)
+
+
+## Jump (e.g. from the minimap) — same bounds as free panning.
+func pan_to(world: Vector2) -> void:
+	_clamp_move(world - position)
+
+
+## Clamp the camera CENTER so the whole VIEW stays inside bounds; maps
+## smaller than the view just centre themselves.
+func _clamp_move(move: Vector2) -> void:
+	var view := get_viewport().get_visible_rect().size / zoom
+	var half := view * 0.5
+	var target := position + move
+	var center := bounds.get_center()
+	for axis in [Vector2.AXIS_X, Vector2.AXIS_Y]:
+		var lo := bounds.position[axis] + half[axis]
+		var hi := bounds.end[axis] - half[axis]
+		if lo > hi:  # view larger than the map on this axis: centre it
+			target[axis] = center[axis]
+		else:
+			target[axis] = clampf(target[axis], lo, hi)
+	position = target

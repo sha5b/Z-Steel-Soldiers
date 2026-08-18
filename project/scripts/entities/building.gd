@@ -4,9 +4,8 @@ extends Node2D
 ## Original-sprite building (forts, factories, radar, repair). Loads the
 ## per-planet texture, shows an ownership flag, and computes a ground
 ## footprint (sprite is 2x tile scale -> footprint = texture/2) for
-## clicks, zone ownership and targeting.
-
-const TEAM_NAMES := {0: "null", 1: "red", 2: "blue", 3: "green", 4: "yellow"}
+## clicks, zone ownership and targeting. Team colour on the flag is the
+## Teams palette swap over the master flag art.
 
 @export var building_id := 2
 @export var team := 0
@@ -25,8 +24,10 @@ var queue := ProductionQueue.new()  # production queue ("kind:name" items)
 var _sprite: Sprite2D
 var _rally_flag: Sprite2D
 var _flag: AnimatedSprite2D
+var _flag_team := -1  # team the flag currently shows
 var _hp_bar: ColorRect
 var _hp_bar_max_w := 64.0
+var _sort_lift := Vector2.ZERO  # node lifted to the footprint bottom (y-sort line)
 
 
 func setup(id: int, owner_team_value: int, planet_name: String, building_level := 0) -> void:
@@ -191,16 +192,23 @@ func _build_sprite() -> void:
 		_sprite.rotation_degrees = 90
 		_sprite.position = Vector2(-ts.y * 0.25, ts.x * 0.5) - Vector2(0, ts.x)
 	add_child(_sprite)
+	# Godot 4.7 y-sorts by the NODE's y, so the node moves down to the
+	# footprint's bottom edge (the wall line) and every visual shifts up
+	# to compensate: units below the line draw in front of the building,
+	# units on/above it behind. Bridges stay centred (flat ground art).
+	# Runtime only — map scenes keep baking footprint centres.
+	if not is_bridge() and not Engine.is_editor_hint():
+		_sort_lift = Vector2(0, ts.y * 0.25)
+		position += _sort_lift
+		_sprite.position -= _sort_lift
 
 	_flag = AnimatedSprite2D.new()
 	if building_id == 6 or building_id == 7:
 		_flag.visible = false  # bridges carry no flag
-	_flag.sprite_frames = _flag_frames(TEAM_NAMES.get(team, "null"))
-	_flag.position = Vector2(0, -ts.y * 0.5 - 4)
+	_flag.position = Vector2(0, -ts.y * 0.5 - 4) - _sort_lift
 	_flag.scale = Vector2(2, 2)
 	add_child(_flag)
-	if _flag.sprite_frames:
-		_flag.play("wave")
+	set_flag_team(team)
 
 	_build_overlays()
 
@@ -211,20 +219,21 @@ func _build_sprite() -> void:
 		var bar_w := ts.x * 0.5  # match the building footprint width
 		_hp_bar_max_w = bar_w
 		_hp_bar.size = Vector2(bar_w, 5)
-		_hp_bar.position = Vector2(-bar_w * 0.5, -ts.y * 0.5 - 12)
+		_hp_bar.position = Vector2(-bar_w * 0.5, -ts.y * 0.5 - 12) - _sort_lift
 		add_child(_hp_bar)
 
 
-static func _flag_frames(team_name: String) -> SpriteFrames:
-	var frames := SpriteFrames.new()
-	frames.add_animation("wave")
-	frames.set_animation_loop("wave", true)
-	frames.set_animation_speed("wave", 6.0)
-	for i in 4:
-		var path := "res://assets/z/flags/flag_%s_n%02d.png" % [team_name, i]
-		if ResourceLoader.exists(path):
-			frames.add_frame("wave", load(path))
-	return frames
+## Ownership flag: master (red) art + the team's palette-swap material —
+## neutral team 0 shows the grey flag set. Swapping teams is a material
+## change, no disk rescan.
+func set_flag_team(for_team: int) -> void:
+	if _flag == null or for_team == _flag_team:
+		return
+	_flag_team = for_team
+	_flag.sprite_frames = AnimLibrary.flag_frames(for_team == 0)
+	Teams.apply(_flag, for_team)
+	if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
+		_flag.play("wave")
 
 
 ## Texture location comes from the building def's `tex` key — new building
@@ -270,22 +279,24 @@ func _build_overlays() -> void:
 		overlay.sprite_frames = frames
 		overlay.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		overlay.centered = false
-		overlay.position = Vector2(def.get("offset", Vector2.ZERO)) - 			Vector2(8, 8)  # small overlay sprites anchor near their centre
+		overlay.position = Vector2(def.get("offset", Vector2.ZERO)) - 			Vector2(8, 8) - _sort_lift  # small overlay sprites anchor near their centre
 		add_child(overlay)
 		overlay.play("loop")
 
 
 func world_footprint() -> Rect2:
-	# ground area under the sprite (world px), origin-centered
+	# ground area under the sprite (world px); the node may be lifted to
+	# the footprint's bottom edge for y-sorting — undo that here
 	var ts: Vector2 = _sprite.texture.get_size() if _sprite else Vector2(64, 64)
 	if building_id == 7:
 		ts = Vector2(ts.y, ts.x)  # rotated horizontal bridge
 	var half := ts * 0.25
-	return Rect2(global_position - half, half * 2.0)
+	return Rect2(global_position - _sort_lift - half, half * 2.0)
 
 
 func visual_center() -> Vector2:
-	return global_position - Vector2(0, _sprite.texture.get_size().y * 0.25)
+	var ts: Vector2 = _sprite.texture.get_size() if _sprite else Vector2(64, 64)
+	return global_position - _sort_lift - Vector2(0, ts.y * 0.25)
 
 
 func set_rally(world_position: Vector2) -> void:
@@ -296,6 +307,7 @@ func set_rally(world_position: Vector2) -> void:
 		_rally_flag.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		_rally_flag.scale = Vector2(2, 2)
 		add_child(_rally_flag)
+	Teams.apply(_rally_flag, team if team != 0 else owner_team)
 	_rally_flag.position = rally_point - global_position
 	_rally_flag.visible = selected
 
@@ -309,13 +321,7 @@ func set_selected(value: bool) -> void:
 
 
 func update_flag(for_team: int) -> void:
-	if not _flag:
-		return
-	var flag_name: String = TEAM_NAMES.get(for_team, "null")
-	if _flag.name != flag_name and ResourceLoader.exists("res://assets/z/flags/flag_%s_n00.png" % flag_name):
-		_flag.sprite_frames = _flag_frames(flag_name)
-		_flag.name = flag_name
-		_flag.play("wave")
+	set_flag_team(for_team)
 
 
 func _process(delta: float) -> void:

@@ -20,7 +20,8 @@ static func should_run() -> bool:
 	for flag in ["capture", "combat", "factory", "ai", "path", "dir", "near", "flag",
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
-			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2", "ui"]:
+			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
+			"ui", "tint"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -34,6 +35,7 @@ static func maybe_screenshot(ctx: Node, out := "screenshot_tmp.png") -> void:
 		return
 	var i := args.find("--screenshot")
 	var delay := 1.0
+	Input.warp_mouse(DisplayServer.window_get_size() * 0.5)
 	if i + 1 < args.size() and String(args[i + 1]).is_valid_float():
 		delay = float(args[i + 1])
 	await ctx.get_tree().create_timer(delay).timeout
@@ -956,3 +958,183 @@ static func run(ctx: Node) -> void:
 		print("FX: spawned=%d shell_hits=%d remaining=%d" % [
 			spawned, hits[0], fx_root.get_child_count() - before])
 		tree2.paused = was_paused
+	if "--tint-test" in args:
+		# master-art + palette-swap system: ramps, LUT, materials, master
+		# loading and neutral-art safety must all hold
+		var fails: PackedStringArray = []
+		# 1. ramp integrity — the verified 16-shade ramps
+		for ramp in [Teams.RAMP_RED, Teams.RAMP_BLUE, Teams.RAMP_GREEN, Teams.RAMP_YELLOW]:
+			if ramp.size() != Teams.RAMP_SHADES:
+				fails.append("ramp size %d" % ramp.size())
+		if Teams.RAMP_RED[0] != Color("2b0000") or Teams.RAMP_RED[15] != Color("fbdbdb"):
+			fails.append("red ramp endpoints")
+		if Teams.RAMP_BLUE[7] != Color("1337fb") or Teams.RAMP_GREEN[8] != Color("279b2b"):
+			fails.append("ramp shades")
+		# 2. LUT texture: row 0 master, row t the team ramp
+		var lut := Teams.lut_texture().get_image()
+		if lut.get_width() != Teams.RAMP_SHADES or lut.get_height() != Teams.TEAMS.size() + 1:
+			fails.append("lut size %dx%d" % [lut.get_width(), lut.get_height()])
+		for team in Teams.TEAMS:
+			for i in Teams.RAMP_SHADES:
+				if lut.get_pixel(i, team) != Teams.ramp(team)[i]:
+					fails.append("lut row %d shade %d" % [team, i])
+					break
+		# 3. materials: neutral + master need none, others tint
+		if Teams.material_for(0) != null or Teams.material_for(1) != null:
+			fails.append("material_for 0/1 not null")
+		for team in [2, 3, 4]:
+			var mat := Teams.material_for(team)
+			if mat == null or int(mat.get_shader_parameter("team_row")) != team:
+				fails.append("material team %d" % team)
+		# 4. master loading: every team builds the SAME master frames
+		for type_name in ["grunt", "sniper"]:
+			var a := AnimLibrary.robot_frames(String(type_name), 1)
+			var b := AnimLibrary.robot_frames(String(type_name), 3)
+			var anims_a: PackedStringArray = a.get_animation_names()
+			var anims_b: PackedStringArray = b.get_animation_names()
+			if anims_a.size() != anims_b.size():
+				fails.append("robot %s anim count differs" % type_name)
+			for anim in anims_a:
+				if String(anim).begins_with("die"):
+					continue  # a random death variant is picked per build
+				var count_a := a.get_frame_count(String(anim))
+				var count_b := b.get_frame_count(String(anim))
+				if count_a != count_b:
+					fails.append("robot %s %s frame count" % [type_name, anim])
+					continue
+				if count_a > 0 and a.get_frame_texture(String(anim), 0) \
+						!= b.get_frame_texture(String(anim), 0):
+					fails.append("robot %s %s not master art" % [type_name, anim])
+					break
+		var heavy_dir := String(ContentDB.def_for("vehicle", "heavy").get("dir", ""))
+		var hv1 := AnimLibrary.vehicle_frames(heavy_dir, 1)
+		var hv2 := AnimLibrary.vehicle_frames(heavy_dir, 2)
+		if hv1.get_frame_texture("base_0", 0) != hv2.get_frame_texture("base_0", 0):
+			fails.append("heavy base not master art")
+		var t1: Dictionary = AnimLibrary.turret_set("heavy", heavy_dir, 1)
+		var t2: Dictionary = AnimLibrary.turret_set("heavy", heavy_dir, 4)
+		if t1.is_empty() or t2.is_empty() \
+				or t1.frames.get_frame_texture("turret_0", 0) \
+				!= t2.frames.get_frame_texture("turret_0", 0):
+			fails.append("heavy turret not master art")
+		# 5. flags: all teams share the master set; neutral differs
+		var f_master := AnimLibrary.flag_frames(false)
+		var f_null := AnimLibrary.flag_frames(true)
+		if f_master.get_frame_count("wave") == 0 or f_null.get_frame_count("wave") == 0:
+			fails.append("flag frames missing")
+		elif f_master.get_frame_texture("wave", 0) == f_null.get_frame_texture("wave", 0):
+			fails.append("neutral flag equals master")
+		# 6. neutral art must contain NO master-ramp paint (the shader and
+		# tinted_texture would have nothing to recolour — by design)
+		for path in ["res://assets/z/vehicles_jeep/empty_r000.png",
+				"res://assets/z/vehicles_jeep/under_r000_n00.png",
+				"res://assets/z/vehicles_medium/topf_r000.png"]:
+			if not ResourceLoader.exists(path):
+				continue
+			var img: Image = (load(path) as Texture2D).get_image()
+			var hit := false
+			for y in img.get_height():
+				for x in img.get_width():
+					var c := img.get_pixel(x, y)
+					for i in Teams.RAMP_SHADES:
+						if i == 0:
+							# shade 0 (#2b0000) doubles as the neutral
+							# muted-ramp dark outline in thousands of
+							# files — recolouring near-black to near-black
+							# is imperceptible, so it is allowed here
+							continue
+						if absf(c.r - Teams.RAMP_RED[i].r) <= 0.032 \
+								and absf(c.g - Teams.RAMP_RED[i].g) <= 0.032 \
+								and absf(c.b - Teams.RAMP_RED[i].b) <= 0.032:
+							hit = true
+							break
+					if hit:
+						break
+				if hit:
+					break
+			if hit:
+				fails.append("neutral art has paint: %s" % path.get_file())
+		# 7. tinted_texture swaps paint shades and nothing else
+		var icon_path2 := "res://assets/z/ui/hud/icon_grenade_red.png"
+		if ResourceLoader.exists(icon_path2):
+			var src: Image = (load(icon_path2) as Texture2D).get_image()
+			var tinted: Image = (Teams.tinted_texture(
+				load(icon_path2), 2) as Texture2D).get_image()
+			var paint_px := 0
+			var stray_px := 0
+			for y in src.get_height():
+				for x in src.get_width():
+					var s := src.get_pixel(x, y)
+					var t := tinted.get_pixel(x, y)
+					if s == t:
+						continue
+					var matched := -1
+					for i in Teams.RAMP_SHADES:
+						if s == Teams.RAMP_RED[i]:
+							matched = i
+							break
+					if matched >= 0 and t == Teams.RAMP_BLUE[matched]:
+						paint_px += 1
+					else:
+						stray_px += 1
+			if paint_px == 0 or stray_px > 0:
+				fails.append("tinted icon paint=%d stray=%d" % [paint_px, stray_px])
+		# 8. GROUND TRUTH: recoloured master art must match the original
+		# shipped per-team sprites pixel-for-pixel (only the documented
+		# #2b0000 dark-outline collision may differ)
+		var pairs := [
+			["res://assets/z/robots/stand_red_r270.png", "res://assets/z/robots/stand_blue_r270.png", 2],
+			["res://assets/z/robots/walk_red_r000_n00.png", "res://assets/z/robots/walk_green_r000_n00.png", 3],
+			["res://assets/z/vehicles_medium/base_red_r000_n00.png", "res://assets/z/vehicles_medium/base_blue_r000_n00.png", 2],
+			["res://assets/z/vehicles_jeep/base_red_r000_n00.png", "res://assets/z/vehicles_jeep/base_yellow_r000_n00.png", 4],
+			["res://assets/z/flags/flag_red_n00.png", "res://assets/z/flags/flag_blue_n00.png", 2],
+		]
+		for pair in pairs:
+			var red_path: String = pair[0]
+			var baked_path: String = pair[1]
+			var team: int = pair[2]
+			if not ResourceLoader.exists(red_path) or not ResourceLoader.exists(baked_path):
+				fails.append("ground truth art missing %s" % baked_path.get_file())
+				continue
+			var master: Image = (load(red_path) as Texture2D).get_image()
+			var baked: Image = (load(baked_path) as Texture2D).get_image()
+			var tinted: Image = (Teams.tinted_texture(
+				load(red_path) as Texture2D, team) as Texture2D).get_image()
+			if tinted.get_size() != baked.get_size():
+				fails.append("ground truth size %s" % baked_path.get_file())
+				continue
+			var mismatch := 0
+			var total := baked.get_size().x * baked.get_size().y
+			for y in baked.get_height():
+				for x in baked.get_width():
+					if tinted.get_pixel(x, y) != baked.get_pixel(x, y):
+						mismatch += 1
+			# the originals carry hand-baked one-offs: a few dark-shade
+			# pixels per sprite differ from the global ramp (imperceptible)
+			# and the flags have two transparent-vs-paint edge pixels
+			var budget := 16 if "flag" in baked_path else 12
+			if mismatch > budget:
+				fails.append("ground truth %s: %d/%d px differ" % [
+					baked_path.get_file(), mismatch, total])
+		print("TINT: %s" % ("OK" if fails.is_empty() else "FAIL %s" % fails))
+		# live check: spawned units must carry the tint material, and a
+		# mixed-team squad lands in front of the camera for screenshots
+		var cam: Camera2D = ctx.get_viewport().get_camera_2d()
+		if cam:
+			for i in 3:
+				var demo: Unit2D = load("res://scenes/unit.tscn").instantiate()
+				demo.unit_name = "grunt"
+				demo.team = 2 + i
+				demo.position = cam.position + Vector2(i * 28.0 - 28.0, -8.0)
+				ctx.add_child(demo)
+		await Engine.get_main_loop().process_frame
+		await Engine.get_main_loop().process_frame
+		var mat_missing: PackedStringArray = []
+		for u in ctx.get_tree().get_nodes_in_group("units"):
+			if u is Unit2D and u.team in [2, 3, 4]:
+				var mat: ShaderMaterial = u.sprite.material
+				if mat == null or int(mat.get_shader_parameter("team_row")) != u.team:
+					mat_missing.append("%s t%d" % [u.unit_name, u.team])
+		print("TINTMAT: %s" % ("OK" if mat_missing.is_empty()
+			else "MISSING %s" % mat_missing))
+

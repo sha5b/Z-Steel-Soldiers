@@ -53,9 +53,6 @@ func _ready() -> void:
 		minimap.move_order.connect(func(world: Vector2): SelectionManager.issue_order(world))
 	MusicPlayer.play_battle()
 	var shot_args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
-	if "--screenshot" in shot_args:
-		await _screenshot(shot_args[shot_args.find("--screenshot") + 1] if shot_args.size() > shot_args.find("--screenshot") + 1 else "2.0")
-
 	if SelfTests.should_run():
 		var terrain_cells := -1
 		if has_node("Terrain"):
@@ -69,11 +66,14 @@ func _ready() -> void:
 			GameState.zones.size(),
 			get_tree().get_nodes_in_group("units").size()])
 		await SelfTests.run(self)
+	if "--screenshot" in shot_args:
+		await _screenshot(shot_args[shot_args.find("--screenshot") + 1] if shot_args.size() > shot_args.find("--screenshot") + 1 else "2.0")
 
 
 ## Test helper: capture the viewport after N seconds and quit.
 func _screenshot(delay_text: String) -> void:
 	var delay := float(delay_text)
+	Input.warp_mouse(DisplayServer.window_get_size() * 0.5)
 	await get_tree().create_timer(delay).timeout
 	var image := get_viewport().get_texture().get_image()
 	var out_path := ProjectSettings.globalize_path("res://") + "screenshot_tmp.png"

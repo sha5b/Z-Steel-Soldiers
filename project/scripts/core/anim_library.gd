@@ -23,9 +23,9 @@ extends Object
 ## opposite the direction of travel.
 
 const DIRECTIONS := 8
-const TEAM_NAMES := {1: "red", 2: "blue", 3: "green", 4: "yellow"}
 const ROBOTS_DIR := "res://assets/z/robots"
 const CANNONS_COMMON := "res://assets/z/cannons_common"
+const FLAGS_DIR := "res://assets/z/flags"
 const IDLE_FLAVORS := ["beer", "cigarette", "pope", "look_around", "head_stretch",
 	"beat_ground", "confused", "full_area_scan", "praise_the_lord"]
 const DEATH_VARIANTS := ["die1", "die2", "die3", "die4", "die5", "melt"]
@@ -100,8 +100,33 @@ const CRANE_TABLES := {
 }
 
 
-static func team_name(team: int) -> String:
-	return TEAM_NAMES.get(team, "red")
+## Master-art system: every team loads the single red master set from
+## disk; team colour is applied afterwards as the Teams palette-swap
+## material (or a tinted texture copy where materials can't reach).
+static func team_name(_team: int) -> String:
+	return Teams.MASTER_SUFFIX
+
+
+## Territory flag wave: the master (red) frames for teams 1..4 — tinted
+## by the caller's Teams material — or the neutral grey set for team 0.
+static func flag_frames(neutral := false) -> SpriteFrames:
+	var key := "null" if neutral else "master"
+	if _flag_cache.has(key):
+		return _flag_cache[key]
+	var frames := SpriteFrames.new()
+	frames.add_animation("wave")
+	frames.set_animation_loop("wave", true)
+	frames.set_animation_speed("wave", 6.0)
+	var prefix: String = "null" if neutral else Teams.MASTER_SUFFIX
+	for i in 4:
+		var path := "%s/flag_%s_n%02d.png" % [FLAGS_DIR, prefix, i]
+		if ResourceLoader.exists(path):
+			frames.add_frame("wave", load(path))
+	_flag_cache[key] = frames
+	return frames
+
+
+static var _flag_cache := {}
 
 
 ## Full frame set for a robot type: stand/walk (shared art), fire (type
@@ -504,7 +529,8 @@ static func _dir_texture(path_fmt: String, deg: int) -> Texture2D:
 		return load(direct)
 	var mirror := path_fmt % (mirrored_dir(deg_to_dir(deg)) * 45)
 	if ResourceLoader.exists(mirror):
-		var img: Image = (load(mirror) as Texture2D).get_image()
+		# get_image() is the texture's shared cache — flip a copy
+		var img: Image = (load(mirror) as Texture2D).get_image().duplicate()
 		img.flip_x()
 		return ImageTexture.create_from_image(img)
 	return null
@@ -582,7 +608,9 @@ static func _deg_of(path: String) -> int:
 
 
 static func _flipped(path: String, flip_x := true, flip_y := false) -> Texture2D:
-	var img: Image = (load(path) as Texture2D).get_image()
+	# get_image() is the texture's shared cache — flip a copy, never the
+	# original or a second flip request would double-flip the art
+	var img: Image = (load(path) as Texture2D).get_image().duplicate()
 	if flip_x:
 		img.flip_x()
 	if flip_y:
@@ -596,7 +624,12 @@ static func _vehicle_anim_path(asset_dir: String, anim: String, tn: String, deg:
 			var directional := "%s/empty_r%03d.png" % [asset_dir, deg]
 			if ResourceLoader.exists(directional):
 				return directional
-			return "%s/empty_%s_r%03d.png" % [asset_dir, tn, deg]  # missile cannon
+			# unmanned hardware is never team-coloured: the plain neutral
+			# frame wins over any team-suffixed directional art
+			var plain := plain_empty_path(asset_dir, tn)
+			if plain != "":
+				return plain
+			return "%s/empty_%s_r%03d.png" % [asset_dir, tn, deg]  # last resort
 		"base":
 			if damaged:
 				var dmg := "%s/base_damaged_%s_r%03d_n%02d.png" % [asset_dir, tn, deg, frame]

@@ -21,3 +21,10 @@ __pycache__/
 
 # GOG installer (copyrighted, never committed)
 setup_*.exe
+
+# dev screenshot helper output
+project/screenshot_tmp.png
+project/screenshot_tmp.png.import
+
+# zcode session data
+.zcode/
