@@ -206,18 +206,15 @@ func _building_order(b: Building2D) -> void:
 		return
 	if b.is_repair_shop() and b.owner_team == team and dist < 60.0:
 		if b.try_start_repair(self):
-			enter_target = null
-			move_target = Vector2.ZERO
 			waypoints = PackedVector2Array()
+			_order_done()
 			return
 		# shop busy or we're healthy: don't keep trying
 		if hp >= max_hp or b.repair_unit != null:
-			enter_target = null
-			move_target = Vector2.ZERO
+			_order_done()
 		return
 	if dist < 44.0:
-		enter_target = null
-		move_target = Vector2.ZERO
+		_order_done()
 
 
 func _start_crane_repair(b: Building2D) -> void:

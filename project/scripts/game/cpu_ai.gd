@@ -152,8 +152,8 @@ func _defend(robots: Array[Node], vehicles: Array[Node]) -> void:
 		for i in mini(2, defenders.size()):
 			var d: Node = defenders.pop_front()
 			if is_instance_valid(d):
-				d.move_to(threat.global_position
-					+ Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0)))
+				d.issue_order(Order.move(threat.global_position
+					+ Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0))))
 
 
 # ------------------------- manning hardware -------------------------
@@ -186,8 +186,7 @@ func _man_hardware(robots: Array[Node], empty_hardware: Array[Node]) -> void:
 				best = hw
 		if best != null:
 			empty_hardware.erase(best)
-			r.move_to(best.global_position)
-			r.enter_target = best
+			r.issue_order(Order.for_target(best))
 
 
 # ------------------------- maintenance -------------------------
@@ -222,12 +221,10 @@ func _maintenance(vehicles: Array[Node]) -> void:
 					best_b = b
 			if best_b != null:
 				damaged_buildings.erase(best_b)
-				v.move_to(best_b.world_footprint().get_center())
-				v.enter_target = best_b
+				v.issue_order(Order.for_target(best_b))
 		elif repair_shop != null and v.hp < v.max_hp * 0.5 \
 				and v.kind == "vehicle":
-			v.move_to(repair_shop.world_footprint().get_center())
-			v.enter_target = repair_shop
+			v.issue_order(Order.for_target(repair_shop))
 
 
 # ------------------------- zone capture -------------------------
@@ -261,7 +258,7 @@ func _capture_zones(robots: Array[Node]) -> void:
 				best_zone = z
 		if best_zone == null:
 			return
-		r.move_to(_zone_center(best_zone))
+		r.issue_order(Order.move(_zone_center(best_zone)))
 		if r.waypoints.is_empty():
 			# no route (island/enclosed): skip this zone for a while
 			_zone_blacklist[best_zone] = Time.get_ticks_msec() + BLACKLIST_MS
@@ -347,8 +344,7 @@ func _attack_destination() -> Vector2:
 func _idle_of(units: Array[Node]) -> Array[Node]:
 	var out: Array[Node] = []
 	for u in units:
-		if is_instance_valid(u) and u.alive and u.move_target == Vector2.ZERO \
-				and (u.enter_target == null or not is_instance_valid(u.enter_target)):
+		if is_instance_valid(u) and u.is_idle():
 			out.append(u)
 	return out
 

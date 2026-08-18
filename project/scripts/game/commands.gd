@@ -21,37 +21,36 @@ static func dispatch(world_position: Vector2) -> void:
 	for u in SelectionManager.selected:
 		if is_instance_valid(u) and u is Unit2D and u.alive:
 			movers.append(u)
-	# A + click: AGRO (attack-move) — halt and engage anything en route
+	# A + click: AGRO (attack-move) — halt and engage anything en route;
+	# shift sprints the order (the entity never reads Input itself)
 	var agro := Input.is_key_pressed(KEY_A)
+	var sprint := Input.is_key_pressed(KEY_SHIFT)
 	# deterministic order (instance ids) so formations don't reshuffle
 	movers.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())
 	for i in movers.size():
 		var u: Node2D = movers[i]
 		if u.kind == "robot" and own_fort and is_instance_valid(own_fort) \
 				and own_fort.team == u.team and own_fort.alive:
-			u.move_to(own_fort.visual_center())
-			u.enter_target = own_fort  # garrison: man the fort missiles
+			# garrison: man the fort missiles
+			u.issue_order(Order.for_target(own_fort, sprint))
 			continue
 		if u.kind == "robot":
 			if empty_vehicle and is_instance_valid(empty_vehicle):
-				u.move_to(empty_vehicle.global_position)
-				u.enter_target = empty_vehicle
+				u.issue_order(Order.for_target(empty_vehicle, sprint))
 				continue
 			if apc and is_instance_valid(apc) and u.team == apc.team:
-				u.move_to(apc.global_position)
-				u.enter_target = apc
+				u.issue_order(Order.for_target(apc, sprint))
 				continue
 		elif target_building and is_instance_valid(target_building) \
 				and _wants_building_order(u, target_building):
 			# vehicles act on buildings: damaged hardware drives into the
 			# repair shop, cranes set up on wrecked buildings/bridges
-			u.move_to(target_building.world_footprint().get_center())
-			u.enter_target = target_building
+			u.issue_order(Order.for_target(target_building, sprint))
 			continue
 		var ring := maxi(int(sqrt(float(movers.size()))), 1)
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0
-		u.attack_move = agro
-		u.move_to(world_position + offset)
+		u.issue_order(Order.move_attack(world_position + offset, sprint)
+			if agro else Order.move(world_position + offset, sprint))
 
 
 static func _find_apc(world_position: Vector2) -> Vehicle2D:

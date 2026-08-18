@@ -13,6 +13,10 @@ extends CharacterBody2D
 
 const GRENADE: ProjectileDef = preload("res://content/projectiles/grenade.tres")
 
+enum State { IDLE, MOVING, ENTERING, GESTURE, DEAD }
+
+var state := State.IDLE
+var order: Order = null
 var selected := false
 var hp := 1
 var max_hp := 1
@@ -108,6 +112,9 @@ func _steer(delta: float) -> void:
 			else:
 				move_target = Vector2.ZERO
 				velocity = Vector2.ZERO
+				if enter_target == null:
+					state = State.IDLE
+					order = null
 		else:
 			velocity = offset.normalized() * speed
 			if _run_flag and run_stamina > 0.05:
@@ -213,6 +220,8 @@ func play_gesture(gesture: String) -> void:
 			and sprite.sprite_frames.get_frame_count(anim) > 0:
 		_flavoring = true
 		_idle_time = 0.0
+		if state == State.IDLE:
+			state = State.GESTURE
 		sprite.play(anim)
 
 
@@ -344,6 +353,7 @@ func take_damage(amount: int) -> void:
 
 func die() -> void:
 	alive = false
+	state = State.DEAD
 	velocity = Vector2.ZERO
 	set_selected(false)
 	SelectionManager.drop_from_selection(self)
@@ -389,22 +399,70 @@ func _on_anim_finished() -> void:
 	elif _flavoring:
 		_flavoring = false
 		_idle_time = 0.0
+		if state == State.GESTURE:
+			state = State.IDLE
 
 
-func move_to(world_pos: Vector2) -> void:
-	enter_target = null  # a fresh order supersedes any pending man/load
+## Single order intake for players (Commands), the AI (CpuAi) and tests —
+## nothing outside may write move_target/enter_target/attack_move.
+func issue_order(new_order: Order) -> void:
+	if not alive or carried:
+		return
+	order = new_order
+	_run_flag = order.run
+	_flavoring = false
+	_idle_time = 0.0
 	_entering = null
-	_run_flag = Input.is_key_pressed(KEY_SHIFT)
+	if order.type == Order.Type.MOVE or order.type == Order.Type.MOVE_ATTACK:
+		attack_move = order.type == Order.Type.MOVE_ATTACK
+		enter_target = null
+		_begin_move(order.position)
+	else:
+		attack_move = false
+		enter_target = order.target
+		_begin_move(_order_anchor())
+		state = State.ENTERING  # supersedes MOVING: walking WITH a target
+
+## Idle = alive, not hidden in an APC, no order in flight. The AI and
+## the idle-flavour system share this one definition.
+func is_idle() -> bool:
+	return alive and not carried and state == State.IDLE
+
+
+## Compat wrapper: plain move order without building an Order by hand.
+func move_to(world_pos: Vector2, sprint := false) -> void:
+	issue_order(Order.move(world_pos, sprint))
+
+
+func _order_anchor() -> Vector2:
+	if order.target is Building2D:
+		return (order.target as Building2D).world_footprint().get_center()
+	return order.target.global_position
+
+
+func _begin_move(world_pos: Vector2) -> void:
 	move_target = world_pos
 	waypoints = GameState.request_path(global_position, world_pos, kind)
 	if waypoints.is_empty():
 		move_target = Vector2.ZERO  # unreachable (e.g. water for vehicles)
-	elif waypoints.size() > 1 and global_position.distance_to(waypoints[0]) < 10.0:
-		waypoints.remove_at(0)  # don't step back to the start cell centre
+		state = State.IDLE
+	else:
+		state = State.MOVING
+		if waypoints.size() > 1 and global_position.distance_to(waypoints[0]) < 10.0:
+			waypoints.remove_at(0)  # don't step back to the start cell centre
 	if team == GameState.player_team:
 		play_gesture("point")
 		_play_voice("acknowledge")
 		PathIndicator.show_path(get_parent(), waypoints)
+
+
+## Order finished or superseded — one clear point instead of scattered
+## field resets.
+func _order_done() -> void:
+	enter_target = null
+	move_target = Vector2.ZERO
+	order = null
+	state = State.IDLE
 
 
 ## Man/load the assigned vehicle once actually adjacent to it.

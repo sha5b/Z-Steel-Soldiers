@@ -21,7 +21,7 @@ static func should_run() -> bool:
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
-			"ui", "tint", "defs", "scenes"]:
+			"ui", "tint", "defs", "scenes", "orders"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -271,6 +271,48 @@ static func run(ctx: Node) -> void:
 				problems.append("%s: fire flash must not loop" % cname)
 		print("LAYER: problems=%d %s" % [problems.size(),
 			", ".join(problems) if not problems.is_empty() else "(all layers ok)"])
+	if "--orders-test" in args:
+		# the single order intake: state, targets and flags come out of
+		# the Order, never from field writes
+		var oproblems: Array[String] = []
+		var bot: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+			Vector2(600, 600))
+		if bot == null:
+			oproblems.append("spawn failed")
+		else:
+			bot.issue_order(Order.move(Vector2(700, 600)))
+			if bot.state != Unit2D.State.MOVING or bot.attack_move \
+					or bot.enter_target != null:
+				oproblems.append("MOVE state")
+			bot.issue_order(Order.move_attack(Vector2(650, 600)))
+			if not bot.attack_move:
+				oproblems.append("MOVE_ATTACK flag")
+			var jeep4: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 0,
+				Vector2(760, 610))
+			bot.issue_order(Order.for_target(jeep4))
+			if bot.state != Unit2D.State.ENTERING or bot.enter_target != jeep4 \
+					or bot.attack_move:
+				oproblems.append("MAN_VEHICLE order")
+			var fort2 := FortBuilding.new()
+			fort2.setup(0, 1, "desert")
+			fort2.position = Vector2(650, 700)
+			ctx.add_child(fort2)
+			bot.issue_order(Order.for_target(fort2))
+			if bot.order.type != Order.Type.GARRISON:
+				oproblems.append("garrison resolve")
+			bot._order_done()
+			if not bot.is_idle() or bot.state != Unit2D.State.IDLE:
+				oproblems.append("order_done")
+			bot.die()
+			if bot.state != Unit2D.State.DEAD:
+				oproblems.append("DEAD state")
+			bot.issue_order(Order.move(Vector2(0, 0)))
+			if bot.state != Unit2D.State.DEAD:
+				oproblems.append("dead units take no orders")
+			jeep4.queue_free()
+			fort2.queue_free()
+		print("ORDERS: problems=%d %s" % [oproblems.size(),
+			", ".join(oproblems) if not oproblems.is_empty() else "(all orders ok)"])
 	if "--scenes-test" in args:
 		# every per-type scene instantiates with the right identity and
 		# rig nodes; buildings resolve scenes; a generated map loads
@@ -526,8 +568,7 @@ static func run(ctx: Node) -> void:
 		wrecked_jeep.position = Vector2(630, 640)
 		ctx.add_child(wrecked_jeep)
 		wrecked_jeep.take_damage(50)
-		wrecked_jeep.move_to(shop.world_footprint().get_center())
-		wrecked_jeep.enter_target = shop  # after move_to: it clears enter_target
+		wrecked_jeep.issue_order(Order.for_target(shop))
 		for i in 60:
 			wrecked_jeep._process(0.1)
 			shop._process(0.1)
@@ -546,8 +587,7 @@ static func run(ctx: Node) -> void:
 		crane2.setup_vehicle("vehicle", "crane", GameState.player_team)
 		crane2.position = Vector2(700, 640)
 		ctx.add_child(crane2)
-		crane2.move_to(radar2.world_footprint().get_center())
-		crane2.enter_target = radar2
+		crane2.issue_order(Order.for_target(radar2))
 		for i in 80:
 			crane2._process(0.1)
 			radar2._process(0.1)
@@ -762,8 +802,7 @@ static func run(ctx: Node) -> void:
 		# freed robot lingered in the selection bar)
 		SelectionManager.clear_selection()
 		SelectionManager.toggle_select(walker, false)
-		walker.move_to(jeep3.global_position)
-		walker.enter_target = jeep3
+		walker.issue_order(Order.for_target(jeep3))
 		var instant: bool = jeep3.manned  # must NOT be manned before walking
 		for i in 400:
 			walker._process(0.05)
