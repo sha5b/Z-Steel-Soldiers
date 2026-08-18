@@ -15,6 +15,14 @@ extends Resource
 @export var tex := ""  # texture pattern key resolved by Building2D
 @export var is_fort := false  # win objective
 @export var solid := true  # blocks movement
+## Solid cells in ART tiles, relative to the art's top-left tile (art
+## renders 1:1, one art tile = one 16px world tile). (0,0,0,0) = the
+## whole art rect. Values transcribed from the original engine's
+## SetMapImpassables (bfort.cpp/bradar.cpp) — forts leave their side
+## platforms and gate walkable, the radar its entrance cell.
+@export var solid_tiles := Rect2i()
+## Cells INSIDE solid_tiles left walkable (art-tile coords).
+@export var open_tiles: PackedVector2Array = PackedVector2Array()
 @export var produces := false  # registers on the facility bar
 @export var bridge_span := Vector2i.ZERO  # walkable tiles when a bridge
 @export var anims: Array[BuildingAnim] = []

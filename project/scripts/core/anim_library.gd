@@ -225,16 +225,21 @@ static func vehicle_frames(asset_dir: String, team: int, damaged := false) -> Sp
 				found = true
 		if anim == "empty" and not found:
 			_add_plain_empty(frames, asset_dir, tn)
-	# gunner install: shared init-place frames, then the team's place
-	# frames — plays once when a robot mans the hardware
-	var install: Array = cannon_install_frames()
+	# gunner install: shared init-place frames followed by the team's
+	# place frames — plays once when a robot mans the hardware. CANNONS
+	# ONLY: it exists iff the type ships its own place art. Vehicles
+	# have none (manning is instant) — leaking the shared cannon frames
+	# onto a tank hull would replace it with gunner art for the install
+	var place_frames: Array = []
 	var place_frame := 0
 	while true:
 		var place := "%s/place_%s_n%02d.png" % [asset_dir, tn, place_frame]
 		if not ResourceLoader.exists(place):
 			break
-		install.append(load(place))
+		place_frames.append(load(place))
 		place_frame += 1
+	var install: Array = cannon_install_frames() if not place_frames.is_empty() else []
+	install.append_array(place_frames)
 	if not install.is_empty():
 		for d in DIRECTIONS:
 			var name := "install_%d" % d

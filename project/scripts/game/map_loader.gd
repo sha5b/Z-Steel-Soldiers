@@ -218,17 +218,10 @@ static func _spawn_building(parent: Node, o: Dictionary, pos: Vector2, planet: S
 				if vgrid.region.has_point(cell):
 					vgrid.set_point_solid(cell, false)
 				node.bridge_cells.append(cell)  # remembered for blow-up/repair
-	elif def.solid:
-		# solid buildings block movement on both grids — vehicles otherwise
-		# drive straight over fort/factory sprites
-		var fp := node.world_footprint()
-		var lo := Vector2i((fp.position / TILE).floor())
-		var hi := Vector2i(((fp.position + fp.size) / TILE).ceil())
-		for bx in range(maxi(lo.x, 0), mini(hi.x, w)):
-			for by in range(maxi(lo.y, 0), mini(hi.y, h)):
-				var cell := Vector2i(bx, by)
-				grid.set_point_solid(cell, true)
-				vgrid.set_point_solid(cell, true)
+	else:
+		# solid buildings block movement on both grids (def-driven cell
+		# patterns from the original engine — see Building2D.footprint_cells)
+		node.apply_impassables(grid, vgrid)
 
 
 ## ---------------------------------------------------------------------------
@@ -310,15 +303,8 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 				continue
 			if def.bridge_span != Vector2i.ZERO:
 				_clear_bridge(child, def, grid, vgrid)
-			elif def.solid:
-				var fp: Rect2 = child.world_footprint()
-				var lo := Vector2i((fp.position / TILE).floor())
-				var hi := Vector2i(((fp.position + fp.size) / TILE).ceil())
-				for bx in range(maxi(lo.x, 0), mini(hi.x, w)):
-					for by in range(maxi(lo.y, 0), mini(hi.y, h)):
-						var cell := Vector2i(bx, by)
-						grid.set_point_solid(cell, true)
-						vgrid.set_point_solid(cell, true)
+			else:
+				child.apply_impassables(grid, vgrid)
 			if def.is_fort and child.team != 0:
 				ai_teams[child.team] = true
 	# every fort team gets a ledger entry (income + spend work for all)

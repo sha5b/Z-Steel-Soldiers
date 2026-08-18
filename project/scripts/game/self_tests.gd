@@ -1070,10 +1070,10 @@ static func run(ctx: Node) -> void:
 				b.queue_free()
 		print("BUILDING: missing_destroyed=%s no_overlay=%s" % [
 			missing_destroyed, no_overlay])
-		# platform-split geometry: with the ground band sliced out, the
-		# hull must keep standing with its top edge at center - ts.y/2,
-		# the band must start exactly at the hull's bottom edge (seamless
-		# reassembly) and the footprint must use the FULL art size
+		# building geometry: the art is ONE full sprite anchored on the
+		# node, the node y-sorts at the art's vertical MIDDLE (the wall
+		# base — units in front draw over it, units behind under it) and
+		# the footprint equals the def's solid cell rect
 		var geo_fails: PackedStringArray = []
 		for spec in [[0, "fort_front"], [2, "radar"], [3, "repair"]]:
 			var bdef := ContentDB.building_def(spec[0])
@@ -1083,37 +1083,84 @@ static func run(ctx: Node) -> void:
 			ctx.add_child(gb)
 			for i in 3:
 				await Engine.get_main_loop().process_frame
-			var hull_tex: Texture2D = gb._sprite.texture
-			var art: Texture2D = hull_tex.atlas if hull_tex is AtlasTexture else hull_tex
-			var ts := art.get_size()
-			var center: Vector2 = gb.position - gb._sort_lift
-			var hull_top: float = gb._sprite.global_position.y
-			if absf(hull_top - (center.y - ts.y * 0.5)) > 0.5:
-				geo_fails.append("%s hull top %.1f want %.1f" % [
-					spec[1], hull_top, center.y - ts.y * 0.5])
-			var hull_bottom: float = hull_top + hull_tex.get_size().y
-			if gb._ground_base == null:
-				geo_fails.append("%s no ground base" % spec[1])
-			else:
-				if absf(gb._ground_base.global_position.y - hull_bottom) > 0.5:
-					geo_fails.append("%s seam: band top %.1f hull bottom %.1f" % [
-						spec[1], gb._ground_base.global_position.y, hull_bottom])
-				if absf(gb._ground_base.global_position.y + gb._ground_base.texture.get_size().y
-						- (center.y + ts.y * 0.5)) > 0.5:
-					geo_fails.append("%s band bottom != art bottom" % spec[1])
+			var ts := gb._art_size
+			var art := gb.art_world_rect()
+			if gb._sprite.texture is AtlasTexture:
+				geo_fails.append("%s sprite cropped" % spec[1])
+			if absf(art.get_center().y - gb.position.y) > 0.5:
+				geo_fails.append("%s sort line %.1f vs art middle %.1f" % [
+					spec[1], gb.position.y, art.get_center().y])
+			var want_rect: Rect2i = bdef.solid_tiles \
+				if bdef.solid_tiles.size.x > 0 and bdef.solid_tiles.size.y > 0 \
+				else Rect2i(Vector2i.ZERO, Vector2i((ts / 16.0).ceil()))
+			var cells := gb.footprint_cells()
 			var fp := gb.world_footprint()
-			if absf(fp.size.y - ts.y * 0.5) > 0.5 or absf(fp.get_center().y - center.y) > 0.5:
-				geo_fails.append("%s footprint %s from art %s" % [spec[1], fp.size, ts])
+			if cells.size() != want_rect.get_area() - bdef.open_tiles.size():
+				geo_fails.append("%s solid cells %d want %d" % [spec[1], cells.size,
+					want_rect.get_area() - bdef.open_tiles.size()])
+			if absf(fp.size.x - want_rect.size.x * 16.0) > 0.5 \
+					or absf(fp.size.y - want_rect.size.y * 16.0) > 0.5:
+				geo_fails.append("%s footprint %s want %s" % [spec[1], fp.size,
+					Vector2(want_rect.size) * 16.0])
 			if spec[0] == 0:
-				# destroyed swap: full-size art back on the same anchor
+				# destroyed swap: full art back on the same anchor
 				gb.take_damage(gb.hp + 9999)
 				if gb._sprite.texture is AtlasTexture:
-					geo_fails.append("destroyed fort keeps cropped hull")
-				elif absf(gb._sprite.global_position.y - (center.y - ts.y * 0.5)) > 0.5:
+					geo_fails.append("destroyed fort keeps cropped art")
+				elif absf(gb._sprite.global_position.y - art.position.y) > 0.5:
 					geo_fails.append("destroyed fort shifted")
 			gb.queue_free()
 		print("BUILDINGGEO: %s" % ("OK" if geo_fails.is_empty()
 			else "FAIL %s" % geo_fails))
+		# nav solidity: every placed fort blocks its def's cells on BOTH
+		# grids, its open platform cells stay walkable, and a robot path
+		# across the fort must detour around the solid cells
+		var nav_fails: PackedStringArray = []
+		var fort: Building2D = null
+		for b in ctx.get_tree().get_nodes_in_group("buildings"):
+			if b is Building2D and b.alive and b.is_fort:
+				fort = b
+				break
+		if fort == null:
+			nav_fails.append("no fort on map")
+		else:
+			for cell in fort.footprint_cells():
+				if NavWorld.nav_grid.region.has_point(cell) \
+						and not NavWorld.nav_grid.is_point_solid(cell):
+					nav_fails.append("nav open %s" % cell)
+				if NavWorld.vehicle_grid.region.has_point(cell) \
+						and not NavWorld.vehicle_grid.is_point_solid(cell):
+					nav_fails.append("vgrid open %s" % cell)
+			var fdef := ContentDB.building_def(fort.building_id)
+			var origin := Vector2i((fort.art_world_rect().position / 16.0).floor())
+			var open_walked := 0
+			for t in fdef.open_tiles:
+				var c := origin + Vector2i(t)
+				if NavWorld.nav_grid.region.has_point(c) \
+						and not NavWorld.nav_grid.is_point_solid(c):
+					open_walked += 1
+			if open_walked == 0:
+				nav_fails.append("no open platform cells walkable")
+			var art := fort.art_world_rect()
+			# whichever way around the fort the map allows, the path must
+			# never step inside the fort's solid cells (A* respects them
+			# by construction — this proves it end to end)
+			for probe in [
+				[Vector2(art.get_center().x, art.end.y + 40.0),
+					Vector2(art.get_center().x, art.position.y - 40.0)],
+				[Vector2(art.position.x - 40.0, art.get_center().y),
+					Vector2(art.end.x + 40.0, art.get_center().y)]]:
+				var across: PackedVector2Array = NavWorld.request_path(
+					probe[0], probe[1], "robot")
+				for p in across:
+					var cell := Vector2i((p / 16.0).floor())
+					if NavWorld.nav_grid.region.has_point(cell) \
+							and NavWorld.nav_grid.is_point_solid(cell) \
+							and fort.footprint_cells().has(cell):
+						nav_fails.append("path crosses fort at %s" % cell)
+						break
+		print("NAVSOLID: %s" % ("OK" if nav_fails.is_empty()
+			else "FAIL %s" % nav_fails))
 	if "--parade-test" in args:
 		# line up manned hardware + an empty jeep for visual inspection
 		var camera := ctx.get_node("RtsCamera2D")

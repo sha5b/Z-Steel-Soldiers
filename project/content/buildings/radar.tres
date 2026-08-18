@@ -15,4 +15,6 @@ script = ExtResource("3_v3eu4")
 id = 2
 behaviour = ExtResource("2_tmjqi")
 tex = "radar"
+solid_tiles = Rect2i(0, 0, 4, 3)
+open_tiles = PackedVector2Array(3, 2)
 anims = Array[ExtResource("1_u7o31")]([SubResource("Resource_w8qfp")])

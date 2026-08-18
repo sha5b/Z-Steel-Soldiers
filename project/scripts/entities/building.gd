@@ -28,9 +28,7 @@ var _flag: AnimatedSprite2D
 var _flag_team := -1  # team the flag currently shows
 var _hp_bar: ColorRect
 var _hp_bar_max_w := 64.0
-var _sort_lift := Vector2.ZERO  # node lifted to the footprint bottom (y-sort line)
-var _ground_base: Sprite2D = null  # sliced footprint band (map-level)
-var _art_size := Vector2.ZERO  # FULL art size (the hull texture is cropped)
+var _art_size := Vector2.ZERO  # FULL art size (never the cropped/rotated view)
 
 
 func setup(id: int, owner_team_value: int, planet_name: String, building_level := 0) -> void:
@@ -147,7 +145,9 @@ func spawn_produced(item: String) -> void:
 		Fx.announce("robot_manufactured" if kind == "robot"
 			else "vehicle_manufactured" if kind == "vehicle"
 			else "gun_manufactured")
-	var spawn_pos := global_position + Vector2(48, 40)
+	# spawn just BELOW the solid footprint — never inside it
+	var fp := world_footprint()
+	var spawn_pos := Vector2(fp.get_center().x, fp.end.y + 14.0)
 	if kind == "robot":
 		var unit: Unit2D = Spawner.spawn(get_parent(), kind, type_name,
 			owner_team, spawn_pos) as Unit2D
@@ -163,7 +163,6 @@ func spawn_produced(item: String) -> void:
 
 
 func _ready() -> void:
-	tree_exiting.connect(_free_ground_base)
 	# works with setup() (JSON loader) or straight @export values (map scenes)
 	if not is_fort:
 		is_fort = building_id == 0 or building_id == 1
@@ -180,44 +179,30 @@ func _ready() -> void:
 		add_to_group("facilities")
 
 
-func _free_ground_base() -> void:
-	if is_instance_valid(_ground_base):
-		_ground_base.queue_free()
-	_ground_base = null
-
-
 func _build_sprite() -> void:
-	_free_ground_base()
 	_sprite = Sprite2D.new()
 	_sprite.texture = load(_texture_path(false))
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_art_size = _sprite.texture.get_size() if _sprite.texture else Vector2.ZERO
 	# bottom-center the sprite over the footprint
-	var ts: Vector2 = _sprite.texture.get_size()
+	var ts: Vector2 = _art_size
 	_sprite.centered = false
 	_sprite.position = Vector2(-ts.x * 0.25, -ts.y * 0.5)  # origin = footprint center
 	if building_id == 7:  # horizontal bridge: rotate the vertical strip
 		_sprite.rotation_degrees = 90
 		_sprite.position = Vector2(-ts.y * 0.25, ts.x * 0.5) - Vector2(0, ts.x)
 	add_child(_sprite)
-	# Godot 4.7 y-sorts by the NODE's y, so the node moves down to the
-	# footprint's bottom edge (the wall line) and every visual shifts up
-	# to compensate: units below the line draw in front of the building,
-	# units on/above it behind. The ground BASE band is split out as a
-	# separate map-level sprite that sorts at the platform's TOP edge,
-	# so units walking ON the base draw over it (original behaviour).
-	# Bridges stay centred (flat ground art). Runtime only — map scenes
-	# keep baking footprint centres.
-	if not is_bridge() and not Engine.is_editor_hint():
-		_sort_lift = Vector2(0, ts.y * 0.25)
-		position += _sort_lift
-		_sprite.position -= _sort_lift
-		_split_ground_base(ts)
+	# Y-SORT CONTRACT: the node sits at the art's vertical MIDDLE — the
+	# wall base, where the structure meets its ground platform. Units
+	# south of that line stand IN FRONT and draw over the wall's lower
+	# pixels and the platform apron; units north of it are behind and
+	# get overlaid by the structure. The whole art (platform included)
+	# stays ONE sprite — nothing can shear, shift or desync again.
 
 	_flag = AnimatedSprite2D.new()
 	if building_id == 6 or building_id == 7:
 		_flag.visible = false  # bridges carry no flag
-	_flag.position = Vector2(0, -ts.y * 0.5 - 4) - _sort_lift
+	_flag.position = Vector2(0, -ts.y * 0.5 - 4)
 	_flag.scale = Vector2(2, 2)
 	add_child(_flag)
 	set_flag_team(team)
@@ -231,49 +216,59 @@ func _build_sprite() -> void:
 		var bar_w := ts.x * 0.5  # match the building footprint width
 		_hp_bar_max_w = bar_w
 		_hp_bar.size = Vector2(bar_w, 5)
-		_hp_bar.position = Vector2(-bar_w * 0.5, -ts.y * 0.5 - 12) - _sort_lift
+		_hp_bar.position = Vector2(-bar_w * 0.5, -ts.y * 0.5 - 12)
 		add_child(_hp_bar)
 
 
-## The footprint band of the art is GROUND (units walk over it): slice
-## it into a separate map-level sprite sorting at the platform's top
-## edge. The building node keeps sorting at the wall line.
-func _split_ground_base(ts: Vector2) -> void:
-	var map := get_parent()
-	if not (map is Node2D) or is_bridge():
-		return
-	var band := int(ts.y * 0.5)  # footprint height in art pixels
-	if band <= 0 or ts.y <= band:
-		return
-	var atlas := AtlasTexture.new()
-	atlas.atlas = _sprite.texture
-	atlas.region = Rect2(0, ts.y - band, ts.x, band)
-	var ground := Sprite2D.new()
-	ground.name = "Base_%s" % name
-	ground.texture = atlas
-	ground.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	ground.centered = false
-	# building art renders 1:1 — the band's top-left in world space; the
-	# node position sorts at the platform's TOP edge so everything on
-	# the base draws over it
-	ground.position = _sprite.global_position + Vector2(0.0, ts.y - band)
-	map.add_child(ground)
-	move_ground.call_deferred(ground, map)
-	_ground_base = ground
-	# hide the band on the main sprite so it does not double-draw; the
-	# hull KEEPS the pre-split top-left anchor — the cropped texture
-	# already ends where the band begins (shifting it down would overlap
-	# the band and shear the building's upper half off)
-	var hull := AtlasTexture.new()
-	hull.atlas = _sprite.texture
-	hull.region = Rect2(0, 0, ts.x, ts.y - band)
-	_sprite.texture = hull
+## The art's on-screen rect in world pixels (art renders 1:1). This —
+## not a half-size derivation — is the truth for clicks, targeting and
+## the impassable cells.
+func art_world_rect() -> Rect2:
+	if _sprite == null or _art_size == Vector2.ZERO:
+		return Rect2(global_position - Vector2(16, 16), Vector2(32, 32))
+	if building_id == 7:  # rotated horizontal bridge
+		return Rect2(global_position + Vector2(-_art_size.y * 0.25, -_art_size.x * 0.5),
+			Vector2(_art_size.y, _art_size.x))
+	return Rect2(global_position + Vector2(-_art_size.x * 0.25, -_art_size.y * 0.5),
+		_art_size)
 
 
-## Keep the sliced base under the building in tree order (stable ties).
-func move_ground(ground: Node2D, map: Node2D) -> void:
-	if is_instance_valid(ground) and is_instance_valid(map):
-		map.move_child(ground, get_index() if is_inside_tree() else 0)
+## World tiles this building makes impassable: the def's solid_tiles
+## rect (default: the whole art) minus its open_tiles — the original
+## engine's SetMapImpassables patterns, so units path around forts but
+## can still climb their side platforms and gate. Cell coordinates are
+## relative to the art's top-left tile. Bridges are skipped (the map
+## loader owns their walkable span).
+func footprint_cells() -> Array[Vector2i]:
+	var def := ContentDB.building_def(building_id) if not Engine.is_editor_hint() else null
+	var origin := Vector2i((art_world_rect().position / 16.0).floor())
+	var rect := Rect2i(origin, Vector2i((_art_size / 16.0).ceil()))
+	var open: PackedVector2Array = []
+	if def != null:
+		if def.solid_tiles.size.x > 0 and def.solid_tiles.size.y > 0:
+			rect = Rect2i(origin + def.solid_tiles.position, def.solid_tiles.size)
+		open = def.open_tiles
+	var cells: Array[Vector2i] = []
+	for x in rect.size.x:
+		for y in rect.size.y:
+			if not open.has(Vector2i(x, y) + (rect.position - origin)):
+				cells.append(rect.position + Vector2i(x, y))
+	return cells
+
+
+## Mark this building's cells solid on both navigation grids — called by
+## the map loader, the ONE place grids are mutated for buildings.
+func apply_impassables(grid: AStarGrid2D, vgrid: AStarGrid2D) -> void:
+	if is_bridge():
+		return
+	var def := ContentDB.building_def(building_id)
+	if def == null or not def.solid:
+		return
+	for cell in footprint_cells():
+		if grid.region.has_point(cell):
+			grid.set_point_solid(cell, true)
+		if vgrid.region.has_point(cell):
+			vgrid.set_point_solid(cell, true)
 
 
 ## Ownership flag: the owning team's own flag frames — neutral team 0
@@ -335,7 +330,7 @@ func _build_overlays() -> void:
 		overlay.sprite_frames = frames
 		overlay.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		overlay.centered = false
-		overlay.position = anim.offset - Vector2(8, 8) - _sort_lift  # small overlay sprites anchor near their centre
+		overlay.position = anim.offset - Vector2(8, 8)  # small overlay sprites anchor near their centre
 		add_child(overlay)
 		overlay.play("loop")
 
@@ -366,20 +361,30 @@ func produces_anything() -> bool:
 	return def != null or is_fort
 
 
+## Ground area the building occupies (world px) — the SOLID cell rect
+## for regular buildings (what blocks movement is what you click and
+## target), the art/2 rect for bridges. The node itself sits at the
+## art's vertical middle for y-sorting, so undo that offset here.
 func world_footprint() -> Rect2:
-	# ground area under the sprite (world px); the node may be lifted to
-	# the footprint's bottom edge for y-sorting — undo that here. Uses
-	# the FULL art size: the hull texture is cropped to the wall band
+	if not is_bridge() and ContentDB.building_def(building_id) != null \
+			and not Engine.is_editor_hint():
+		var cells := footprint_cells()
+		if cells.is_empty():
+			return art_world_rect()
+		var area := Rect2(cells[0] * 16, Vector2(16, 16))
+		for cell in cells:
+			area = area.expand(Vector2(cell * 16))
+			area = area.expand(Vector2(cell * 16 + Vector2i.ONE * 16))
+		return area
 	var ts := _art_size if _art_size != Vector2.ZERO else Vector2(64, 64)
 	if building_id == 7:
 		ts = Vector2(ts.y, ts.x)  # rotated horizontal bridge
 	var half := ts * 0.25
-	return Rect2(global_position - _sort_lift - half, half * 2.0)
+	return Rect2(global_position - half, half * 2.0)
 
 
 func visual_center() -> Vector2:
-	var ts := _art_size if _art_size != Vector2.ZERO else Vector2(64, 64)
-	return global_position - _sort_lift - Vector2(0, ts.y * 0.25)
+	return world_footprint().get_center()
 
 
 func set_rally(world_position: Vector2) -> void:
