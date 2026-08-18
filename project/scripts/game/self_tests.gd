@@ -1070,6 +1070,50 @@ static func run(ctx: Node) -> void:
 				b.queue_free()
 		print("BUILDING: missing_destroyed=%s no_overlay=%s" % [
 			missing_destroyed, no_overlay])
+		# platform-split geometry: with the ground band sliced out, the
+		# hull must keep standing with its top edge at center - ts.y/2,
+		# the band must start exactly at the hull's bottom edge (seamless
+		# reassembly) and the footprint must use the FULL art size
+		var geo_fails: PackedStringArray = []
+		for spec in [[0, "fort_front"], [2, "radar"], [3, "repair"]]:
+			var bdef := ContentDB.building_def(spec[0])
+			var gb: Building2D = bdef.behaviour.new()
+			gb.setup(spec[0], 1, "desert")
+			gb.position = Vector2(400.0 + spec[0] * 200.0, 300.0)
+			ctx.add_child(gb)
+			for i in 3:
+				await Engine.get_main_loop().process_frame
+			var hull_tex: Texture2D = gb._sprite.texture
+			var art: Texture2D = hull_tex.atlas if hull_tex is AtlasTexture else hull_tex
+			var ts := art.get_size()
+			var center: Vector2 = gb.position - gb._sort_lift
+			var hull_top: float = gb._sprite.global_position.y
+			if absf(hull_top - (center.y - ts.y * 0.5)) > 0.5:
+				geo_fails.append("%s hull top %.1f want %.1f" % [
+					spec[1], hull_top, center.y - ts.y * 0.5])
+			var hull_bottom: float = hull_top + hull_tex.get_size().y
+			if gb._ground_base == null:
+				geo_fails.append("%s no ground base" % spec[1])
+			else:
+				if absf(gb._ground_base.global_position.y - hull_bottom) > 0.5:
+					geo_fails.append("%s seam: band top %.1f hull bottom %.1f" % [
+						spec[1], gb._ground_base.global_position.y, hull_bottom])
+				if absf(gb._ground_base.global_position.y + gb._ground_base.texture.get_size().y
+						- (center.y + ts.y * 0.5)) > 0.5:
+					geo_fails.append("%s band bottom != art bottom" % spec[1])
+			var fp := gb.world_footprint()
+			if absf(fp.size.y - ts.y * 0.5) > 0.5 or absf(fp.get_center().y - center.y) > 0.5:
+				geo_fails.append("%s footprint %s from art %s" % [spec[1], fp.size, ts])
+			if spec[0] == 0:
+				# destroyed swap: full-size art back on the same anchor
+				gb.take_damage(gb.hp + 9999)
+				if gb._sprite.texture is AtlasTexture:
+					geo_fails.append("destroyed fort keeps cropped hull")
+				elif absf(gb._sprite.global_position.y - (center.y - ts.y * 0.5)) > 0.5:
+					geo_fails.append("destroyed fort shifted")
+			gb.queue_free()
+		print("BUILDINGGEO: %s" % ("OK" if geo_fails.is_empty()
+			else "FAIL %s" % geo_fails))
 	if "--parade-test" in args:
 		# line up manned hardware + an empty jeep for visual inspection
 		var camera := ctx.get_node("RtsCamera2D")

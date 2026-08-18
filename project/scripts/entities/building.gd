@@ -30,6 +30,7 @@ var _hp_bar: ColorRect
 var _hp_bar_max_w := 64.0
 var _sort_lift := Vector2.ZERO  # node lifted to the footprint bottom (y-sort line)
 var _ground_base: Sprite2D = null  # sliced footprint band (map-level)
+var _art_size := Vector2.ZERO  # FULL art size (the hull texture is cropped)
 
 
 func setup(id: int, owner_team_value: int, planet_name: String, building_level := 0) -> void:
@@ -190,6 +191,7 @@ func _build_sprite() -> void:
 	_sprite = Sprite2D.new()
 	_sprite.texture = load(_texture_path(false))
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_art_size = _sprite.texture.get_size() if _sprite.texture else Vector2.ZERO
 	# bottom-center the sprite over the footprint
 	var ts: Vector2 = _sprite.texture.get_size()
 	_sprite.centered = false
@@ -258,12 +260,14 @@ func _split_ground_base(ts: Vector2) -> void:
 	map.add_child(ground)
 	move_ground.call_deferred(ground, map)
 	_ground_base = ground
-	# hide the band on the main sprite so it does not double-draw
+	# hide the band on the main sprite so it does not double-draw; the
+	# hull KEEPS the pre-split top-left anchor — the cropped texture
+	# already ends where the band begins (shifting it down would overlap
+	# the band and shear the building's upper half off)
 	var hull := AtlasTexture.new()
 	hull.atlas = _sprite.texture
 	hull.region = Rect2(0, 0, ts.x, ts.y - band)
 	_sprite.texture = hull
-	_sprite.position.y += band
 
 
 ## Keep the sliced base under the building in tree order (stable ties).
@@ -364,8 +368,9 @@ func produces_anything() -> bool:
 
 func world_footprint() -> Rect2:
 	# ground area under the sprite (world px); the node may be lifted to
-	# the footprint's bottom edge for y-sorting — undo that here
-	var ts: Vector2 = _sprite.texture.get_size() if _sprite else Vector2(64, 64)
+	# the footprint's bottom edge for y-sorting — undo that here. Uses
+	# the FULL art size: the hull texture is cropped to the wall band
+	var ts := _art_size if _art_size != Vector2.ZERO else Vector2(64, 64)
 	if building_id == 7:
 		ts = Vector2(ts.y, ts.x)  # rotated horizontal bridge
 	var half := ts * 0.25
@@ -373,7 +378,7 @@ func world_footprint() -> Rect2:
 
 
 func visual_center() -> Vector2:
-	var ts: Vector2 = _sprite.texture.get_size() if _sprite else Vector2(64, 64)
+	var ts := _art_size if _art_size != Vector2.ZERO else Vector2(64, 64)
 	return global_position - _sort_lift - Vector2(0, ts.y * 0.25)
 
 
