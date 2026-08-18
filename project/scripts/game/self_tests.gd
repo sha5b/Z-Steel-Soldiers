@@ -21,7 +21,7 @@ static func should_run() -> bool:
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
-			"ui", "tint", "defs"]:
+			"ui", "tint", "defs", "scenes"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -215,7 +215,12 @@ static func run(ctx: Node) -> void:
 			var lframes: SpriteFrames = lset.frames
 			if not lframes.has_animation("turret_0") or not lframes.has_animation("turret_7"):
 				problems.append("%s: turret idle anims incomplete" % vname)
-			if PackedVector2Array(lset.hull_off).size() != AnimLibrary.DIRECTIONS:
+			# hull offsets ride on the per-type scene root now
+			var inst := ContentDB.scene_for("vehicle", vname).instantiate()
+			var hull_ok: bool = inst is Vehicle2D and (inst as Vehicle2D) \
+					.turret_hull_off.size() == AnimLibrary.DIRECTIONS
+			inst.free()
+			if not hull_ok:
 				problems.append("%s: hull offsets missing" % vname)
 		var med: SpriteFrames = AnimLibrary.turret_set("medium",
 			ContentDB.def_for("vehicle", "medium").asset_dir, 1).frames
@@ -266,6 +271,66 @@ static func run(ctx: Node) -> void:
 				problems.append("%s: fire flash must not loop" % cname)
 		print("LAYER: problems=%d %s" % [problems.size(),
 			", ".join(problems) if not problems.is_empty() else "(all layers ok)"])
+	if "--scenes-test" in args:
+		# every per-type scene instantiates with the right identity and
+		# rig nodes; buildings resolve scenes; a generated map loads
+		var sproblems: Array[String] = []
+		for kind in ["robot", "vehicle", "cannon"]:
+			for name in ContentDB.defs_of(kind):
+				var scene := ContentDB.scene_for(kind, String(name))
+				if scene == null:
+					sproblems.append("%s:%s no scene" % [kind, name])
+					continue
+				var inst := scene.instantiate()
+				if inst is Vehicle2D:
+					var veh := inst as Vehicle2D
+					if veh.kind != kind or veh.unit_name != String(name):
+						sproblems.append("%s:%s identity" % [kind, name])
+				elif inst is Unit2D:
+					var rob := inst as Unit2D
+					if rob.unit_name != String(name):
+						sproblems.append("robot:%s identity" % name)
+				else:
+					sproblems.append("%s:%s wrong root" % [kind, name])
+				inst.free()
+		var expect_nodes := {
+			"vehicle:jeep": ["Wheels", "Turret"],
+			"vehicle:light": ["Turret"],
+			"vehicle:medium": ["Turret"],
+			"vehicle:heavy": ["Turret"],
+			"vehicle:apc": ["Turret", "Doors"],
+			"vehicle:missile_launcher": ["Turret"],
+			"vehicle:crane": ["Turret", "Hook", "Cones"],
+		}
+		for key in expect_nodes:
+			var parts: PackedStringArray = String(key).split(":")
+			var inst2 := ContentDB.scene_for(parts[0], parts[1]).instantiate()
+			for node_name in expect_nodes[key]:
+				if inst2.get_node_or_null(String(node_name)) == null:
+					sproblems.append("%s missing %s" % [key, node_name])
+			# turret tables ride on the scene root
+			if parts[0] == "vehicle" and parts[1] != "crane":
+				var veh2 := inst2 as Vehicle2D
+				if veh2.turret_hull_off.size() != AnimLibrary.DIRECTIONS:
+					sproblems.append("%s hull offsets missing" % key)
+			inst2.free()
+		for id in 8:
+			var bdef := ContentDB.building_def(id)
+			if bdef == null:
+				continue
+			var bpath := "res://scenes/buildings/%s.tscn" % bdef.bname
+			if not ResourceLoader.exists(bpath):
+				sproblems.append("building scene %s missing" % bdef.bname)
+				continue
+			var binst := (load(bpath) as PackedScene).instantiate()
+			if binst is Building2D:
+				if (binst as Building2D).building_id != id:
+					sproblems.append("%s wrong id" % bdef.bname)
+			else:
+				sproblems.append("%s wrong root" % bdef.bname)
+			binst.free()
+		print("SCENES: problems=%d %s" % [sproblems.size(),
+			", ".join(sproblems) if not sproblems.is_empty() else "(all scenes ok)"])
 	if "--defs-test" in args:
 		# the .tres registry: every def resolvable and sane, rosters point
 		# at real units, discovery still catches unregistered folders

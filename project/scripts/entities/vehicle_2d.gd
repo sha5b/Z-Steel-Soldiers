@@ -14,15 +14,25 @@ extends Unit2D
 
 @export var manned := false
 
+## Turret placement from the original DoRender tables — carried by the
+## per-type scenes (scenes/vehicles/<name>.tscn), editable in the editor.
+@export var turret_hull_off := PackedVector2Array()  # 8 entries
+@export var turret_aim_off := PackedVector2Array()   # 8 entries
+@export var turret_scans := true
+
 var driver_type := ""  # robot type of the crew (for sniper ejections)
 var _lid_timer := 0.0  # crew hatch open while firing — the snipe window
 
 var _asset_dir := ""
-var _wheels: AnimatedSprite2D
+# the layered rig lives in the base vehicle scene as pre-placed nodes
+# (Wheels under the hull, Turret/Doors/Hook/Cones above it, under the
+# selection ring) — per-type scenes set identity and turret offsets
+@onready var _wheels: AnimatedSprite2D = get_node_or_null("Wheels")
+@onready var _layer: AnimatedSprite2D = get_node_or_null("Turret")
+@onready var _doors: AnimatedSprite2D = get_node_or_null("Doors")
+@onready var _hook: AnimatedSprite2D = get_node_or_null("Hook")
+@onready var _cones: AnimatedSprite2D = get_node_or_null("Cones")
 var _wheel_offsets := PackedVector2Array()
-var _layer: AnimatedSprite2D          # turret / jeep gun / crane arm
-var _hook: AnimatedSprite2D           # crane hook
-var _doors: AnimatedSprite2D          # APC open animation
 var _layer_dir := 0                   # turret/gun facing
 var _layer_scan := false              # turret scans while idle
 var _layer_canvas_off := PackedVector2Array()
@@ -38,7 +48,6 @@ var _install_timer := 0.0
 var _wreck := false
 var _repairing_building: Building2D = null
 var _repair_tick_time := 0.0
-var _cones: AnimatedSprite2D = null
 var cargo: Array[Node] = []
 
 const APC_CAPACITY := 3
@@ -97,6 +106,19 @@ func _on_arrived() -> void:
 		unload()
 
 
+func _ready() -> void:
+	super._ready()
+	if _doors != null and not _doors.animation_finished.is_connected(_on_doors_finished):
+		_doors.animation_finished.connect(_on_doors_finished)
+	if _layer != null and not _layer.animation_finished.is_connected(_on_layer_finished):
+		_layer.animation_finished.connect(_on_layer_finished)
+
+
+func _on_doors_finished() -> void:
+	if is_instance_valid(_doors):
+		_doors.visible = false
+
+
 func setup_vehicle(vkind: String, type_name: String, owner_team: int) -> void:
 	kind = vkind
 	unit_name = type_name
@@ -125,33 +147,19 @@ func _build_frames() -> void:
 	Teams.apply(sprite, team)
 	Teams.apply(ring, team)
 	_build_layer()
-	if unit_name == "jeep":
+	# the rig nodes come from the scene — assign frames when present
+	if _wheels != null:
 		var wset: Dictionary = AnimLibrary.jeep_wheel_set(_asset_dir, team, manned)
 		if not wset.is_empty():
-			if _wheels == null:
-				_wheels = AnimatedSprite2D.new()
-				_wheels.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-				add_child(_wheels)
-				# below the body via child order (z_index -1 would hide
-				# the wheels behind the terrain in the Y-sorted world)
-				move_child(_wheels, 0)
 			_wheel_offsets = wset.offsets
 			_wheels.sprite_frames = wset.frames
 			_wheels.stop()
 			_wheels.frame = 0  # visible before the first move
 			_sync_wheels()
-	if is_apc():
+	if _doors != null:
 		var dset: Dictionary = AnimLibrary.apc_open_set(_asset_dir, team)
-		if not dset.is_empty() and _doors == null:
-			_doors = AnimatedSprite2D.new()
-			_doors.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		if not dset.is_empty():
 			_doors.sprite_frames = dset.frames
-			_doors.visible = false
-			_doors.animation_finished.connect(func():
-				if is_instance_valid(_doors):
-					_doors.visible = false)
-			add_child(_doors)
-			move_child(_doors, ring.get_index())
 	# one-shot layers keep their build-time material — refresh the tint
 	# for the current team (capture/eject swaps materials, not frames)
 	if _doors:
@@ -161,48 +169,35 @@ func _build_frames() -> void:
 
 
 ## The turret / gun layer for tanks, missile launchers, APC scanners and
-## the jeep gunner; the crane gets its arm + hook pair instead.
+## the jeep gunner; the crane gets its arm + hook pair instead. The nodes
+## come from the scene; offsets come from the exported DoRender tables.
 func _build_layer() -> void:
+	if _layer == null:
+		return
 	var lset: Dictionary = {}
 	if unit_name == "crane":
 		lset = AnimLibrary.crane_set(_asset_dir)
 	else:
 		lset = AnimLibrary.turret_set(unit_name, _asset_dir, team)
 	if lset.is_empty():
-		if _layer:
-			_layer.queue_free()
-			_layer = null
+		_layer.visible = false
 		return
-	if _layer == null:
-		_layer = AnimatedSprite2D.new()
-		_layer.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		add_child(_layer)
-		move_child(_layer, ring.get_index())  # above hull, below ring
-		_layer.animation_finished.connect(_on_layer_finished)
 	Teams.apply(_layer, team)  # neutral turret tops pass through untouched
 	_layer_canvas_off = lset.get("canvas_off", PackedVector2Array())
-	_layer_hull_off = lset.get("hull_off", PackedVector2Array())
-	_layer_aim_off = lset.get("aim_off", PackedVector2Array())
-	_layer_scan = bool(lset.get("scans", false)) and unit_name != "crane"
+	_layer_hull_off = turret_hull_off
+	_layer_aim_off = turret_aim_off
+	_layer_scan = turret_scans and unit_name != "crane"
 	_layer.sprite_frames = lset.frames
 	_layer.visible = manned
 	if unit_name == "crane":
 		_layer_dir = _last_dir
-		if _hook == null and lset.frames.has_animation("hook"):
+		if _hook != null and lset.frames.has_animation("hook"):
 			_hook_off = lset.get("hook_off", PackedVector2Array())
-			_hook = AnimatedSprite2D.new()
-			_hook.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			_hook.sprite_frames = lset.frames
 			_hook.visible = false  # shown once manned
-			add_child(_hook)
-			move_child(_hook, _layer.get_index() + 1)
 	_layer_dir = _last_dir
 
 
-## Ordered onto a building: damaged vehicles enter their repair shop
-## and heal; manned cranes set up cones and rebuild damaged buildings
-## and blown-up bridges (original: UnitEnterRepairBuilding +
-## ProcessCraneRepairWP with the conco animation).
 func _building_order(b: Building2D) -> void:
 	var dist := global_position.distance_to(b.world_footprint().get_center())
 	if unit_name == "crane" and manned and b.team == team \
@@ -233,7 +228,7 @@ func _start_crane_repair(b: Building2D) -> void:
 	waypoints = PackedVector2Array()
 	velocity = Vector2.ZERO
 	_play_body()
-	if _cones == null:
+	if _cones != null and _cones.sprite_frames == null:
 		var frames := SpriteFrames.new()
 		frames.add_animation("loop")
 		frames.set_animation_speed("loop", 8.0)
@@ -247,10 +242,7 @@ func _start_crane_repair(b: Building2D) -> void:
 			frames.add_frame("loop", load(path))
 			i += 1
 		if i > 0:
-			_cones = AnimatedSprite2D.new()
 			_cones.sprite_frames = frames
-			_cones.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			add_child(_cones)
 	if _cones:
 		_cones.visible = true
 		_cones.play("loop")
@@ -534,7 +526,7 @@ func _update_layer(delta: float) -> void:
 			_layer.play(anim)
 			if not _layer.sprite_frames.get_animation_loop(anim):
 				_layer.frame = _layer.sprite_frames.get_frame_count(anim) - 1
-	if _hook:
+	if _hook and _hook.sprite_frames:
 		_hook.visible = true
 		var hook := "hook"
 		if _hook.sprite_frames.has_animation(hook):
@@ -576,14 +568,12 @@ func eject_driver() -> void:
 		return
 	Fx.play("spark", global_position)
 	if driver_type != "":
-		var survivor: Unit2D = load("res://scenes/unit.tscn").instantiate()
-		survivor.unit_name = driver_type
-		survivor.team = team
-		survivor.position = global_position + Vector2(0, 18)
 		var map := get_parent()
 		if map is Node2D:
-			map.add_child(survivor)
-			survivor.hp = maxi(1, int(survivor.max_hp / 3.0))
+			var survivor := Spawner.spawn(map, "robot", driver_type, team,
+				global_position + Vector2(0, 18)) as Unit2D
+			if survivor:
+				survivor.hp = maxi(1, int(survivor.max_hp / 3.0))
 	manned = false
 	team = 0
 	driver_type = ""

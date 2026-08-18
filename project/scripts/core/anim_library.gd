@@ -45,52 +45,6 @@ static func asset_dir_for(kind: String, unit_name: String) -> String:
 	return dir if DirAccess.dir_exists_absolute(dir) else ""
 
 
-## Zod per-type turret layer placement (from the DoRender offset tables):
-## hull_off indexes the hull facing, aim_off the turret facing; both are
-## added on top of the canvas top-left alignment (_layer_offset).
-const TURRET_TABLES := {
-	"light": {
-		"hull": [Vector2(2, 0), Vector2(0, 0), Vector2(-2, 0), Vector2(0, 0),
-			Vector2(2, 0), Vector2(0, 0), Vector2(-2, 0), Vector2(0, 0)],
-		"aim": [Vector2(0, -2), Vector2(0, -2), Vector2(0, -1), Vector2(-1, 0),
-			Vector2(0, 0), Vector2(0, 0), Vector2(0, 1), Vector2(1, -2)],
-		"scans": true,
-	},
-	"medium": {
-		"hull": [Vector2(0, 0), Vector2(0, 6), Vector2(-1, 0), Vector2(-2, 6),
-			Vector2(0, 0), Vector2(0, 6), Vector2(-1, 0), Vector2(-2, 6)],
-		"aim": [Vector2(4, -5), Vector2(5, -3), Vector2(7, -4), Vector2(5, -5),
-			Vector2(2, -5), Vector2(6, -5), Vector2(7, -5), Vector2(5, -5)],
-		"scans": true,
-	},
-	"heavy": {
-		"hull": [Vector2(4, 0), Vector2(2, -3), Vector2(-1, -5), Vector2(-3, -4),
-			Vector2(4, 0), Vector2(2, -3), Vector2(-1, -5), Vector2(-3, -4)],
-		"aim": [Vector2(4, 0), Vector2(0, -2), Vector2(0, -2), Vector2(0, -2),
-			Vector2(-4, 0), Vector2(0, 0), Vector2(0, 0), Vector2(0, 0)],
-		"scans": true,
-	},
-	"apc": {
-		"hull": [Vector2(1, 5), Vector2(5, 8), Vector2(9, 5), Vector2(13, 8),
-			Vector2(15, 5), Vector2(11, 3), Vector2(8, 3), Vector2(5, 4)],
-		"aim": [],
-		"scans": true,  # scanner spins, never tracks a target
-	},
-	"missile_launcher": {
-		"hull": [Vector2(0, 0), Vector2(2, 3), Vector2(3, 0), Vector2(8, 4),
-			Vector2(9, 0), Vector2(7, -2), Vector2(2, -3), Vector2(0, -3)],
-		"aim": [Vector2(2, 0), Vector2(0, 0), Vector2(0, 0), Vector2(0, -2),
-			Vector2(0, -2), Vector2(-2, 0), Vector2(0, 2), Vector2(0, -2)],
-		"scans": true,
-	},
-	"jeep": {  # the gunner/gun overlay (fire_* art)
-		"hull": [Vector2(0, 2), Vector2(6, 7), Vector2(12, 4), Vector2(20, 8),
-			Vector2(25, 2), Vector2(20, -4), Vector2(15, -3), Vector2(5, -4)],
-		"aim": [Vector2(0, 0), Vector2(-2, 0), Vector2(-5, 0), Vector2(-8, 0),
-			Vector2(-10, 0), Vector2(-8, 5), Vector2(-5, 6), Vector2(-2, 5)],
-		"scans": false,
-	},
-}
 ## Crane arm + hook offsets (hook hangs at hull + arm + hook offsets).
 const CRANE_TABLES := {
 	"arm": [Vector2(-6, -6), Vector2(-3, -4), Vector2(0, -5), Vector2(3, -4),
@@ -363,9 +317,6 @@ static func apc_open_set(asset_dir: String, team: int) -> Dictionary:
 ## Returns {"frames", "canvas_off": per-hull-dir alignment, "hull_off",
 ## "aim_off", "scans"} or {} when the type has no layer.
 static func turret_set(unit_name: String, asset_dir: String, team: int) -> Dictionary:
-	var table: Dictionary = TURRET_TABLES.get(unit_name, {})
-	if table.is_empty():
-		return {}
 	var tn := team_name(team)
 	var frames := SpriteFrames.new()
 	var found := false
@@ -425,13 +376,9 @@ static func turret_set(unit_name: String, asset_dir: String, team: int) -> Dicti
 	else:
 		for tex in pop_paths:
 			frames.add_frame("pop", tex)
-	return {
-		"frames": frames,
-		"canvas_off": canvas_off,
-		"hull_off": PackedVector2Array(table.get("hull", [])),
-		"aim_off": PackedVector2Array(table.get("aim", [])),
-		"scans": bool(table.get("scans", false)),
-	}
+	# hull/aim offsets live on the per-type scenes (exported DoRender
+	# tables) — only the art-derived canvas alignment is computed here
+	return {"frames": frames, "canvas_off": canvas_off}
 
 
 ## Crane: arm layer (INVERTED rotation numbering — facing d lives in

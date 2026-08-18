@@ -96,9 +96,36 @@ func has_sprites(kind: String, name: String) -> bool:
 	return _dir_has_art(def_for(kind, name).asset_dir)
 
 
+## Per-type scene when one exists (convention: scenes/<kind-plural>/
+## <name>.tscn, or UnitDef.scene), else the shared base scene.
+func scene_for(kind: String, name: String) -> PackedScene:
+	var def := def_for(kind, name)
+	if def.scene != null:
+		return def.scene
+	var plural: String = {"robot": "units", "vehicle": "vehicles",
+		"cannon": "cannons"}.get(kind, "")
+	if plural != "":
+		var path := "res://scenes/%s/%s.tscn" % [plural, name]
+		if ResourceLoader.exists(path):
+			return load(path)
+	match kind:
+		"robot": return load("res://scenes/unit.tscn")
+		"vehicle", "cannon": return load("res://scenes/vehicle.tscn")
+	return null
+
+
 ## zod map object id -> type name (empty when out of range).
 func map_unit_name(kind: String, id: int) -> String:
 	return ZodIds.unit_name(kind, id)
+
+
+## A folder already referenced by another def's asset_dir needs no
+## discovery entry (cannons_missile belongs to the missile_cannon def).
+func _folder_covered(kind: String, folder_path: String) -> bool:
+	for name in _units.get(kind, {}):
+		if _units[kind][name].asset_dir == folder_path:
+			return true
+	return false
 
 
 func _fallback_name(kind: String) -> String:
@@ -145,6 +172,7 @@ func _discover_unit_folders() -> void:
 			if prefix != "" and folder != "robots":
 				var type_name := folder.substr(folder.find("_") + 1)
 				if not _units[prefix].has(type_name) \
+						and not _folder_covered(prefix, ASSET_ROOT + "/" + folder) \
 						and _dir_has_art(ASSET_ROOT + "/" + folder):
 					var def := _synthesized(prefix, type_name)
 					_units[prefix][type_name] = def

@@ -140,30 +140,19 @@ func spawn_produced(item: String) -> void:
 		Fx.announce("robot_manufactured" if kind == "robot"
 			else "vehicle_manufactured" if kind == "vehicle"
 			else "gun_manufactured")
-	match kind:
-		"robot":
-			var unit: Unit2D = load("res://scenes/unit.tscn").instantiate()
-			unit.unit_name = type_name
-			unit.team = owner_team
-			unit.position = global_position + Vector2(48, 40)
-			_add_to_map(unit)
-			if rally_point != Vector2.INF:
-				unit.move_to(rally_point)
-		"vehicle", "cannon":
-			if not ContentDB.has_sprites(kind, type_name):
-				return
-			var vehicle: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
-			vehicle.setup_vehicle(kind, type_name, 0)  # spawns unmanned
-			vehicle.position = global_position + Vector2(48, 40)
-			_add_to_map(vehicle)
-			if rally_point != Vector2.INF:
-				vehicle.move_to(rally_point)
+	var spawn_pos := global_position + Vector2(48, 40)
+	if kind == "robot":
+		var unit: Unit2D = Spawner.spawn(get_parent(), kind, type_name,
+			owner_team, spawn_pos) as Unit2D
+		if unit and rally_point != Vector2.INF:
+			unit.move_to(rally_point)
+	elif ContentDB.has_sprites(kind, type_name):
+		# vehicles and cannons spawn UNMANNED beside the building for a
+		# robot to man (Z-style)
+		var vehicle := Spawner.spawn(get_parent(), kind, type_name, 0, spawn_pos)
+		if vehicle and rally_point != Vector2.INF:
+			vehicle.move_to(rally_point)
 
-
-func _add_to_map(node: Node2D) -> void:
-	var map := get_parent()
-	if map is Node2D:
-		map.add_child(node)
 
 
 func _ready() -> void:

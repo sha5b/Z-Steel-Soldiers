@@ -183,18 +183,9 @@ static func _spawn_unit(parent: Node, o: Dictionary, kind: String, pos: Vector2)
 	var type_name := ContentDB.map_unit_name(kind, int(o.id))
 	if type_name == "":
 		return
-	if kind == "robot":
-		var unit: Node = load("res://scenes/unit.tscn").instantiate()
-		unit.unit_name = type_name
-		unit.team = int(o.owner)
-		unit.position = pos
-		parent.add_child(unit)
-	elif ContentDB.has_sprites(kind, type_name):
-		var scene_path := "res://scenes/vehicle.tscn"
-		var veh: Node = load(scene_path).instantiate()
-		veh.setup_vehicle(kind, type_name, int(o.owner))
-		veh.position = pos
-		parent.add_child(veh)
+	if kind != "robot" and not ContentDB.has_sprites(kind, type_name):
+		return
+	Spawner.spawn(parent, kind, type_name, int(o.owner), pos)
 
 
 ## Buildings instantiate the script class from their BuildingDefs entry;
@@ -205,8 +196,14 @@ static func _spawn_building(parent: Node, o: Dictionary, pos: Vector2, planet: S
 	var def := ContentDB.building_def(id)
 	if def == null:
 		return
-	var node: Building2D = def.behaviour.new()
-	node.setup(id, int(o.owner), planet, int(o.get("level", 0)))
+	var node: Building2D
+	var scene_path := "res://scenes/buildings/%s.tscn" % def.bname
+	if ResourceLoader.exists(scene_path):
+		node = load(scene_path).instantiate() as Building2D
+		node.setup(id, int(o.owner), planet, int(o.get("level", 0)))
+	else:
+		node = def.behaviour.new()
+		node.setup(id, int(o.owner), planet, int(o.get("level", 0)))
 	node.position = pos
 	node.name = "Building_T%d_%d" % [int(o.owner), id]
 	parent.add_child(node)

@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3]
+[ext_resource type="PackedScene" path="res://scenes/vehicle.tscn" id="1_base"]
+
+[node name="Jeep" instance=ExtResource("1_base")]
+unit_name = "jeep"
+kind = "vehicle"
+turret_hull_off = PackedVector2Array(0.0, 2.0, 6.0, 7.0, 12.0, 4.0, 20.0, 8.0, 25.0, 2.0, 20.0, -4.0, 15.0, -3.0, 5.0, -4.0)
+turret_aim_off = PackedVector2Array(0.0, 0.0, -2.0, 0.0, -5.0, 0.0, -8.0, 0.0, -10.0, 0.0, -8.0, 5.0, -5.0, 6.0, -2.0, 5.0)
+turret_scans = false

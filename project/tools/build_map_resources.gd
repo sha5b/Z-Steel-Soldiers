@@ -11,20 +11,8 @@ extends Node
 
 const TILE := 16
 const PLANETS := ["desert", "volcanic", "arctic", "city", "jungle"]
-
-const BUILDING_SCRIPTS := {
-	0: preload("res://scripts/entities/fort_building.gd"),
-	1: preload("res://scripts/entities/fort_building.gd"),
-	2: preload("res://scripts/entities/building.gd"),
-	3: preload("res://scripts/entities/building.gd"),
-	4: preload("res://scripts/entities/robot_factory.gd"),
-	5: preload("res://scripts/entities/vehicle_factory.gd"),
-	6: preload("res://scripts/entities/building.gd"),
-	7: preload("res://scripts/entities/building.gd"),
-}
-const MAP_ROBOT_IDS := ["grunt", "psycho", "sniper", "tough", "pyro", "laser"]
-const MAP_VEHICLE_IDS := ["jeep", "light", "medium", "heavy", "apc", "missile_launcher", "crane"]
-const MAP_CANNON_IDS := ["gatling", "gun", "howitzer", "missile_cannon"]
+# Units, buildings and ids all resolve through ContentDB — this tool has
+# no content tables of its own
 
 var _tilesets := {}
 
@@ -148,33 +136,38 @@ func _build_scene(data: Dictionary) -> PackedScene:
 func _object_node(kind: String, id: int, owner_team: int, pos: Vector2,
 		planet: String) -> Node2D:
 	match kind:
-		"robot":
-			var type: String = MAP_ROBOT_IDS[id] if id < MAP_ROBOT_IDS.size() else "grunt"
-			var unit: Node2D = load("res://scenes/unit.tscn").instantiate()
-			unit.set("unit_name", type)
+		"robot", "vehicle", "cannon":
+			var type_name := ContentDB.map_unit_name(kind, id)
+			if type_name == "":
+				return null
+			if kind != "robot" and not ContentDB.has_sprites(kind, type_name):
+				return null
+			# per-type scenes (scenes/<kind-plural>/<name>.tscn) so maps
+			# are editable unit by unit; base scenes as the fallback
+			var scene := ContentDB.scene_for(kind, type_name)
+			if scene == null:
+				return null
+			var unit: Node2D = scene.instantiate()
+			unit.set("unit_name", type_name)
 			unit.set("team", owner_team)
+			if kind != "robot":
+				unit.set("kind", kind)
+				unit.set("manned", owner_team != 0)
 			unit.position = pos
-			unit.name = "Robot_%s_T%d" % [type, owner_team]
+			unit.name = "%s_%s_T%d" % [{"robot": "Robot"}.get(kind, kind),
+				type_name, owner_team]
 			# name uniquified by caller with tile coords
 			return unit
-		"vehicle", "cannon":
-			var ids: Array = MAP_VEHICLE_IDS if kind == "vehicle" else MAP_CANNON_IDS
-			var type2 := String(ids[id]) if id < ids.size() else ""
-			if not _has_art(kind, type2):
-				return null
-			var veh: Node2D = load("res://scenes/vehicle.tscn").instantiate()
-			veh.set("kind", kind)
-			veh.set("unit_name", type2)
-			veh.set("team", 0 if owner_team == 0 else owner_team)
-			veh.set("manned", owner_team != 0)
-			veh.position = pos
-			veh.name = "%s_%s_T%d" % [kind, type2, owner_team]
-			return veh
 		"building":
-			var script: GDScript = BUILDING_SCRIPTS.get(id)
-			if script == null:
+			var def := ContentDB.building_def(id)
+			if def == null:
 				return null
-			var building: Node2D = script.new()
+			var scene_path := "res://scenes/buildings/%s.tscn" % def.bname
+			var building: Node2D
+			if ResourceLoader.exists(scene_path):
+				building = (load(scene_path) as PackedScene).instantiate()
+			else:
+				building = def.behaviour.new()
 			building.set("building_id", id)
 			building.set("team", 0 if id == 6 or id == 7 else owner_team)
 			building.set("planet", planet)
@@ -182,9 +175,9 @@ func _object_node(kind: String, id: int, owner_team: int, pos: Vector2,
 			building.name = "Building_T%d_%d" % [owner_team, id]
 			return building
 		"map_item":
-			if id == 2 or id == 3:
+			if ZodIds.MAP_PICKUP_IDS.has(id):
 				var pickup := Pickup.new()
-				pickup.pickup_type = "grenades" if id == 2 else "rockets"
+				pickup.pickup_type = String(ZodIds.MAP_PICKUP_IDS[id])
 				pickup.position = pos
 				return pickup
 			return _scenery_node(id, pos, planet)
@@ -203,24 +196,3 @@ func _scenery_node(id: int, pos: Vector2, planet: String) -> Node2D:
 	sprite.position = pos
 	return sprite
 
-
-func _has_art(kind: String, type_name: String) -> bool:
-	if type_name == "":
-		return false
-	var prefix := "vehicles_" if kind == "vehicle" else "cannons_"
-	var dir := DirAccess.open("res://assets/z")
-	if dir == null:
-		return false
-	var path := "res://assets/z/%s%s" % [prefix, type_name]
-	var probe := DirAccess.open(path)
-	if probe == null:
-		return false
-	probe.list_dir_begin()
-	var f := probe.get_next()
-	while f != "":
-		if f.get_extension() == "png":
-			probe.list_dir_end()
-			return true
-		f = probe.get_next()
-	probe.list_dir_end()
-	return false

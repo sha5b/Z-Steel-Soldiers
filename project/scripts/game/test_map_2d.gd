@@ -26,9 +26,14 @@ func _ready() -> void:
 	for f in DirAccess.get_files_at("res://assets/maps"):
 		if String(f).ends_with(".json"):
 			_map_list.append(String(f))
+	# scene versions of the same map replace their JSON (same basename)
+	var json_names := {}
+	for m in _map_list:
+		json_names[String(m).get_basename()] = true
 	for f in DirAccess.get_files_at("res://assets/maps_scenes"):
-		if String(f).ends_with(".tscn"):
-			_map_list.append(String(f))
+		var fname := String(f)
+		if fname.ends_with(".tscn") and not json_names.has(fname.get_basename()):
+			_map_list.append(fname)
 	_map_list.sort()
 	_map_index = _map_list.find(chosen.get_file())
 	GameState.current_map = chosen
@@ -99,17 +104,10 @@ func _apply_load() -> void:
 	for u in get_tree().get_nodes_in_group("units"):
 		u.queue_free()
 	for su in save.get("units", []):
-		var unit: Node2D
-		if String(su.kind) == "robot":
-			unit = load("res://scenes/unit.tscn").instantiate()
-			unit.unit_name = String(su.type)
-		else:
-			unit = load("res://scenes/vehicle.tscn").instantiate()
-			unit.setup_vehicle(String(su.kind), String(su.type), int(su.team) if bool(su.manned) else 0)
-		unit.team = int(su.team)
-		unit.position = Vector2(float(su.x), float(su.y))
-		add_child(unit)
-		unit.hp = int(su.hp)
+		var unit := Spawner.spawn(self, String(su.kind), String(su.type),
+			int(su.team), Vector2(float(su.x), float(su.y)), bool(su.manned))
+		if unit:
+			unit.hp = int(su.hp)
 
 
 func _cycle_map() -> void:

@@ -8,8 +8,27 @@ size = Vector2(16, 16)
 
 [node name="Vehicle" type="CharacterBody2D"]
 script = ExtResource("1")
+kind = "vehicle"
+
+[node name="Wheels" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
 
 [node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+
+[node name="Turret" type="AnimatedSprite2D" parent="."]
+texture_filter = 1
+
+[node name="Doors" type="AnimatedSprite2D" parent="."]
+visible = false
+texture_filter = 1
+
+[node name="Hook" type="AnimatedSprite2D" parent="."]
+visible = false
+texture_filter = 1
+
+[node name="Cones" type="AnimatedSprite2D" parent="."]
+visible = false
 texture_filter = 1
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
