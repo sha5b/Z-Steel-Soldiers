@@ -140,11 +140,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
-				SelectionManager.drag_start = event.position
-				SelectionManager.drag_current = event.position
-				SelectionManager.is_dragging = true
+				SelectionManager.begin_drag(event.position)
 			else:
-				SelectionManager.is_dragging = false
+				SelectionManager.end_drag()
 				var rect := SelectionManager.get_drag_rect()
 				if rect.size.length() < 6.0:
 					_pick_select(event.position)
@@ -155,7 +153,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			SelectionManager.issue_order(SelectionManager.screen_to_world(event.position))
 	elif event is InputEventMouseMotion and SelectionManager.is_dragging:
-		SelectionManager.drag_current = event.position
+		SelectionManager.move_drag(event.position)
 
 
 func _pick_select(screen_pos: Vector2) -> void:

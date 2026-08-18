@@ -3,6 +3,7 @@ extends Node
 
 signal money_changed(team: int, amount: int)
 signal game_over(winning_team: int)
+signal zone_captured(team: int)
 
 const INCOME_PER_ZONE := 5.0   # money per owned zone per tick
 const TICK_SECONDS := 1.0
@@ -111,6 +112,10 @@ func _process(delta: float) -> void:
 
 func register_zone(zone: Node) -> void:
 	zones.append(zone)
+
+
+func notify_zone_captured(team: int) -> void:
+	zone_captured.emit(team)
 
 
 func player_money() -> int:

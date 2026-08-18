@@ -13,6 +13,9 @@ extends CharacterBody2D
 
 const GRENADE: ProjectileDef = preload("res://content/projectiles/grenade.tres")
 
+signal died(unit: Node)
+signal damaged(amount: int)
+
 enum State { IDLE, MOVING, ENTERING, GESTURE, DEAD }
 
 var state := State.IDLE
@@ -55,6 +58,8 @@ func _ready() -> void:
 		return
 	add_to_group("selectable")
 	add_to_group("units")
+	if not Engine.is_editor_hint():
+		SelectionManager.listen(self)
 	var stats := ContentDB.stats_for(kind, unit_name)
 	hp = stats.hp
 	max_hp = stats.hp
@@ -248,7 +253,7 @@ func _combat() -> void:
 		Fx.gunfire("GRENLOBX")
 		Fx.shell(global_position, g_impact, GRENADE,
 			func():
-				Fx.area_damage(g_impact, 34.0, 26, team))
+				Combat.area_damage(g_impact, 34.0, 26, team))
 		return
 	if _target and _fire_timer <= 0.0:
 		var to_target := _target.global_position - global_position
@@ -285,56 +290,25 @@ func _find_target() -> Node2D:
 func _shoot(target: Node2D, to_target: Vector2) -> void:
 	_play("fire", _last_dir, true)
 	var def := ContentDB.def_for(kind, unit_name)
-	Fx.gunfire(def.sound)
 	var muzzle := global_position + to_target.normalized() * 10.0
 	var amount := int(round(damage * GameState.robot_damage_mult(team)))
-	var hit_chance := def.hit_chance
-	var snipe_chance := def.snipe_chance
 	# the lid over a tank's crew hatch opens while it fires — that is the
 	# window a marksman takes (original: can_be_sniped = lid_open)
-	if snipe_chance > 0.0 and target is Vehicle2D and target.manned \
-			and target.lid_open and randf() < snipe_chance:
-		if unit_name == "laser":
-			Fx.laser(muzzle, target.global_position)
-		else:
-			Fx.bullet(muzzle, target.global_position)
+	if def.snipe_chance > 0.0 and target is Vehicle2D and target.manned \
+			and target.lid_open and randf() < def.snipe_chance:
+		Fx.laser(muzzle, target.global_position) \
+			if def.weapon == "laser" else Fx.bullet(muzzle, target.global_position)
 		Fx.play("muzzle", muzzle)
 		target.eject_driver()
 		return
-	if randf() > hit_chance:
-		# missed: tracer flies past, no damage
-		var past := target.global_position + Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
-		if unit_name == "laser":
-			Fx.laser(muzzle, past)
-		else:
-			Fx.bullet(muzzle, past)
-		return
-	var projectile := def.projectile
-	if unit_name == "laser":
-		Fx.laser(muzzle, target.global_position)
-		Fx.play("muzzle", muzzle)
-		target.take_damage(amount)
-	elif projectile != null:
-		var tid := target.get_instance_id()
-		var radius := def.splash_radius
-		var impact: Vector2 = target.global_position
-		Fx.shell(muzzle, impact, projectile,
-			func():
-				var hit: Node2D = instance_from_id(tid) as Node2D
-				if hit and hit.alive:
-					hit.take_damage(amount)
-				if radius > 0.0:
-					Fx.area_damage(impact, radius, int(amount * 0.5), team))
-	else:
-		Fx.bullet(muzzle, target.global_position)
-		Fx.play("muzzle", muzzle)
-		target.take_damage(amount)
+	Combat.fire(self, def, muzzle, target, amount)
 
 
 func take_damage(amount: int) -> void:
 	if not alive:
 		return
 	hp -= amount
+	damaged.emit(amount)
 	if ring:
 		ring.visible = true
 		ring.queue_redraw()
@@ -354,6 +328,7 @@ func take_damage(amount: int) -> void:
 func die() -> void:
 	alive = false
 	state = State.DEAD
+	died.emit(self)
 	velocity = Vector2.ZERO
 	set_selected(false)
 	SelectionManager.drop_from_selection(self)

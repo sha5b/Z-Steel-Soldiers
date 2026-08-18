@@ -58,10 +58,14 @@ func _ready() -> void:
 	_queue_row.add_theme_constant_override("separation", 4)
 	_queue_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(_queue_row)
+	SelectionManager.selection_changed.connect(_on_selection_changed)
+	GameState.zone_captured.connect(func(_t): _check_roster())
 	hide()
 
 
-func _process(_delta: float) -> void:
+## Factory wiring follows the selection; the queue row follows the
+## producer's queue.changed signal — nothing polls.
+func _on_selection_changed(_units: Array) -> void:
 	var factory := _selected_factory()
 	visible = factory != null
 	if factory != _wired:
@@ -71,12 +75,29 @@ func _process(_delta: float) -> void:
 		_queue_cache.clear()
 		if factory:
 			queue_requested.connect(factory.queue_unit)
+			factory.queue.changed.connect(_check_roster)
+			_check_roster()
 	if factory:
-		# rebuild the button row when the producer (or its level) changes:
-		# the roster unlocks as the building levels up
-		if _built_for != "%s:%d" % [factory.kind_key(), factory.level]:
-			_build_buttons(factory)
 		_update_queue(factory)
+
+
+## Button row rebuild: on selection change and whenever the producer's
+## queue or level may have moved the roster.
+func _check_roster() -> void:
+	if _wired and _built_for != "%s:%d" % [_wired.kind_key(), _wired.level]:
+		_build_buttons(_wired)
+		if _wired:
+			_update_queue(_wired)
+
+
+## Only the progress bar animates per frame.
+func _process(_delta: float) -> void:
+	if _wired == null or not visible:
+		return
+	var prog: float = _wired.progress()
+	var q: Array = _wired.queue_items()
+	_progress.visible = not q.is_empty() and prog > 0.0
+	_progress.value = prog * 100.0
 
 
 func _update_queue(factory: Node) -> void:
@@ -100,9 +121,7 @@ func _update_queue(factory: Node) -> void:
 				if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT:
 					factory.cancel_at(i))
 			_queue_row.add_child(btn)
-	var prog: float = factory.progress()
-	_progress.visible = not q.is_empty() and prog > 0.0
-	_progress.value = prog * 100.0
+
 
 
 func _selected_factory() -> Node:

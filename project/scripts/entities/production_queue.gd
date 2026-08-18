@@ -3,7 +3,10 @@ extends RefCounted
 ## Shared production state for every producer (fort, robot factory,
 ## vehicle factory): a FIFO of type names and one elapsed timer. Payment
 ## and spawning stay with the producer; this class only tracks time and
-## order.
+## order. `changed` fires on every enqueue/cancel/completion so the UI
+## can stop polling.
+
+signal changed
 
 const MAX_ITEMS := 5
 
@@ -15,6 +18,7 @@ func enqueue(type_name: String) -> bool:
 	if items.size() >= MAX_ITEMS:
 		return false
 	items.append(type_name)
+	changed.emit()
 	return true
 
 
@@ -23,7 +27,10 @@ func enqueue(type_name: String) -> bool:
 func cancel_at(index: int) -> String:
 	if index < 0 or index >= items.size():
 		return ""
-	return items.pop_at(index)
+	var item: String = items.pop_at(index)
+	if item != "":
+		changed.emit()
+	return item
 
 
 func clear() -> void:
@@ -37,7 +44,9 @@ func tick(delta: float, seconds: float) -> String:
 	if elapsed < seconds or items.is_empty():
 		return ""
 	elapsed = 0.0
-	return items.pop_front()
+	var done: String = items.pop_front()
+	changed.emit()
+	return done
 
 
 ## 0..1 progress of the item currently building.

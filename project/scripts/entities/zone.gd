@@ -5,6 +5,8 @@ extends Node2D
 ## presence, feeds GameState income. Team colours come from Teams; the
 ## flag is master art + palette-swap material.
 
+signal captured(new_team: int)
+
 const CAPTURE_SECONDS := 2.0
 
 @export var zone_rect := Rect2i()
@@ -130,6 +132,8 @@ func set_owner_team(team: int) -> void:
 	if owner_team == GameState.player_team and team != GameState.player_team:
 		Fx.announce("territory_lost")
 	owner_team = team
+	captured.emit(team)
+	GameState.notify_zone_captured(team)
 	if _overlay:
 		_overlay.color = Teams.zone_color(team)
 		_overlay.color.a = 0.10

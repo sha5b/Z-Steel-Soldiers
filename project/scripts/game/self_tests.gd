@@ -687,7 +687,7 @@ static func run(ctx: Node) -> void:
 			rock_found = true
 			var rock: Node2D = rocks[0]
 			var cell := Vector2i(((rock.global_position - Vector2(8, 8)) / 16.0).floor())
-			Fx.area_damage(rock.global_position, 40.0, 99, 0)
+			Combat.area_damage(rock.global_position, 40.0, 99, 0)
 			await Engine.get_main_loop().process_frame
 			rock_cleared = not is_instance_valid(rock) and \
 				(not GameState.nav_grid or not GameState.nav_grid.is_point_solid(cell))

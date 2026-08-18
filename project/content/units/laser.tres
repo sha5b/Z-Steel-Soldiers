@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1_k0rqq"]
 
 [resource]
+weapon = "laser"
 script = ExtResource("1_k0rqq")
 id = "laser"
 asset_dir = "res://assets/z/robots_laser"

@@ -1,6 +1,8 @@
 class_name TopBar
 extends HBoxContainer
 ## Top bar: player money, zone ownership counts per team, match clock.
+## Money and zone counts refresh on their signals (no per-frame polling);
+## only the clock ticks in _process.
 
 var elapsed := 0.0
 var _money: Label
@@ -17,10 +19,17 @@ func _ready() -> void:
 	_upgrades = HBoxContainer.new()
 	_upgrades.add_theme_constant_override("separation", 4)
 	add_child(_upgrades)
+	GameState.money_changed.connect(func(_team, _amount): _refresh_counts())
+	GameState.zone_captured.connect(func(_team): _refresh_counts())
+	_refresh_counts()
 
 
 func _process(delta: float) -> void:
 	elapsed += delta
+	_clock.text = "%d:%02d" % [int(elapsed) / 60, int(elapsed) % 60]
+
+
+func _refresh_counts() -> void:
 	_money.text = "credits %d" % GameState.player_money()
 	var counts := {}
 	for z in GameState.zones:
@@ -33,7 +42,6 @@ func _process(delta: float) -> void:
 		if t != GameState.player_team:
 			theirs += counts[t]
 	_zones.text = "zones %d of %d - them %d" % [mine, total, theirs]
-	_clock.text = "%d:%02d" % [int(elapsed) / 60, int(elapsed) % 60]
 	_sync_upgrades()
 
 
@@ -65,8 +73,7 @@ func _sync_upgrades() -> void:
 
 
 func _label(text: String) -> Label:
-	var l := Label.new()
-	l.text = text
-	l.add_theme_font_size_override("font_size", 16)  # 2x the 8px bitmap font
-	add_child(l)
-	return l
+	var label := Label.new()
+	label.text = text
+	add_child(label)
+	return label

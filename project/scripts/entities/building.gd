@@ -1,6 +1,7 @@
 @tool
 class_name Building2D
 extends Node2D
+signal died
 ## Original-sprite building (forts, factories, radar, repair). Loads the
 ## per-planet texture, shows an ownership flag, and computes a ground
 ## footprint (sprite is 2x tile scale -> footprint = texture/2) for
@@ -413,6 +414,7 @@ func take_damage(amount: int) -> void:
 		_hp_bar.size.x = maxf(4.0, _hp_bar_max_w * clampf(float(hp) / float(max_hp), 0.0, 1.0))
 	if hp <= 0:
 		alive = false
+		died.emit()
 		remove_from_group("buildings")
 		SelectionManager.drop_from_selection(self)
 		if has_method("kill_garrison"):

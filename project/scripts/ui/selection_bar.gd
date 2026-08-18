@@ -1,41 +1,58 @@
-class_name SelectionBar
 extends HBoxContainer
-## Bottom-center selection display: one portrait tile per selected unit
-## (original stand sprite + HP bar); click a portrait to select only that
-## unit. Shows "+N" when overflowing.
+## One portrait per selected unit. Rebuilds on selection_changed and
+## updates health bars from each unit's damaged signal — no polling.
 
 const MAX_PORTRAITS := 12
 
+var _slots: Array[Control] = []
 
-func _process(_delta: float) -> void:
-	var units := SelectionManager.selected
-	if not visible and units.is_empty():
-		return
-	_sync(units)
+
+func _ready() -> void:
+	add_theme_constant_override("separation", 4)
+	SelectionManager.selection_changed.connect(_sync)
 
 
 func _sync(units: Array) -> void:
 	var desired: int = mini(units.size(), MAX_PORTRAITS)
-	if get_child_count() != desired:
+	if _slots.size() != desired:
 		for c in get_children():
 			c.queue_free()
+		_slots.clear()
 		for i in desired:
-			add_child(_make_slot())
-	var children := get_children()
-	for i in children.size():
+			var slot := _make_slot()
+			add_child(slot)
+			_slots.append(slot)
+	for i in _slots.size():
+		var slot: Control = _slots[i]
 		# untyped on purpose: a freed unit in the list must not raise on
 		# assignment — the validity check below skips it
 		var u = units[i] if i < units.size() else null
-		var icon: TextureRect = children[i].get_meta("icon")
-		var hp: ColorRect = children[i].get_meta("hp")
+		var icon: TextureRect = slot.get_meta("icon")
 		icon.texture = null
+		slot.set_meta("unit", null)
 		if u != null and is_instance_valid(u) and u.has_method("portrait_path"):
+			slot.set_meta("unit", u)
 			var path: String = u.portrait_path()
 			if path != "" and ResourceLoader.exists(path):
 				icon.texture = Teams.tinted_texture(load(path),
 					int(u.get("team")))
-			if u.get("max_hp") != null and u.get("hp") != null:
-				hp.size.x = 24.0 * clampf(float(u.hp) / float(u.max_hp), 0.0, 1.0)
+			_update_hp(slot, u)
+			if u.has_signal("damaged"):
+				var cb := _on_unit_damaged.bind(slot)
+				if not u.damaged.is_connected(cb):
+					u.damaged.connect(cb)
+
+
+func _on_unit_damaged(_amount: int, slot: Control) -> void:
+	var u = slot.get_meta("unit")
+	if u != null and is_instance_valid(u):
+		_update_hp(slot, u)
+
+
+func _update_hp(slot: Control, u: Node) -> void:
+	var hp: ColorRect = slot.get_meta("hp")
+	if u.get("max_hp") != null and u.get("hp") != null:
+		hp.size.x = 24.0 * clampf(float(u.hp) / float(u.max_hp), 0.0, 1.0)
 
 
 func _make_slot() -> PanelContainer:
@@ -50,6 +67,7 @@ func _make_slot() -> PanelContainer:
 	icon.custom_minimum_size = Vector2(24, 24)
 	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	box.add_child(icon)
+	slot.set_meta("icon", icon)
 	var hp_bg := ColorRect.new()
 	hp_bg.color = Color(0, 0, 0, 0.6)
 	hp_bg.custom_minimum_size = Vector2(24, 3)
@@ -57,21 +75,6 @@ func _make_slot() -> PanelContainer:
 	var hp := ColorRect.new()
 	hp.color = Color(0.2, 1.0, 0.2)
 	hp.custom_minimum_size = Vector2(24, 3)
-	hp.position = Vector2(0, 0)
-	box.add_child(hp)
-	slot.set_meta("icon", icon)
+	hp_bg.add_child(hp)
 	slot.set_meta("hp", hp)
-	slot.gui_input.connect(func(ev):
-		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-			_pick(slot))
 	return slot
-
-
-func _pick(slot: PanelContainer) -> void:
-	var idx := slot.get_index()
-	if idx < SelectionManager.selected.size():
-		var u = SelectionManager.selected[idx]
-		if u == null or not is_instance_valid(u):
-			return
-		SelectionManager.clear_selection()
-		SelectionManager.toggle_select(u, false)

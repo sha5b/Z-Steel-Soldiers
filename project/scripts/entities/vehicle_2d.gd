@@ -422,36 +422,10 @@ func _combat() -> void:
 			_turret_fire = 0.25
 			_fire_flash = 0.3
 			_lid_timer = 1.2  # hatch open: snipers take note
-			Fx.gunfire(ContentDB.def_for(kind, unit_name).sound)
-			Fx.play("muzzle", global_position + to_target.normalized() * 12.0)
 			var def := ContentDB.def_for(kind, unit_name)
 			var amount := int(round(damage * GameState.vehicle_damage_mult(team)))
-			var projectile := def.projectile
-			var hit_chance := def.hit_chance
-			var target := _target
-			if projectile == null:
-				# hitscan weapon: per-shot chance, instant damage, tracer
-				if randf() <= hit_chance:
-					Fx.bullet(global_position + to_target.normalized() * 10.0, target.global_position)
-					target.take_damage(amount)
-				else:
-					Fx.bullet(global_position + to_target.normalized() * 10.0,
-						target.global_position + Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0)))
-			else:
-				# shell: damage lands when the shot arrives; explosive
-				# weapons splash around the impact
-				var tid := target.get_instance_id()
-				var radius := def.splash_radius
-				var impact: Vector2 = target.global_position
-				Fx.shell(global_position + to_target.normalized() * 12.0,
-					impact, projectile,
-					func():
-						var hit: Node2D = instance_from_id(tid) as Node2D
-						if hit_chance >= 1.0 or randf() <= hit_chance:
-							if hit and hit.alive:
-								hit.take_damage(amount)
-						if radius > 0.0:
-							Fx.area_damage(impact, radius, int(amount * 0.5), team))
+			Combat.fire(self, def, global_position + to_target.normalized() * 12.0,
+				_target, amount)
 
 
 ## Below half HP the hull switches to its damaged art and leaks: smoke

@@ -3,6 +3,9 @@ extends Node
 
 signal selection_changed(units: Array)
 signal order_issued(world_position: Vector2)
+signal drag_started
+signal drag_moved
+signal drag_ended
 
 var selected: Array[Node] = []
 var drag_start := Vector2.ZERO
@@ -37,6 +40,25 @@ func drop_from_selection(unit: Node) -> void:
 		selection_changed.emit(selected)
 
 
+## One click, one unit — the old clear-then-add dance in one place.
+func select_single(unit: Node) -> void:
+	clear_selection()
+	if unit is Unit2D and unit.alive:
+		selected.append(unit)
+	_cleanup()
+	selection_changed.emit(selected)
+
+
+## Units report their own deaths now; the selection follows.
+func listen(unit: Unit2D) -> void:
+	if not unit.died.is_connected(_on_unit_died):
+		unit.died.connect(_on_unit_died)
+
+
+func _on_unit_died(unit: Node) -> void:
+	drop_from_selection(unit)
+
+
 func select_area(world_rect: Rect2) -> void:
 	if not Input.is_key_pressed(KEY_SHIFT):
 		clear_selection()
@@ -53,6 +75,25 @@ func select_area(world_rect: Rect2) -> void:
 
 func issue_order(world_position: Vector2) -> void:
 	order_issued.emit(world_position)
+
+
+## Drag state flows through here so the rectangle view can follow the
+## signals instead of polling every frame.
+func begin_drag(screen_pos: Vector2) -> void:
+	drag_start = screen_pos
+	drag_current = screen_pos
+	is_dragging = true
+	drag_started.emit()
+
+
+func move_drag(screen_pos: Vector2) -> void:
+	drag_current = screen_pos
+	drag_moved.emit()
+
+
+func end_drag() -> void:
+	is_dragging = false
+	drag_ended.emit()
 
 
 func get_drag_rect() -> Rect2:

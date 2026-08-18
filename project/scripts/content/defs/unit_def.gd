@@ -22,5 +22,9 @@ extends Resource
 @export var snipe_chance := 0.0  # driver kill while the target's lid is open
 @export var splash_radius := 0.0  # explosive splash; 0 = none
 
+## Weapon behaviour: "hitscan" (tracer), "laser" (beam), "shell"
+## (travelling projectile + splash). Empty = auto: projectile def means
+## shell, otherwise hitscan.
+@export var weapon := ""
 @export var projectile: ProjectileDef = null  # null = hitscan
 @export var scene: PackedScene = null  # per-type scene (Phase 4); null = base
