@@ -114,7 +114,11 @@ func _draw() -> void:
 	for b in get_tree().get_nodes_in_group("buildings"):
 		if b is Node2D and b.alive:
 			_blip(b.global_position, Teams.minimap_color(b.team), 3.0)
+	# enemy intel needs a radar station (original Z) — own units always show
+	var radar = _player_has_radar()
 	for u in UnitRegistry.world_units():
+		if u.team != MatchState.player_team and not radar:
+			continue
 		_blip(u.global_position, Teams.minimap_color(u.team), 2.0)
 	# camera viewport in world space (works under stretch + zoom)
 	var xform: Transform2D = get_viewport().get_canvas_transform()
@@ -122,6 +126,14 @@ func _draw() -> void:
 	var r := Rect2(_to_panel(world_rect.position),
 		world_rect.size / (Vector2(map_size) * 16.0) * _map_rect.size)
 	draw_rect(r, Color(1, 1, 1, 0.85), false, 1.0)
+
+
+func _player_has_radar() -> bool:
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b is Building2D and b.alive and b.building_id == 2 \
+				and b.owner_team == MatchState.player_team:
+			return true
+	return false
 
 
 func _to_panel(world: Vector2) -> Vector2:

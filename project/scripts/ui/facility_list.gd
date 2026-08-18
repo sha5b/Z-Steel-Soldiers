@@ -3,9 +3,11 @@ extends VBoxContainer
 ## (fort, robot/vehicle factories) — captured factories appear live.
 ## Click an entry to select that building, which opens the production
 ## panel. Entries show the original factory labels and a fill bar for
-## whatever is currently building.
+## whatever is currently building. Ownership changes (captures) refresh
+## immediately; a slow fallback sweep covers producer deaths.
 
-const SCAN_SECONDS := 0.5
+const FALLBACK_SWEEP_SECONDS := 2.0
+const PROGRESS_REFRESH := 0.25
 const LABELS := {
 	"fort": "res://assets/z/ui/production/fort_factory_label.png",
 	"fort_factory": "res://assets/z/ui/production/fort_factory_label.png",
@@ -13,7 +15,8 @@ const LABELS := {
 	"vehicle_factory": "res://assets/z/ui/production/building_label.png",
 }
 
-var _accum := 0.0
+var _sweep_accum := 0.0
+var _progress_accum := 0.0
 var _entries := {}  # building node -> button
 
 
@@ -21,12 +24,22 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	custom_minimum_size = Vector2(118, 0)
 	add_theme_constant_override("separation", 3)
+	MatchState.zone_captured.connect(func(_team): _sync())
+	_sync()
 
 
 func _process(delta: float) -> void:
-	_accum += delta
-	if _accum >= SCAN_SECONDS:
-		_accum = 0.0
+	_progress_accum += delta
+	if _progress_accum >= PROGRESS_REFRESH:
+		_progress_accum = 0.0
+		for node in _entries:
+			var bar: TextureProgressBar = _entries[node].get_node_or_null("ProgressBar")
+			if bar and is_instance_valid(node):
+				bar.value = node.progress() * 100.0
+	# deaths and anything a capture didn't cover
+	_sweep_accum += delta
+	if _sweep_accum >= FALLBACK_SWEEP_SECONDS:
+		_sweep_accum = 0.0
 		_sync()
 
 
@@ -46,11 +59,6 @@ func _sync() -> void:
 			_entries[node] = _make_entry(node)
 		if is_instance_valid(_entries[node]):
 			_update_entry(_entries[node], node)
-	# progress fills, refreshed on every scan
-	for node in _entries:
-		var bar: TextureProgressBar = _entries[node].get_node_or_null("ProgressBar")
-		if bar and is_instance_valid(node):
-			bar.value = node.progress() * 100.0
 	# keep list order stable (top to bottom = map order)
 	var keys := _entries.keys()
 	keys.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())

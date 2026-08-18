@@ -29,6 +29,7 @@ var _flag_team := -1  # team the flag currently shows
 var _hp_bar: ColorRect
 var _hp_bar_max_w := 64.0
 var _sort_lift := Vector2.ZERO  # node lifted to the footprint bottom (y-sort line)
+var _ground_base: Sprite2D = null  # sliced footprint band (map-level)
 
 
 func setup(id: int, owner_team_value: int, planet_name: String, building_level := 0) -> void:
@@ -97,6 +98,8 @@ func queue_unit(item: String, silent := false) -> bool:
 		MatchState.money[owner_team] += stats.cost  # queue full: refund
 		MatchState.money_changed.emit(owner_team, MatchState.money[owner_team])
 		return false
+	if owner_team == MatchState.player_team and queue.items.size() == 1:
+		Fx.announce("starting_manufacture")
 	return true
 
 
@@ -104,6 +107,8 @@ func cancel_at(index: int) -> void:
 	var item := queue.cancel_at(index)
 	if item == "" or owner_team == 0:
 		return
+	if owner_team == MatchState.player_team:
+		Fx.announce("manufacturing_canceled")
 	var stats := ContentDB.def_for(item.split(":")[0], item.split(":")[1])
 	MatchState.money[owner_team] += stats.cost
 	MatchState.money_changed.emit(owner_team, MatchState.money[owner_team])
@@ -157,6 +162,7 @@ func spawn_produced(item: String) -> void:
 
 
 func _ready() -> void:
+	tree_exiting.connect(_free_ground_base)
 	# works with setup() (JSON loader) or straight @export values (map scenes)
 	if not is_fort:
 		is_fort = building_id == 0 or building_id == 1
@@ -173,7 +179,14 @@ func _ready() -> void:
 		add_to_group("facilities")
 
 
+func _free_ground_base() -> void:
+	if is_instance_valid(_ground_base):
+		_ground_base.queue_free()
+	_ground_base = null
+
+
 func _build_sprite() -> void:
+	_free_ground_base()
 	_sprite = Sprite2D.new()
 	_sprite.texture = load(_texture_path(false))
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -188,12 +201,16 @@ func _build_sprite() -> void:
 	# Godot 4.7 y-sorts by the NODE's y, so the node moves down to the
 	# footprint's bottom edge (the wall line) and every visual shifts up
 	# to compensate: units below the line draw in front of the building,
-	# units on/above it behind. Bridges stay centred (flat ground art).
-	# Runtime only — map scenes keep baking footprint centres.
+	# units on/above it behind. The ground BASE band is split out as a
+	# separate map-level sprite that sorts at the platform's TOP edge,
+	# so units walking ON the base draw over it (original behaviour).
+	# Bridges stay centred (flat ground art). Runtime only — map scenes
+	# keep baking footprint centres.
 	if not is_bridge() and not Engine.is_editor_hint():
 		_sort_lift = Vector2(0, ts.y * 0.25)
 		position += _sort_lift
 		_sprite.position -= _sort_lift
+		_split_ground_base(ts)
 
 	_flag = AnimatedSprite2D.new()
 	if building_id == 6 or building_id == 7:
@@ -214,6 +231,45 @@ func _build_sprite() -> void:
 		_hp_bar.size = Vector2(bar_w, 5)
 		_hp_bar.position = Vector2(-bar_w * 0.5, -ts.y * 0.5 - 12) - _sort_lift
 		add_child(_hp_bar)
+
+
+## The footprint band of the art is GROUND (units walk over it): slice
+## it into a separate map-level sprite sorting at the platform's top
+## edge. The building node keeps sorting at the wall line.
+func _split_ground_base(ts: Vector2) -> void:
+	var map := get_parent()
+	if not (map is Node2D) or is_bridge():
+		return
+	var band := int(ts.y * 0.5)  # footprint height in art pixels
+	if band <= 0 or ts.y <= band:
+		return
+	var atlas := AtlasTexture.new()
+	atlas.atlas = _sprite.texture
+	atlas.region = Rect2(0, ts.y - band, ts.x, band)
+	var ground := Sprite2D.new()
+	ground.name = "Base_%s" % name
+	ground.texture = atlas
+	ground.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	ground.centered = false
+	# building art renders 1:1 — the band's top-left in world space; the
+	# node position sorts at the platform's TOP edge so everything on
+	# the base draws over it
+	ground.position = _sprite.global_position + Vector2(0.0, ts.y - band)
+	map.add_child(ground)
+	move_ground.call_deferred(ground, map)
+	_ground_base = ground
+	# hide the band on the main sprite so it does not double-draw
+	var hull := AtlasTexture.new()
+	hull.atlas = _sprite.texture
+	hull.region = Rect2(0, 0, ts.x, ts.y - band)
+	_sprite.texture = hull
+	_sprite.position.y += band
+
+
+## Keep the sliced base under the building in tree order (stable ties).
+func move_ground(ground: Node2D, map: Node2D) -> void:
+	if is_instance_valid(ground) and is_instance_valid(map):
+		map.move_child(ground, get_index() if is_inside_tree() else 0)
 
 
 ## Ownership flag: master (red) art + the team's palette-swap material —
@@ -358,9 +414,13 @@ func _process(delta: float) -> void:
 	for z in MatchState.zones:
 		if z.world_rect().has_point(center):
 			if z.owner_team != owner_team:
+				var was_player := owner_team == MatchState.player_team
 				owner_team = z.owner_team
 				team = owner_team
 				update_flag(owner_team)
+				if not was_player and owner_team == MatchState.player_team \
+						and building_id == 2:
+					Fx.announce("radar_activated")
 			break
 	_repair_tick(delta)
 
@@ -391,6 +451,8 @@ func try_start_repair(unit: Node2D) -> bool:
 		return false
 	repair_unit = unit
 	_repair_time = 0.0
+	if owner_team == MatchState.player_team:
+		Fx.announce("starting_repair")
 	unit.visible = false
 	unit.velocity = Vector2.ZERO
 	unit.move_target = Vector2.ZERO
@@ -414,6 +476,8 @@ func _repair_tick(delta: float) -> void:
 		var done: Node2D = repair_unit
 		repair_unit = null
 		done.hp = done.max_hp
+		if owner_team == MatchState.player_team:
+			Fx.announce("vehicle_repaired")
 		done.visible = true
 		done.add_to_group("selectable")
 		done.add_to_group("units")
@@ -438,6 +502,9 @@ func take_damage(amount: int) -> void:
 		tween.tween_property(_sprite, "modulate", Color.WHITE, 0.15)
 	if _hp_bar:
 		_hp_bar.size.x = maxf(4.0, _hp_bar_max_w * clampf(float(hp) / float(max_hp), 0.0, 1.0))
+	if is_fort and team == MatchState.player_team and hp > 0 \
+			and float(hp) / float(max_hp) < 0.35:
+		Fx.announce("youre_losing")
 	if hp <= 0:
 		alive = false
 		died.emit()

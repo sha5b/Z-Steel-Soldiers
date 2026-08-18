@@ -45,6 +45,31 @@ deliberately left out (scope decision).
   (fluidsynth + soundfont required)
 - Weapon classes/splash, veterancy, destructible rocks/bridges
 
+## Open items closed (2026-08, second sweep)
+
+- radar station now grants minimap enemy intel (own it to see enemy
+  blips) + comp_radar_activated announcement
+- full commander announcer set wired: manufacture start/cancel, repair
+  start/done, radar online, ten "you're losing" taunts under 35% fort
+  HP; simultaneous one-shot voices capped (fixes audio slot exhaustion)
+- original track marks (per-planet tank sheets + jeep) drop behind
+  moving vehicles and fade; blast craters (per-planet, random variants)
+  persist under a cap; ambient animals (15 species, planet pools)
+  wander maps and die in blasts
+- building ground bases are split from the structure: units walking on
+  a base draw OVER it (was: hidden behind the whole sprite)
+- saves match zones by rect (not order); facility quick bar is
+  event-driven with a slow death sweep; parade/pose tests assert
+  pass/fail now
+- known cosmetic: 4 ogg instances report leaked at exit (Godot quit
+  path holds the cached stream chain — present since the first log)
+
+## Not rebuildable from the original assets
+
+- water animation (single-frame tile art — the original palette-cycled
+  its 8-bit sheets; nothing to animate from) and unit shadows (no
+  shadow art ships in either asset set).
+
 ## Modularization (2026-08)
 
 Complete: master-art team palette swap, VFX overhaul, content as

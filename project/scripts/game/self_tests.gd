@@ -489,8 +489,13 @@ static func run(ctx: Node) -> void:
 						v9._layer.position if v9._layer else Vector2.INF])
 				v9.remove_from_group("units")  # deferred frees must not eat pop cap
 				v9.queue_free()
+		var pose_missing := 0
 		for line in lines:
+			if "NONE" in String(line):
+				pose_missing += 1
 			print("POSE ", line)
+		print("POSESUM: lines=%d missing_layers=%d %s" % [lines.size(),
+			pose_missing, "OK" if pose_missing == 0 else "FAIL"])
 	if "--level-test" in args:
 		# building levels gate the build roster (original zbuildlist) and
 		# speed up production; forts build robots AND vehicles AND cannons
@@ -724,7 +729,7 @@ static func run(ctx: Node) -> void:
 		if not rock_found:
 			cproblems.append("no rocks on this map")
 		print("COMBAT2: problems=%d %s" % [cproblems.size(),
-			", ".join(cproblems) if not cproblems.is_empty() else "(new combat ok)"])
+			", ".join(cproblems) if not cproblems.is_empty() else "OK"])
 	if "--tactics-test" in args:
 		# the tactical AI, end to end: with funds and hardware on the
 		# map it must produce units, man empty vehicles/cannons and
@@ -1108,6 +1113,20 @@ static func run(ctx: Node) -> void:
 				c.queue_unit("robot:psycho")
 				c.queue_unit("robot:tough")
 				break
+		await Engine.get_main_loop().process_frame
+		var spawned := 0
+		var missing_turret := 0
+		for c in ctx.get_children():
+			if c is Vehicle2D and c.manned:
+				spawned += 1
+				if c.unit_name in ["light", "medium", "heavy"] \
+						and (c._layer == null or c._layer.sprite_frames == null):
+					missing_turret += 1
+		# 8 parade vehicles + 8 direction tanks, all manned (the extra
+		# jeep is deliberately empty hardware)
+		print("PARADE: hardware=%d (want 16) turret_issues=%d %s" % [
+			spawned, missing_turret,
+			"OK" if spawned == 16 and missing_turret == 0 else "FAIL"])
 	if "--fx-test" in args:
 		# effects/projectiles must spawn and clean up on their own
 		# (earlier flags may have paused the tree via game over)
@@ -1311,4 +1330,5 @@ static func run(ctx: Node) -> void:
 					mat_missing.append("%s t%d" % [u.unit_name, u.team])
 		print("TINTMAT: %s" % ("OK" if mat_missing.is_empty()
 			else "MISSING %s" % mat_missing))
+
 

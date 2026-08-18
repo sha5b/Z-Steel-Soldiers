@@ -254,7 +254,7 @@ func _combat() -> void:
 		Fx.gunfire("GRENLOBX")
 		Fx.shell(global_position, g_impact, GRENADE,
 			func():
-				Combat.area_damage(g_impact, 34.0, 26, team))
+				Combat.area_damage(g_impact, 34.0, 26, team, true))
 		return
 	if _target and _fire_timer <= 0.0:
 		var to_target := _target.global_position - global_position

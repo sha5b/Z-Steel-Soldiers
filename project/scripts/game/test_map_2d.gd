@@ -31,6 +31,8 @@ func _ready() -> void:
 	if data.is_empty():
 		push_error("empty map")
 		return
+	MatchState.planet = String(data.get("terrain", "desert"))
+	_spawn_ambient_life()
 	if not GameState.pending_load.is_empty():
 		_apply_load()
 	camera.position = Vector2(int(data.width), int(data.height)) * 8.0
@@ -94,6 +96,22 @@ func _screenshot(delay_text: String) -> void:
 	get_tree().quit()
 
 
+## A few ambient critters wander every map (original hut animals).
+func _spawn_ambient_life() -> void:
+	for i in Animal.COUNT_PER_MAP:
+		var species := Animal.random_species(MatchState.planet)
+		if species == "":
+			return
+		var pos := Vector2(
+			randf_range(32.0, NavWorld.map_rect.size.x - 32.0),
+			randf_range(32.0, NavWorld.map_rect.size.y - 32.0))
+		if NavWorld.walkable(Vector2i(pos / 16.0), false):
+			var critter := Animal.new()
+			critter.species = species
+			critter.position = pos
+			add_child(critter)
+
+
 ## Restore a saved match: money, upgrades, zone owners, and units are
 ## replayed over the freshly spawned map.
 func _apply_load() -> void:
@@ -105,8 +123,20 @@ func _apply_load() -> void:
 	for team in save.get("upgrades", {}):
 		MatchState.upgrades[int(team)] = save.upgrades[team]
 	var owners: Array = save.get("zone_owners", [])
-	for i in mini(owners.size(), MatchState.zones.size()):
-		MatchState.zones[i].set_owner_team(int(owners[i]))
+	if not owners.is_empty() and owners[0] is Dictionary:
+		# zone rects are stable map data — match by rect, never by order
+		for zone in MatchState.zones:
+			for entry in owners:
+				if int(entry.get("x", -1)) == zone.zone_rect.position.x \
+						and int(entry.get("y", -1)) == zone.zone_rect.position.y \
+						and int(entry.get("w", -1)) == zone.zone_rect.size.x \
+						and int(entry.get("h", -1)) == zone.zone_rect.size.y:
+					zone.set_owner_team(int(entry.get("team", 0)))
+					break
+	else:
+		# legacy saves stored a positional int array
+		for i in mini(owners.size(), MatchState.zones.size()):
+			MatchState.zones[i].set_owner_team(int(owners[i]))
 	# replace spawned units with the saved roster
 	for u in get_tree().get_nodes_in_group("units"):
 		u.queue_free()

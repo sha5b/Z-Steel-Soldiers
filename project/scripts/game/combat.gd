@@ -48,6 +48,7 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 					if hit and hit.alive:
 						hit.take_damage(amount)
 					if splash > 0.0:
+						Decals.crater(impact, splash > 36.0)
 						area_damage(impact, splash, int(amount * 0.5),
 							shooter_team))
 		_:
@@ -59,7 +60,9 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 ## enemy unit and fort/bridge around the impact, and crumbles rocks the
 ## blast reaches. Friendly fire is off — the shooter's team is spared.
 static func area_damage(world_pos: Vector2, radius: float, amount: int,
-		shooter_team: int) -> void:
+		shooter_team: int, crater := false) -> void:
+	if crater:
+		Decals.crater(world_pos, radius > 36.0)
 	var r2 := radius * radius
 	for u in UnitRegistry.in_radius(world_pos, radius):
 		if u.team != shooter_team and u.team != 0:

@@ -29,7 +29,11 @@ func capture_save() -> Dictionary:
 				facilities.append(d)
 	var zone_owners := []
 	for z in MatchState.zones:
-		zone_owners.append(z.owner_team)
+		zone_owners.append({
+			"x": z.zone_rect.position.x, "y": z.zone_rect.position.y,
+			"w": z.zone_rect.size.x, "h": z.zone_rect.size.y,
+			"team": z.owner_team,
+		})
 	return {
 		"map": GameState.current_map, "money": MatchState.money,
 		"upgrades": MatchState.upgrades, "zone_owners": zone_owners,

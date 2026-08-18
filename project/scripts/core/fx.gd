@@ -158,7 +158,10 @@ func ui_click() -> void:
 ## for the PLAYER only, throttled so a firefight doesn't spam them.
 const ANNOUNCE_THROTTLE := {"fort_under_attack": 20000, "territory_lost": 15000,
 	"robot_manufactured": 8000, "vehicle_manufactured": 8000,
-	"gun_manufactured": 8000}
+	"gun_manufactured": 8000, "starting_manufacture": 8000,
+	"manufacturing_canceled": 8000, "starting_repair": 10000,
+	"vehicle_repaired": 10000, "radar_activated": 20000, "youre_losing": 30000}
+const MAX_VOICES := 12  # simultaneous one-shot players (audio slot cap)
 var _announce_gates := {}
 
 
@@ -169,6 +172,9 @@ func announce(event: String) -> void:
 	if until > Time.get_ticks_msec():
 		return
 	_announce_gates[event] = Time.get_ticks_msec() + int(ANNOUNCE_THROTTLE.get(event, 10000))
+	if event == "youre_losing":
+		_play_wav("comp_youre_losing_%02d" % randi() % 10, -2.0)
+		return
 	_play_wav("comp_%s" % event, -2.0)
 
 
@@ -185,12 +191,24 @@ func _play_wav(name: String, volume_db: float) -> void:
 	var path := "%s/%s.wav" % [SOUNDS_DIR, name]
 	if not ResourceLoader.exists(path):
 		return
+	_enforce_voice_cap()
 	var player := AudioStreamPlayer.new()
 	player.stream = load(path)
 	player.volume_db = volume_db
 	add_child(player)
 	player.finished.connect(player.queue_free)
 	player.play()
+
+## Too many simultaneous one-shots exhausts the audio server's slots
+## (the rare `slot >= slot_max` error under big firefights) — stop the
+## oldest voices beyond the cap.
+func _enforce_voice_cap() -> void:
+	var players: Array[AudioStreamPlayer] = []
+	for c in get_children():
+		if c is AudioStreamPlayer and c.playing:
+			players.append(c)
+	while players.size() >= MAX_VOICES:
+		players.pop_front().stop()
 
 
 func _gate_allows(name: String) -> bool:

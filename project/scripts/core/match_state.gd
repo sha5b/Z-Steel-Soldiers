@@ -9,6 +9,8 @@ signal zone_captured(team: int)
 const INCOME_PER_ZONE := 5.0   # money per owned zone per tick
 const TICK_SECONDS := 1.0
 
+var map_root: Node2D = null  # where units and decals live (set at load)
+var planet := "desert"
 var player_team := 1
 var ai_difficulty := 1  # 0 easy, 1 normal, 2 hard
 var money := {1: 200, 2: 200, 3: 200, 4: 200}

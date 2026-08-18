@@ -80,7 +80,7 @@ func _garrison_fire(delta: float) -> void:
 			var hit: Node2D = instance_from_id(tid) as Node2D
 			if hit and hit.alive:
 				hit.take_damage(20)
-			Combat.area_damage(impact, 40.0, 10, team))
+			Combat.area_damage(impact, 40.0, 10, team, true))
 
 
 ## The fort falling kills everyone inside.

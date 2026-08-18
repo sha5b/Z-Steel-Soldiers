@@ -43,6 +43,7 @@ var _turret_fire := 0.0
 var _scan_timer := 0.0
 var _damaged := false
 var _smoke_timer := 0.0
+var _track_distance := 0.0
 var _fire_flash := 0.0
 var _install_timer := 0.0
 var _wreck := false
@@ -311,7 +312,12 @@ func _steer(delta: float) -> void:
 		_last_dir = _angle_to_dir(velocity.angle())
 		_play_body()
 		var dist_before := offset_to_next_waypoint()
+		var prev_pos := global_position
 		global_position += velocity * delta
+		_track_distance += prev_pos.distance_to(global_position)
+		if _track_distance >= Decals.TRACK_SPACING:
+			_track_distance = 0.0
+			Decals.track(_last_dir, global_position, unit_name == "jeep")
 		# consume waypoints leapfrogged by a large step (see Unit2D._steer)
 		if not waypoints.is_empty() \
 				and global_position.distance_to(waypoints[0]) > dist_before:

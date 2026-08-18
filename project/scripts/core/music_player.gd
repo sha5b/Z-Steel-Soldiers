@@ -17,6 +17,14 @@ var _player: AudioStreamPlayer
 var _mode := ""
 
 
+func _exit_tree() -> void:
+	# quitting mid-track otherwise leaks the playing stream + its packet
+	# sequence (they keep each other referenced outside the tree)
+	if _player:
+		_player.stop()
+		_player.stream = null
+
+
 func _ready() -> void:
 	_player = AudioStreamPlayer.new()
 	_player.bus = "Master"
