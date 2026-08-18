@@ -1,3 +1,4 @@
+@tool
 extends Node
 ## Autoload: the content registry. Authorable content lives as Resource
 ## .tres files under content/ (units, vehicles, cannons, buildings,
@@ -6,6 +7,10 @@ extends Node
 ## without a .tres are auto-discovered with default stats: dropping a new
 ## folder of correctly named PNGs on disk is enough to get playable
 ## content. Query from anywhere: ContentDB.def_for("robot", "psycho").
+##
+## @tool: entity previews in opened map scenes resolve their defs through
+## this registry in the editor too (a non-tool autoload is a hollow
+## placeholder there and every query would error).
 
 const ASSET_ROOT := "res://assets/z"
 const CONTENT_ROOT := "res://content"
