@@ -1,15 +1,59 @@
 # Asset conventions & adding content
 
 The game is data-driven: gameplay code never hardcodes a sprite path or
-unit stat. Everything flows through two pieces:
+unit stat. Content is **Resource `.tres` files** (inspector-editable)
+plus on-disk art folders:
 
-- **`scripts/content/*.gd`** — definition tables (stats, folders, costs).
-- **`ContentDB`** (autoload) — merges those tables and auto-discovers
-  sprite folders on disk that have no entry yet.
+- **`content/{units,vehicles,cannons,buildings,effects,pickups,projectiles}/`**
+  — one `.tres` per thing (stats, art folder, weapon behaviour,
+  producer rosters). Copy one next to its siblings and edit it in the
+  inspector to add content. A `UnitDef` may also point at a per-type
+  **scene** (`scenes/<kind-plural>/<name>.tscn`) carrying the visual
+  rig — turret offsets are exported arrays, tweakable per type.
+- **`ContentDB`** (autoload, `@tool` so editor previews work) — scans
+  `content/`, resolves scenes by convention, and auto-discovers sprite
+  folders on disk that have no `.tres` yet (default stats).
 
 Drop correctly-named PNGs into `project/assets/z/` and they become
 playable content. This file lists the naming patterns the scanners look
 for — they double as a spec for generated assets.
+
+## Recipes — adding content
+
+**New unit/vehicle/cannon**: copy a `.tres` from `content/units/` (or
+`vehicles/`, `cannons/`) → set `id`, `asset_dir`, stats. Drop the art
+folder following the patterns below. Optionally add
+`scenes/<kind-plural>/<name>.tscn` (inherit the base scene; set
+`unit_name`/`kind` and the turret offset arrays). That's it — build
+menus, AI, saves and the minimap pick it up from ContentDB.
+
+**New weapon behaviour**: `weapon` on the UnitDef picks the resolver —
+`"hitscan"`, `"laser"`, `"shell"` (a `ProjectileDef` sub-resource with
+speed/impact/texture). A genuinely new behaviour = one class registered
+in `Combat` (scripts/game/combat.gd).
+
+**New building**: `.tres` in `content/buildings/` (size, flags, anims,
+per-level `build_lists` rosters as `"kind:name"` entries) + a scene in
+`scenes/buildings/` with the behaviour script + art under
+`assets/z/buildings/<kind>/base_<planet>.png` (+ `_destroyed`).
+
+**New effect/VFX**: drop a folder under `assets/z/effects/<name>/` with
+`<name>_n00.png...` frames — auto-registered, playable via
+`Fx.play("<name>")`. Tune fps/scale/grounding in a
+`content/effects/<name>.tres` (scale is relative to the 2x unit
+baseline; `art` plays another folder's frames).
+
+**New item/crate**: `.tres` in `content/pickups/` — the effect is data
+(`upgrade_key` grants a team upgrade, `grenades` arms the collector).
+Wire new upgrade effects in MatchState.
+
+**New map**: drop the JSON (and/or generated `.tscn`) under
+`assets/maps/` — MapCatalog picks it up everywhere (map select,
+campaign, cycler); `sandbox*` names are excluded from the campaign.
+
+**New team colour**: one entry in `scripts/core/teams.gd` (16-shade
+ramp) — sprites, flags, icons, minimap and UI accents follow
+automatically (master art + palette-swap shader).
 
 ## Folder layout
 

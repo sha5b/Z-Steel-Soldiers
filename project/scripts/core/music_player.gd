@@ -50,9 +50,11 @@ func _play(path: String, loop: bool) -> void:
 	var stream = load(path)
 	if stream == null:
 		return
-	if stream is AudioStreamOggVorbis:
-		stream.loop = loop
-	elif stream is AudioStreamMP3:
-		stream.loop = loop
+	# load() returns the SHARED cached resource — flip loop mode on a
+	# duplicate so two users never fight over the cached stream's flags
+	if stream is AudioStreamOggVorbis or stream is AudioStreamMP3:
+		var own: AudioStream = stream.duplicate()
+		own.loop = loop
+		stream = own
 	_player.stream = stream
 	_player.play()

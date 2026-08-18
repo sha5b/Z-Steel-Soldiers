@@ -44,3 +44,11 @@ deliberately left out (scope decision).
 - Full soundtrack needs one run of `tools/zod/render_midi.sh`
   (fluidsynth + soundfont required)
 - Weapon classes/splash, veterancy, destructible rocks/bridges
+
+## Modularization (2026-08)
+
+Complete: master-art team palette swap, VFX overhaul, content as
+inspector-editable .tres defs, scene-per-unit/building, Order/state
+machine, one weapon resolver, entity signals (HUD is signal-driven),
+GameState split into NavWorld/MatchState/SaveSystem, UnitRegistry,
+MapCatalog. Recipes for adding content: docs/ASSET_CONVENTIONS.md.

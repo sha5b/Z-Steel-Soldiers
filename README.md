@@ -7,7 +7,7 @@ assets and format knowledge from the open-source
 
 > **Status:** single-player feature-complete — all 57 original maps,
 > full unit roster, territory economy, production, campaign, save/load,
-> AI with difficulty, and a 17-check headless test suite. Multiplayer
+> AI with difficulty, and a 34-check headless test suite. Multiplayer
 > intentionally out of scope. See `docs/ROADMAP.md`.
 
 ## Environment
@@ -35,13 +35,24 @@ generated tilesets, move buildings/zones/units, press F6 to play; regenerate
 them from the JSONs with `godot --headless --path project
 res://tools/build_map_resources.tscn`.
 
-Project code layout: `scripts/core` (autoloads: ContentDB, Fx, GameState,
-SelectionManager, MusicPlayer, Campaign), `scripts/content` (definition
-tables), `scripts/entities` (units, buildings, effects), `scripts/game`
-(match flow, map loader, AI, self-tests), `scripts/ui` (HUD). Adding
-content (units, buildings, pickups, effects, maps) is documented in
-`docs/ASSET_CONVENTIONS.md` — mostly drop-in folders plus one table
-entry.
+Project code layout — autoloads: **ContentDB** (content registry,
+inspector-editable `.tres` defs under `content/`), **Fx** (presentation),
+**SaveSystem** (per-entity save contract), **NavWorld** (pathing),
+**MatchState** (economy, upgrades, caps), **UnitRegistry** (typed unit
+queries), **GameState** (match flow/win), **SelectionManager**,
+**MusicPlayer**, **Campaign**. Then: `scripts/content` (Resource def
+classes), `scripts/entities` (units, buildings, effects, scenes under
+`scenes/{units,vehicles,cannons,buildings}`), `scripts/game` (orders,
+combat, spawner, map loader/catalog, AI, self-tests), `scripts/ui` (HUD,
+signal-driven). Adding content (units, buildings, pickups, effects,
+maps, team colours) is documented step by step in
+`docs/ASSET_CONVENTIONS.md` — copy a `.tres`, drop an art folder.
+
+Headless test suite: 34 flags (`--combat-test`, `--tint-test`,
+`--scenes-test`, ...), run in parallel lanes from `project/`:
+`res://scenes/main.tscn --<flag>-test --quit-after N`. Screenshot
+verification: add `--screenshot <seconds>` (warps the mouse so edge pan
+stays put).
 
 ## Asset licensing
 
