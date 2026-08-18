@@ -184,20 +184,32 @@ func _build_sprite() -> void:
 	_sprite.texture = load(_texture_path(false))
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_art_size = _sprite.texture.get_size() if _sprite.texture else Vector2.ZERO
-	# bottom-center the sprite over the footprint
 	var ts: Vector2 = _art_size
 	_sprite.centered = false
-	_sprite.position = Vector2(-ts.x * 0.25, -ts.y * 0.5)  # origin = footprint center
+	# MAP ANCHOR CONTRACT (zod): the map object's tile (x,y) is the ART
+	# TOP-LEFT — the node arrives at that tile's centre (x*16+8, y*16+8),
+	# so the art's top-left sits exactly on the map cell. Verified
+	# against all shipped maps: with this anchor forts stand on their
+	# designed ground (the old centre-anchored math put them ~5 tiles
+	# too high, painting their platforms over open roads).
+	_sprite.position = Vector2(-8.0, -8.0)
 	if building_id == 7:  # horizontal bridge: rotate the vertical strip
 		_sprite.rotation_degrees = 90
-		_sprite.position = Vector2(-ts.y * 0.25, ts.x * 0.5) - Vector2(0, ts.x)
+		# the rotated quad spans [-h,0]x[0,w] around its origin, so the
+		# origin moves to the art top-left + (art height, 0)
+		_sprite.position = Vector2(-8.0 + ts.y, -8.0)
 	add_child(_sprite)
-	# Y-SORT CONTRACT: the node sits at the art's vertical MIDDLE — the
-	# wall base, where the structure meets its ground platform. Units
-	# south of that line stand IN FRONT and draw over the wall's lower
-	# pixels and the platform apron; units north of it are behind and
-	# get overlaid by the structure. The whole art (platform included)
-	# stays ONE sprite — nothing can shear, shift or desync again.
+	if not is_bridge():
+		# Y-SORT CONTRACT: lift the node to the art's vertical MIDDLE —
+		# the wall base, where the structure meets its ground platform.
+		# Units south of that line stand IN FRONT and draw over the
+		# wall's lower pixels and the platform apron; units north of it
+		# are behind and get overlaid by the structure. The whole art
+		# (platform included) stays ONE sprite — nothing can shear,
+		# shift or desync again.
+		var lift := ts.y * 0.5 - 8.0
+		position.y += lift
+		_sprite.position.y -= lift
 
 	_flag = AnimatedSprite2D.new()
 	if building_id == 6 or building_id == 7:
@@ -220,17 +232,17 @@ func _build_sprite() -> void:
 		add_child(_hp_bar)
 
 
-## The art's on-screen rect in world pixels (art renders 1:1). This —
-## not a half-size derivation — is the truth for clicks, targeting and
-## the impassable cells.
+## The art's on-screen rect in world pixels (art renders 1:1): top-left
+## anchored on the map cell (see _build_sprite). This — not a half-size
+## derivation — is the truth for clicks, targeting and the impassable
+## cells.
 func art_world_rect() -> Rect2:
 	if _sprite == null or _art_size == Vector2.ZERO:
 		return Rect2(global_position - Vector2(16, 16), Vector2(32, 32))
 	if building_id == 7:  # rotated horizontal bridge
-		return Rect2(global_position + Vector2(-_art_size.y * 0.25, -_art_size.x * 0.5),
+		return Rect2(global_position + Vector2(-8, -8),
 			Vector2(_art_size.y, _art_size.x))
-	return Rect2(global_position + Vector2(-_art_size.x * 0.25, -_art_size.y * 0.5),
-		_art_size)
+	return Rect2(global_position + Vector2(-8, -_art_size.y * 0.5), _art_size)
 
 
 ## World tiles this building makes impassable: the def's solid_tiles

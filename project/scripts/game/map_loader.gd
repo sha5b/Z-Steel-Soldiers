@@ -209,7 +209,9 @@ static func _spawn_building(parent: Node, o: Dictionary, pos: Vector2, planet: S
 	parent.add_child(node)
 	if def.bridge_span != Vector2i.ZERO:
 		var span: Vector2i = def.bridge_span
-		var lo := Vector2i(int(o.x) - int(span.x / 2.0), int(o.y) - int(span.y / 2.0))
+		# same MAP ANCHOR CONTRACT as building art: the object tile is the
+		# span's TOP-LEFT (zod loc semantics), not its centre
+		var lo := Vector2i(int(o.x), int(o.y))
 		for bx in span.x:
 			for by in span.y:
 				var cell := lo + Vector2i(bx, by)
@@ -328,7 +330,8 @@ static func _clear_bridge(bridge: Building2D, def: BuildingDef,
 		grid: AStarGrid2D, vgrid: AStarGrid2D) -> void:
 	var tile := Vector2i(((bridge.global_position - Vector2(8, 8)) / TILE).floor())
 	var span: Vector2i = def.bridge_span
-	var lo := tile - Vector2i(int(span.x / 2.0), int(span.y / 2.0))
+	# object tile = span TOP-LEFT (zod loc semantics — same as the JSON path)
+	var lo := tile
 	for bx in span.x:
 		for by in span.y:
 			var cell := lo + Vector2i(bx, by)
