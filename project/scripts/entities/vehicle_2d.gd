@@ -139,14 +139,11 @@ func _build_frames() -> void:
 		else:
 			_asset_dir = ContentDB.def_for(kind, unit_name).asset_dir
 	# vehicles/cannons have no per-team walk cycle: empty / base / fire
-	# (base switches to the damaged hull set below half HP)
+	# (base switches to the damaged hull set below half HP) — every
+	# team-painted frame loads in the owner's colours natively
 	sprite.sprite_frames = AnimLibrary.vehicle_frames(_asset_dir, team, _damaged)
 	if not sprite.animation_finished.is_connected(_on_anim_finished):
 		sprite.animation_finished.connect(_on_anim_finished)
-	# hull art mixes neutral (empty) and team paint — the palette swap is
-	# a no-op on neutral pixels, so one material covers both states
-	Teams.apply(sprite, team)
-	Teams.apply(ring, team)
 	_build_layer()
 	# the rig nodes come from the scene — assign frames when present
 	if _wheels != null:
@@ -161,12 +158,6 @@ func _build_frames() -> void:
 		var dset: Dictionary = AnimLibrary.apc_open_set(_asset_dir, team)
 		if not dset.is_empty():
 			_doors.sprite_frames = dset.frames
-	# one-shot layers keep their build-time material — refresh the tint
-	# for the current team (capture/eject swaps materials, not frames)
-	if _doors:
-		Teams.apply(_doors, team)
-	if _cones:
-		Teams.apply(_cones, team)
 
 
 ## The turret / gun layer for tanks, missile launchers, APC scanners and
@@ -183,7 +174,6 @@ func _build_layer() -> void:
 	if lset.is_empty():
 		_layer.visible = false
 		return
-	Teams.apply(_layer, team)  # neutral turret tops pass through untouched
 	_layer_canvas_off = lset.get("canvas_off", PackedVector2Array())
 	_layer_hull_off = turret_hull_off
 	_layer_aim_off = turret_aim_off
@@ -226,7 +216,8 @@ func _start_crane_repair(b: Building2D) -> void:
 	waypoints = PackedVector2Array()
 	velocity = Vector2.ZERO
 	_play_body()
-	if _cones != null and _cones.sprite_frames == null:
+	if _cones != null:
+		# rebuilt per repair: a captured crane must show its new team's cones
 		var frames := SpriteFrames.new()
 		frames.add_animation("loop")
 		frames.set_animation_speed("loop", 8.0)

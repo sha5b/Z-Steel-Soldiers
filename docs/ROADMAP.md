@@ -72,8 +72,10 @@ deliberately left out (scope decision).
 
 ## Modularization (2026-08)
 
-Complete: master-art team palette swap, VFX overhaul, content as
-inspector-editable .tres defs, scene-per-unit/building, Order/state
-machine, one weapon resolver, entity signals (HUD is signal-driven),
-GameState split into NavWorld/MatchState/SaveSystem, UnitRegistry,
-MapCatalog. Recipes for adding content: docs/ASSET_CONVENTIONS.md.
+Complete: native per-team art variants (each team loads the original
+engine's own recoloured sprites — no runtime recolouring), VFX overhaul,
+content as inspector-editable .tres defs, scene-per-unit/building,
+Order/state machine, one weapon resolver, entity signals (HUD is
+signal-driven), GameState split into NavWorld/MatchState/SaveSystem,
+UnitRegistry, MapCatalog. Recipes for adding content:
+docs/ASSET_CONVENTIONS.md.

@@ -111,10 +111,9 @@ func _update_queue(factory: Node) -> void:
 			btn.custom_minimum_size = Vector2(40, 44)
 			btn.tooltip_text = "Right-click to cancel"
 			var parts: PackedStringArray = String(q[idx]).split(":")
-			var icon_path := _icon_path(parts[0], parts[1])
+			var icon_path := _icon_path(parts[0], parts[1], MatchState.player_team)
 			if ResourceLoader.exists(icon_path):
-				btn.icon = Teams.tinted_texture(load(icon_path),
-					MatchState.player_team)
+				btn.icon = load(icon_path)
 				btn.expand_icon = true
 			var i := idx
 			btn.gui_input.connect(func(ev):
@@ -159,10 +158,9 @@ func _build_buttons(factory: Node) -> void:
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		_object_button_chrome(btn)
-		var icon_path := _icon_path(kind, type_name)
+		var icon_path := _icon_path(kind, type_name, MatchState.player_team)
 		if ResourceLoader.exists(icon_path):
-			btn.icon = Teams.tinted_texture(load(icon_path),
-				MatchState.player_team)
+			btn.icon = load(icon_path)
 			btn.expand_icon = true
 		btn.pressed.connect(func(): queue_requested.emit(String(item)))
 		_box.add_child(btn)
@@ -211,13 +209,14 @@ func _object_button_chrome(btn: Button) -> void:
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 
-static func _icon_path(kind: String, type_name: String) -> String:
+static func _icon_path(kind: String, type_name: String, team := 1) -> String:
 	# original HUD icons exist for every type and team
-	var hud := "res://assets/z/ui/hud/icon_%s_red.png" % type_name
+	var tn := AnimLibrary.team_name(team)
+	var hud := "res://assets/z/ui/hud/icon_%s_%s.png" % [type_name, tn]
 	if ResourceLoader.exists(hud):
 		return hud
 	if kind == "robot":
-		return "res://assets/z/robots_%s/fire_red_r180_n00.png" % type_name
+		return "res://assets/z/robots_%s/fire_%s_r180_n00.png" % [type_name, tn]
 	# not every vehicle ships empty_r180 — walk the fallbacks
 	var dir := ContentDB.def_for(kind, type_name).asset_dir
 	for probe in ["%s/empty_r180.png" % dir, "%s/empty_null.png" % dir, "%s/empty.png" % dir]:

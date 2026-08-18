@@ -54,26 +54,30 @@ const CRANE_TABLES := {
 }
 
 
-## Master-art system: every team loads the single red master set from
-## disk; team colour is applied afterwards as the Teams palette-swap
-## material (or a tinted texture copy where materials can't reach).
-static func team_name(_team: int) -> String:
-	return Teams.MASTER_SUFFIX
+## Team art token for sprite paths. The original engine shipped its own
+## recoloured variant of every team-painted sprite (`stand_blue_r000`,
+## `base_green_r000_n00`, `flag_yellow_n00`... — verified pure colour
+## swaps of the red set, neutral pixels untouched), so teams load their
+## own files and NOTHING recolours at runtime. Team 0 / unknown ids map
+## to the neutral "null" art; neutral-only anims (`empty_*`, plain
+## `wasted.png`) never carry the token and stay team-free.
+static func team_name(team: int) -> String:
+	var name := Teams.display_name(team)
+	return name if Teams.exists(team) else "null"
 
 
-## Territory flag wave: the master (red) frames for teams 1..4 — tinted
-## by the caller's Teams material — or the neutral grey set for team 0.
-static func flag_frames(neutral := false) -> SpriteFrames:
-	var key := "null" if neutral else "master"
+## Territory flag wave: the owning team's own frames — the neutral grey
+## set for team 0.
+static func flag_frames(team := 0) -> SpriteFrames:
+	var key := team_name(team)
 	if _flag_cache.has(key):
 		return _flag_cache[key]
 	var frames := SpriteFrames.new()
 	frames.add_animation("wave")
 	frames.set_animation_loop("wave", true)
 	frames.set_animation_speed("wave", 6.0)
-	var prefix: String = "null" if neutral else Teams.MASTER_SUFFIX
 	for i in 4:
-		var path := "%s/flag_%s_n%02d.png" % [FLAGS_DIR, prefix, i]
+		var path := "%s/flag_%s_n%02d.png" % [FLAGS_DIR, key, i]
 		if ResourceLoader.exists(path):
 			frames.add_frame("wave", load(path))
 	_flag_cache[key] = frames
@@ -325,10 +329,14 @@ static func turret_set(unit_name: String, asset_dir: String, team: int) -> Dicti
 	for d in DIRECTIONS:
 		var deg := d * 45
 		# jeep gun layer: the gunner aim/fire art doubles as the layer
-		# (aim = fire n00, flash = fire n01)
+		# (aim = fire n00, flash = fire n01). The red master fallback keeps
+		# the rig built for neutral hardware (team 0 has no `top_null`
+		# art) — the layer stays invisible while unmanned, so the master
+		# paint is never shown
 		var idle := _first_existing([
 			"%s/topf_r%03d.png" % [asset_dir, deg],          # medium (both states)
 			"%s/top_%s_r%03d.png" % [asset_dir, tn, deg],    # heavy / missile launcher
+			"%s/top_red_r%03d.png" % [asset_dir, deg],       # master fallback (team 0)
 			"%s/top_r%03d.png" % [asset_dir, deg],           # light / apc
 			"%s/fire_r%03d_n00.png" % [asset_dir, deg]])     # jeep
 		if idle == "":
@@ -339,6 +347,7 @@ static func turret_set(unit_name: String, asset_dir: String, team: int) -> Dicti
 				path = _first_existing([
 					"%s/fire_r%03d_n01.png" % [asset_dir, deg],   # jeep flash
 					"%s/topf_%s_r%03d.png" % [asset_dir, tn, deg],
+					"%s/topf_red_r%03d.png" % [asset_dir, deg],
 					"%s/topf_r%03d.png" % [asset_dir, deg],
 					idle])
 			var name := "%s_%d" % [anim, d]

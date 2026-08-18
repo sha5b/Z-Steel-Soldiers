@@ -78,13 +78,12 @@ func _ready() -> void:
 
 ## All sprite scanning lives in AnimLibrary; robots get stand/walk/fire,
 ## a random death variant, idle humor flavors and the victory celebrate
-## animation from the shared zod folders.
+## animation from the shared zod folders — already in the unit's team
+## colours (the original per-team art variants).
 func _build_frames() -> void:
 	sprite.sprite_frames = AnimLibrary.robot_frames(unit_name, team)
 	if not sprite.animation_finished.is_connected(_on_anim_finished):
 		sprite.animation_finished.connect(_on_anim_finished)
-	Teams.apply(sprite, team)
-	Teams.apply(ring, team)  # ring draws the team-coloured HP bar art
 
 
 func _process(delta: float) -> void:

@@ -51,9 +51,15 @@ Wire new upgrade effects in MatchState.
 `assets/maps/` — MapCatalog picks it up everywhere (map select,
 campaign, cycler); `sandbox*` names are excluded from the campaign.
 
-**New team colour**: one entry in `scripts/core/teams.gd` (16-shade
-ramp) — sprites, flags, icons, minimap and UI accents follow
-automatically (master art + palette-swap shader).
+**New team colour**: one entry in `scripts/core/teams.gd` (id, name,
+UI/minimap colours) **plus the `_<team>` art variants** — the original
+engine shipped its own recoloured sprite set per team (`stand_blue_r000`,
+`flag_green_n00`, `icon_jeep_yellow`, ... verified pure colour swaps of
+the red set: neutral pixels untouched, identical canvases). Every team
+loads its own files directly; nothing recolours at runtime. The
+`--teams-test` self-test audits the full red→blue/green/yellow parity
+(888 art files) so a missing variant fails loudly instead of rendering
+an invisible unit.
 
 ## Folder layout
 

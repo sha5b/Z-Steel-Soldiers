@@ -5,8 +5,8 @@ signal died
 ## Original-sprite building (forts, factories, radar, repair). Loads the
 ## per-planet texture, shows an ownership flag, and computes a ground
 ## footprint (sprite is 2x tile scale -> footprint = texture/2) for
-## clicks, zone ownership and targeting. Team colour on the flag is the
-## Teams palette swap over the master flag art.
+## clicks, zone ownership and targeting. The flag waves in the owner's
+## own shipped art variant; the building body itself is neutral.
 
 @export var building_id := 2
 @export var team := 0
@@ -272,15 +272,14 @@ func move_ground(ground: Node2D, map: Node2D) -> void:
 		map.move_child(ground, get_index() if is_inside_tree() else 0)
 
 
-## Ownership flag: master (red) art + the team's palette-swap material —
-## neutral team 0 shows the grey flag set. Swapping teams is a material
-## change, no disk rescan.
+## Ownership flag: the owning team's own flag frames — neutral team 0
+## shows the grey flag set. Swapping teams is a frame swap, no disk
+## rescan beyond the four wave frames.
 func set_flag_team(for_team: int) -> void:
 	if _flag == null or for_team == _flag_team:
 		return
 	_flag_team = for_team
-	_flag.sprite_frames = AnimLibrary.flag_frames(for_team == 0)
-	Teams.apply(_flag, for_team)
+	_flag.sprite_frames = AnimLibrary.flag_frames(for_team)
 	if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
 		_flag.play("wave")
 
@@ -382,11 +381,12 @@ func set_rally(world_position: Vector2) -> void:
 	rally_point = world_position
 	if _rally_flag == null:
 		_rally_flag = Sprite2D.new()
-		_rally_flag.texture = load("res://assets/z/flags/flag_red_n00.png")
 		_rally_flag.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		_rally_flag.scale = Vector2(2, 2)
 		add_child(_rally_flag)
-	Teams.apply(_rally_flag, team if team != 0 else owner_team)
+	# the flag frame swaps with the owning team (native art variants)
+	_rally_flag.texture = load("res://assets/z/flags/flag_%s_n00.png"
+		% AnimLibrary.team_name(team if team != 0 else owner_team))
 	_rally_flag.position = rally_point - global_position
 	_rally_flag.visible = selected
 

@@ -64,8 +64,7 @@ func _sync_upgrades() -> void:
 			AnimLibrary.team_name(MatchState.player_team)]
 		if ResourceLoader.exists(icon_path):
 			var tex := TextureRect.new()
-			tex.texture = Teams.tinted_texture(load(icon_path),
-				MatchState.player_team)
+			tex.texture = load(icon_path)
 			tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			tex.custom_minimum_size = Vector2(26, 26)
 			tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

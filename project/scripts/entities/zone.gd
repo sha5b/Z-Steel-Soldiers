@@ -3,7 +3,7 @@ class_name Zone
 extends Node2D
 ## Territory sector (from Zod map zone rects): flag at center, capture by
 ## presence, feeds GameState income. Team colours come from Teams; the
-## flag is master art + palette-swap material.
+## flag waves in the owner's own shipped art variant.
 
 signal captured(new_team: int)
 
@@ -41,8 +41,7 @@ func _build_visuals() -> void:
 	add_child(_overlay)
 
 	_flag = AnimatedSprite2D.new()
-	_flag.sprite_frames = AnimLibrary.flag_frames(owner_team == 0)
-	Teams.apply(_flag, owner_team)
+	_flag.sprite_frames = AnimLibrary.flag_frames(owner_team)
 	_flag.position = world.get_center()
 	_flag.scale = Vector2(2, 2)
 	add_child(_flag)
@@ -137,7 +136,6 @@ func set_owner_team(team: int) -> void:
 		_overlay.color = Teams.zone_color(team)
 		_overlay.color.a = 0.10
 	if _flag:
-		_flag.sprite_frames = AnimLibrary.flag_frames(team == 0)
-		Teams.apply(_flag, team)
+		_flag.sprite_frames = AnimLibrary.flag_frames(team)
 		if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
 			_flag.play("wave")

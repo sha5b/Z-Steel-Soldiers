@@ -48,7 +48,7 @@ signal-driven). Adding content (units, buildings, pickups, effects,
 maps, team colours) is documented step by step in
 `docs/ASSET_CONVENTIONS.md` — copy a `.tres`, drop an art folder.
 
-Headless test suite: 34 flags (`--combat-test`, `--tint-test`,
+Headless test suite: 34 flags (`--combat-test`, `--teams-test`,
 `--scenes-test`, ...), run in parallel lanes from `project/`:
 `res://scenes/main.tscn --<flag>-test --quit-after N`. Screenshot
 verification: add `--screenshot <seconds>` (warps the mouse so edge pan

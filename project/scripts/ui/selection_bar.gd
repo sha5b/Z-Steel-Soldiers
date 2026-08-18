@@ -34,8 +34,7 @@ func _sync(units: Array) -> void:
 			slot.set_meta("unit", u)
 			var path: String = u.portrait_path()
 			if path != "" and ResourceLoader.exists(path):
-				icon.texture = Teams.tinted_texture(load(path),
-					int(u.get("team")))
+				icon.texture = load(path)
 			_update_hp(slot, u)
 			if u.has_signal("damaged"):
 				var cb := _on_unit_damaged.bind(slot)
