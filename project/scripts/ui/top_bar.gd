@@ -19,8 +19,8 @@ func _ready() -> void:
 	_upgrades = HBoxContainer.new()
 	_upgrades.add_theme_constant_override("separation", 4)
 	add_child(_upgrades)
-	GameState.money_changed.connect(func(_team, _amount): _refresh_counts())
-	GameState.zone_captured.connect(func(_team): _refresh_counts())
+	MatchState.money_changed.connect(func(_team, _amount): _refresh_counts())
+	MatchState.zone_captured.connect(func(_team): _refresh_counts())
 	_refresh_counts()
 
 
@@ -30,16 +30,16 @@ func _process(delta: float) -> void:
 
 
 func _refresh_counts() -> void:
-	_money.text = "credits %d" % GameState.player_money()
+	_money.text = "credits %d" % MatchState.player_money()
 	var counts := {}
-	for z in GameState.zones:
+	for z in MatchState.zones:
 		if z.owner_team != 0:
 			counts[z.owner_team] = counts.get(z.owner_team, 0) + 1
-	var mine: int = counts.get(GameState.player_team, 0)
-	var total: int = GameState.zones.size()
+	var mine: int = counts.get(MatchState.player_team, 0)
+	var total: int = MatchState.zones.size()
 	var theirs := 0
 	for t in counts:
-		if t != GameState.player_team:
+		if t != MatchState.player_team:
 			theirs += counts[t]
 	_zones.text = "zones %d of %d - them %d" % [mine, total, theirs]
 	_sync_upgrades()
@@ -48,9 +48,9 @@ func _refresh_counts() -> void:
 ## Original grenade/rocket crate icons while the upgrade is held.
 func _sync_upgrades() -> void:
 	var wanted := ""
-	if GameState.has_upgrade(GameState.player_team, "grenades"):
+	if MatchState.has_upgrade(MatchState.player_team, "grenades"):
 		wanted += "g"
-	if GameState.has_upgrade(GameState.player_team, "rockets"):
+	if MatchState.has_upgrade(MatchState.player_team, "rockets"):
 		wanted += "r"
 	if _upgrades.get_meta("shown", "") == wanted:
 		return
@@ -61,11 +61,11 @@ func _sync_upgrades() -> void:
 		# only grenade art ships in the original HUD; rockets are the
 		# same crate line, shown with its icon
 		var icon_path := "res://assets/z/ui/hud/icon_grenade_%s.png" % [
-			AnimLibrary.team_name(GameState.player_team)]
+			AnimLibrary.team_name(MatchState.player_team)]
 		if ResourceLoader.exists(icon_path):
 			var tex := TextureRect.new()
 			tex.texture = Teams.tinted_texture(load(icon_path),
-				GameState.player_team)
+				MatchState.player_team)
 			tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			tex.custom_minimum_size = Vector2(26, 26)
 			tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED

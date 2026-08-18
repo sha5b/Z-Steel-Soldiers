@@ -12,12 +12,9 @@ func _ready() -> void:
 	UiTheme.apply(self)
 	list.add_theme_constant_override("icon_maximum_width", 56)
 	var entries := []  # [file, dir, tag]
-	for f in DirAccess.get_files_at("res://assets/maps"):
-		if String(f).ends_with(".json"):
-			entries.append([String(f), "res://assets/maps", "json"])
-	for f in DirAccess.get_files_at("res://assets/maps_scenes"):
-		if String(f).ends_with(".tscn"):
-			entries.append([String(f), "res://assets/maps_scenes", "scene"])
+	for e in MapCatalog.entries():
+		entries.append([String(e.name) + (".json" if e.json else ".tscn"),
+			String(e.path).get_base_dir(), "json" if e.json else "scene"])
 	entries.sort_custom(func(a, b): return String(a[0]) < String(b[0]))
 	for entry in entries:
 		var f: String = entry[0]

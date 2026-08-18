@@ -19,6 +19,10 @@ config/features=PackedStringArray("4.7", "GL Compatibility")
 
 ContentDB="*res://scripts/core/content_db.gd"
 Fx="*res://scripts/core/fx.gd"
+SaveSystem="*res://scripts/game/save_system.gd"
+NavWorld="*res://scripts/core/nav_world.gd"
+MatchState="*res://scripts/core/match_state.gd"
+UnitRegistry="*res://scripts/game/unit_registry.gd"
 GameState="*res://scripts/core/game_state.gd"
 SelectionManager="*res://scripts/core/selection_manager.gd"
 MusicPlayer="*res://scripts/core/music_player.gd"

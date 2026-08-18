@@ -23,18 +23,8 @@ func _ready() -> void:
 		if String(arg).begins_with("--map="):  # test override: --map=res://assets/maps/x.json
 			chosen = String(arg).substr(6)
 	_map_list = PackedStringArray()
-	for f in DirAccess.get_files_at("res://assets/maps"):
-		if String(f).ends_with(".json"):
-			_map_list.append(String(f))
-	# scene versions of the same map replace their JSON (same basename)
-	var json_names := {}
-	for m in _map_list:
-		json_names[String(m).get_basename()] = true
-	for f in DirAccess.get_files_at("res://assets/maps_scenes"):
-		var fname := String(f)
-		if fname.ends_with(".tscn") and not json_names.has(fname.get_basename()):
-			_map_list.append(fname)
-	_map_list.sort()
+	for e in MapCatalog.entries():
+		_map_list.append(String(e.name) + (".json" if e.json else ".tscn"))
 	_map_index = _map_list.find(chosen.get_file())
 	GameState.current_map = chosen
 	var data: Dictionary = MapLoader.load_map(self, chosen)
@@ -46,7 +36,7 @@ func _ready() -> void:
 	camera.position = Vector2(int(data.width), int(data.height)) * 8.0
 	# start on the player's fort when the map has one
 	for child in get_children():
-		if child is FortBuilding and child.team == GameState.player_team:
+		if child is FortBuilding and child.team == MatchState.player_team:
 			camera.position = child.visual_center()
 			break
 	camera.bounds = Rect2(0.0, 0.0, float(data.width) * 16.0, float(data.height) * 16.0)
@@ -68,11 +58,28 @@ func _ready() -> void:
 					terrain_cells = child.get_node("Terrain").get_used_cells().size()
 		print("MAP OK: %dx%d terrain-cells=%d zones=%d units=%d" % [
 			data.width, data.height, terrain_cells,
-			GameState.zones.size(),
+			MatchState.zones.size(),
 			get_tree().get_nodes_in_group("units").size()])
 		await SelfTests.run(self)
 	if "--screenshot" in shot_args:
 		await _screenshot(shot_args[shot_args.find("--screenshot") + 1] if shot_args.size() > shot_args.find("--screenshot") + 1 else "2.0")
+
+
+## Restore producer state (rally/queue) onto matched buildings —
+## matched by building id + team, consumed from the saved list.
+func _apply_facility_save(child: Node, facilities: Array) -> void:
+	if not (child is Building2D):
+		return
+	var b := child as Building2D
+	if not b.produces_anything() or b.owner_team == 0:
+		return
+	for i in facilities.size():
+		var d: Dictionary = facilities[i]
+		if int(d.get("id", -1)) == b.building_id \
+				and int(d.get("team", 0)) == b.owner_team:
+			b.apply_dict(d)
+			facilities.remove_at(i)
+			return
 
 
 ## Test helper: capture the viewport after N seconds and quit.
@@ -92,22 +99,30 @@ func _screenshot(delay_text: String) -> void:
 func _apply_load() -> void:
 	var save: Dictionary = GameState.pending_load
 	GameState.pending_load = {}
-	GameState.money.clear()
+	MatchState.money.clear()
 	for team in save.get("money", {}):
-		GameState.money[int(team)] = int(save.money[team])
+		MatchState.money[int(team)] = int(save.money[team])
 	for team in save.get("upgrades", {}):
-		GameState.upgrades[int(team)] = save.upgrades[team]
+		MatchState.upgrades[int(team)] = save.upgrades[team]
 	var owners: Array = save.get("zone_owners", [])
-	for i in mini(owners.size(), GameState.zones.size()):
-		GameState.zones[i].set_owner_team(int(owners[i]))
+	for i in mini(owners.size(), MatchState.zones.size()):
+		MatchState.zones[i].set_owner_team(int(owners[i]))
 	# replace spawned units with the saved roster
 	for u in get_tree().get_nodes_in_group("units"):
 		u.queue_free()
+	var facilities: Array = save.get("facilities", [])
+	for child in get_children():
+		if child is ZMap:
+			for map_child in child.get_children():
+				_apply_facility_save(map_child, facilities)
+		else:
+			_apply_facility_save(child, facilities)
 	for su in save.get("units", []):
 		var unit := Spawner.spawn(self, String(su.kind), String(su.type),
-			int(su.team), Vector2(float(su.x), float(su.y)), bool(su.manned))
+			int(su.team), Vector2(float(su.x), float(su.y)),
+			bool(su.get("manned", false)))
 		if unit:
-			unit.hp = int(su.hp)
+			unit.apply_dict(su)
 
 
 func _cycle_map() -> void:
@@ -160,18 +175,18 @@ func _pick_select(screen_pos: Vector2) -> void:
 	var world := SelectionManager.screen_to_world(screen_pos)
 	# player factories and fort first (selecting opens the production panel)
 	for c in get_children():
-		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == GameState.player_team \
+		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == MatchState.player_team \
 				and c.world_footprint().has_point(world):
 			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
-		if c is FortBuilding and c.team == GameState.player_team \
+		if c is FortBuilding and c.team == MatchState.player_team \
 				and c.world_footprint().has_point(world):
 			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
 	var best: Node2D = null
 	for unit in get_tree().get_nodes_in_group("selectable"):
 		if unit is Unit2D and unit.alive and not unit.carried \
-				and unit.team == GameState.player_team \
+				and unit.team == MatchState.player_team \
 				and unit.global_position.distance_to(world) < 14.0:
 			if best == null or unit.global_position.distance_squared_to(world) < best.global_position.distance_squared_to(world):
 				best = unit

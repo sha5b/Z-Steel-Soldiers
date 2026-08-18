@@ -34,7 +34,7 @@ func _sync() -> void:
 	var alive := {}
 	for c in get_tree().get_nodes_in_group("facilities"):
 		if c is Node2D and is_instance_valid(c) and c.alive \
-				and c.owner_team == GameState.player_team:
+				and c.owner_team == MatchState.player_team:
 			alive[c] = true
 	for node in _entries.keys():
 		if not alive.has(node):

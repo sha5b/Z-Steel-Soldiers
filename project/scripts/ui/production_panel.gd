@@ -59,7 +59,7 @@ func _ready() -> void:
 	_queue_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(_queue_row)
 	SelectionManager.selection_changed.connect(_on_selection_changed)
-	GameState.zone_captured.connect(func(_t): _check_roster())
+	MatchState.zone_captured.connect(func(_t): _check_roster())
 	hide()
 
 
@@ -114,7 +114,7 @@ func _update_queue(factory: Node) -> void:
 			var icon_path := _icon_path(parts[0], parts[1])
 			if ResourceLoader.exists(icon_path):
 				btn.icon = Teams.tinted_texture(load(icon_path),
-					GameState.player_team)
+					MatchState.player_team)
 				btn.expand_icon = true
 			var i := idx
 			btn.gui_input.connect(func(ev):
@@ -128,11 +128,11 @@ func _selected_factory() -> Node:
 	for node in SelectionManager.selected:
 		if not is_instance_valid(node) or not node.alive:
 			continue
-		if node is RobotFactory and node.owner_team == GameState.player_team:
+		if node is RobotFactory and node.owner_team == MatchState.player_team:
 			return node
-		if node is VehicleFactory and node.owner_team == GameState.player_team:
+		if node is VehicleFactory and node.owner_team == MatchState.player_team:
 			return node
-		if node is FortBuilding and node.team == GameState.player_team:
+		if node is FortBuilding and node.team == MatchState.player_team:
 			return node
 	return null
 
@@ -162,7 +162,7 @@ func _build_buttons(factory: Node) -> void:
 		var icon_path := _icon_path(kind, type_name)
 		if ResourceLoader.exists(icon_path):
 			btn.icon = Teams.tinted_texture(load(icon_path),
-				GameState.player_team)
+				MatchState.player_team)
 			btn.expand_icon = true
 		btn.pressed.connect(func(): queue_requested.emit(String(item)))
 		_box.add_child(btn)

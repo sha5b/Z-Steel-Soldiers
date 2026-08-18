@@ -43,7 +43,7 @@ func _on_maps_pressed() -> void:
 
 
 func _on_difficulty_selected(index: int) -> void:
-	GameState.ai_difficulty = index
+	MatchState.ai_difficulty = index
 
 
 func _on_quit_pressed() -> void:

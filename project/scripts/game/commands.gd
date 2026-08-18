@@ -9,7 +9,7 @@ extends Object
 static func dispatch(world_position: Vector2) -> void:
 	# a selected producing building: right-click sets its rally point
 	var selected := SelectionManager.selected
-	if selected.size() == 1 and is_instance_valid(selected[0]) 			and selected[0] is Building2D and selected[0].alive 			and (selected[0].is_fort or selected[0] is RobotFactory or selected[0] is VehicleFactory) 			and selected[0].owner_team == GameState.player_team:
+	if selected.size() == 1 and is_instance_valid(selected[0]) 			and selected[0] is Building2D and selected[0].alive 			and (selected[0].is_fort or selected[0] is RobotFactory or selected[0] is VehicleFactory) 			and selected[0].owner_team == MatchState.player_team:
 		selected[0].set_rally(world_position)
 		Fx.ui_click()
 		return

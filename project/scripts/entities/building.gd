@@ -91,11 +91,11 @@ func queue_unit(item: String, silent := false) -> bool:
 	var stats := ContentDB.def_for(kind, type_name)
 	if not _pop_allows(kind, stats, silent):
 		return false
-	if not GameState.spend(owner_team, stats.cost):
+	if not MatchState.spend(owner_team, stats.cost):
 		return false
 	if not queue.enqueue(item):
-		GameState.money[owner_team] += stats.cost  # queue full: refund
-		GameState.money_changed.emit(owner_team, GameState.money[owner_team])
+		MatchState.money[owner_team] += stats.cost  # queue full: refund
+		MatchState.money_changed.emit(owner_team, MatchState.money[owner_team])
 		return false
 	return true
 
@@ -105,8 +105,8 @@ func cancel_at(index: int) -> void:
 	if item == "" or owner_team == 0:
 		return
 	var stats := ContentDB.def_for(item.split(":")[0], item.split(":")[1])
-	GameState.money[owner_team] += stats.cost
-	GameState.money_changed.emit(owner_team, GameState.money[owner_team])
+	MatchState.money[owner_team] += stats.cost
+	MatchState.money_changed.emit(owner_team, MatchState.money[owner_team])
 
 
 ## Cap gate: alive + queued + this unit must fit under the team cap.
@@ -118,7 +118,7 @@ func _pop_allows(kind: String, stats: UnitDef, silent := false) -> bool:
 		var parts: PackedStringArray = item.split(":")
 		queued += ContentDB.def_for(parts[0], parts[1]).pop
 	var cost := stats.pop
-	if GameState.unit_pop(team_id) + queued + cost > GameState.unit_cap(team_id):
+	if MatchState.unit_pop(team_id) + queued + cost > MatchState.unit_cap(team_id):
 		if not silent:
 			Fx.cap_denied()
 		return false
@@ -137,7 +137,7 @@ func spawn_produced(item: String) -> void:
 	var parts := item.split(":")
 	var kind := parts[0]
 	var type_name := parts[1]
-	if owner_team == GameState.player_team:
+	if owner_team == MatchState.player_team:
 		Fx.announce("robot_manufactured" if kind == "robot"
 			else "vehicle_manufactured" if kind == "vehicle"
 			else "gun_manufactured")
@@ -281,6 +281,32 @@ func _build_overlays() -> void:
 		overlay.play("loop")
 
 
+## ---- save contract: dynamic producer state ----
+
+func to_dict() -> Dictionary:
+	if not produces_anything():
+		return {}
+	return {
+		"id": building_id, "team": owner_team,
+		"rally_x": rally_point.x if rally_point != Vector2.INF else 0.0,
+		"rally_y": rally_point.y if rally_point != Vector2.INF else 0.0,
+		"has_rally": rally_point != Vector2.INF,
+		"queue": queue.items.duplicate(),
+	}
+
+
+func apply_dict(d: Dictionary) -> void:
+	if bool(d.get("has_rally", false)):
+		set_rally(Vector2(float(d.get("rally_x", 0.0)), float(d.get("rally_y", 0.0))))
+	for item in d.get("queue", []):
+		queue_unit(String(item), true)  # silent: no cap beeps on restore
+
+
+func produces_anything() -> bool:
+	var def := ContentDB.producer_def(producer_key())
+	return def != null or is_fort
+
+
 func world_footprint() -> Rect2:
 	# ground area under the sprite (world px); the node may be lifted to
 	# the footprint's bottom edge for y-sorting — undo that here
@@ -329,7 +355,7 @@ func _process(delta: float) -> void:
 	# non-fort buildings (radar, repair) follow their zone's owner so the
 	# flag recolors on capture; factories override with their own loop
 	var center := world_footprint().get_center()
-	for z in GameState.zones:
+	for z in MatchState.zones:
 		if z.world_rect().has_point(center):
 			if z.owner_team != owner_team:
 				owner_team = z.owner_team
@@ -404,7 +430,7 @@ func take_damage(amount: int) -> void:
 	if not is_fort:
 		return
 	hp -= amount
-	if team == GameState.player_team:
+	if team == MatchState.player_team:
 		Fx.announce("fort_under_attack")
 	if _sprite:
 		_sprite.modulate = Color(3, 3, 3)
@@ -448,10 +474,10 @@ func _bridge_damage(amount: int) -> void:
 	hp = 0
 	Fx.destroyed(world_footprint().get_center())
 	for cell in bridge_cells:
-		if GameState.nav_grid:
-			GameState.nav_grid.set_point_solid(cell, true)
-		if GameState.vehicle_grid:
-			GameState.vehicle_grid.set_point_solid(cell, true)
+		if NavWorld.nav_grid:
+			NavWorld.nav_grid.set_point_solid(cell, true)
+		if NavWorld.vehicle_grid:
+			NavWorld.vehicle_grid.set_point_solid(cell, true)
 	_sprite.modulate = Color(0.35, 0.35, 0.35)
 
 
@@ -465,9 +491,9 @@ func repair_by(amount: int) -> void:
 	hp = mini(hp + amount, BRIDGE_HP)
 	if hp >= BRIDGE_HP:
 		for cell in bridge_cells:
-			if GameState.nav_grid:
-				GameState.nav_grid.set_point_solid(cell, false)
-			if GameState.vehicle_grid:
-				GameState.vehicle_grid.set_point_solid(cell, false)
+			if NavWorld.nav_grid:
+				NavWorld.nav_grid.set_point_solid(cell, false)
+			if NavWorld.vehicle_grid:
+				NavWorld.vehicle_grid.set_point_solid(cell, false)
 		_sprite.modulate = Color.WHITE
 		Fx.play("spark", world_footprint().get_center())

@@ -21,7 +21,7 @@ func produce_seconds() -> float:
 func _process(delta: float) -> void:
 	# factory belongs to whoever owns the zone it stands in
 	var center := world_footprint().get_center()
-	for z in GameState.zones:
+	for z in MatchState.zones:
 		if z.world_rect().has_point(center):
 			owner_team = z.owner_team
 			break

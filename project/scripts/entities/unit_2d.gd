@@ -60,6 +60,7 @@ func _ready() -> void:
 	add_to_group("units")
 	if not Engine.is_editor_hint():
 		SelectionManager.listen(self)
+		UnitRegistry.track(self)
 	var stats := ContentDB.stats_for(kind, unit_name)
 	hp = stats.hp
 	max_hp = stats.hp
@@ -140,7 +141,7 @@ func _steer(delta: float) -> void:
 				and global_position.distance_to(waypoints[0]) > dist_before:
 			waypoints.remove_at(0)
 		global_position = global_position.clamp(
-			GameState.map_rect.position, GameState.map_rect.end)
+			NavWorld.map_rect.position, NavWorld.map_rect.end)
 	else:
 		_play("fire" if _target else "stand", _last_dir)
 
@@ -155,7 +156,7 @@ func offset_to_next_waypoint() -> float:
 ## every frame (zod robots shoulder each other aside while walking).
 func _separation(delta: float) -> void:
 	var push := Vector2.ZERO
-	for u in get_tree().get_nodes_in_group("units"):
+	for u in UnitRegistry.world_units():
 		if u == self or not (u is Unit2D) or not u.alive or u.carried:
 			continue
 		var d: Vector2 = global_position - u.global_position
@@ -176,11 +177,11 @@ func _separation(delta: float) -> void:
 			return
 	global_position = target
 	global_position = global_position.clamp(
-		GameState.map_rect.position, GameState.map_rect.end)
+		NavWorld.map_rect.position, NavWorld.map_rect.end)
 
 
 func _walkable(p: Vector2) -> bool:
-	var grid := GameState.vehicle_grid if kind != "robot" else GameState.nav_grid
+	var grid := NavWorld.vehicle_grid if kind != "robot" else NavWorld.nav_grid
 	if grid == null:
 		return true
 	var cell := Vector2i((p / 16.0).floor())
@@ -264,16 +265,11 @@ func _combat() -> void:
 
 
 func _find_target() -> Node2D:
-	var best: Node2D = null
-	var best_d := range_px * sprite_scale
-	for u in get_tree().get_nodes_in_group("units"):
-		if u is Node2D and u != self and u.alive and u.team != 0 and u.team != team \
-				and not u.carried:
-			var d: float = global_position.distance_squared_to(u.global_position)
-			if d < best_d * best_d:
-				best_d = sqrt(d)
-				best = u
-	# enemy buildings (forts) in range
+	# nearest enemy unit from the registry, then enemy forts in range
+	var best: Node2D = UnitRegistry.nearest_enemy(
+		global_position, range_px * sprite_scale, team)
+	var best_d: float = global_position.distance_to(best.global_position) \
+			if best != null else range_px * sprite_scale
 	for b in get_tree().get_nodes_in_group("buildings"):
 		if b is Node2D and b.alive and b.team != 0 and b.team != team:
 			var d: float = global_position.distance_squared_to(b.visual_center())
@@ -291,7 +287,7 @@ func _shoot(target: Node2D, to_target: Vector2) -> void:
 	_play("fire", _last_dir, true)
 	var def := ContentDB.def_for(kind, unit_name)
 	var muzzle := global_position + to_target.normalized() * 10.0
-	var amount := int(round(damage * GameState.robot_damage_mult(team)))
+	var amount := int(round(damage * MatchState.robot_damage_mult(team)))
 	# the lid over a tank's crew hatch opens while it fires — that is the
 	# window a marksman takes (original: can_be_sniped = lid_open)
 	if def.snipe_chance > 0.0 and target is Vehicle2D and target.manned \
@@ -328,6 +324,7 @@ func take_damage(amount: int) -> void:
 func die() -> void:
 	alive = false
 	state = State.DEAD
+	UnitRegistry.untrack(self)
 	died.emit(self)
 	velocity = Vector2.ZERO
 	set_selected(false)
@@ -398,6 +395,22 @@ func issue_order(new_order: Order) -> void:
 		_begin_move(_order_anchor())
 		state = State.ENTERING  # supersedes MOVING: walking WITH a target
 
+## ---- save contract ----
+
+func to_dict() -> Dictionary:
+	return {
+		"kind": kind, "type": unit_name, "team": team,
+		"x": global_position.x, "y": global_position.y, "hp": hp,
+		"dir": _last_dir, "grenades": grenades,
+	}
+
+
+func apply_dict(d: Dictionary) -> void:
+	hp = int(d.get("hp", hp))
+	grenades = int(d.get("grenades", 0))
+	_last_dir = wrapi(int(d.get("dir", _last_dir)), 0, AnimLibrary.DIRECTIONS)
+
+
 ## Idle = alive, not hidden in an APC, no order in flight. The AI and
 ## the idle-flavour system share this one definition.
 func is_idle() -> bool:
@@ -417,7 +430,7 @@ func _order_anchor() -> Vector2:
 
 func _begin_move(world_pos: Vector2) -> void:
 	move_target = world_pos
-	waypoints = GameState.request_path(global_position, world_pos, kind)
+	waypoints = NavWorld.request_path(global_position, world_pos, kind)
 	if waypoints.is_empty():
 		move_target = Vector2.ZERO  # unreachable (e.g. water for vehicles)
 		state = State.IDLE
@@ -425,7 +438,7 @@ func _begin_move(world_pos: Vector2) -> void:
 		state = State.MOVING
 		if waypoints.size() > 1 and global_position.distance_to(waypoints[0]) < 10.0:
 			waypoints.remove_at(0)  # don't step back to the start cell centre
-	if team == GameState.player_team:
+	if team == MatchState.player_team:
 		play_gesture("point")
 		_play_voice("acknowledge")
 		PathIndicator.show_path(get_parent(), waypoints)
@@ -472,7 +485,7 @@ func _try_enter() -> void:
 func _auto_enter() -> void:
 	if move_target != Vector2.ZERO or _entering != null or enter_target != null:
 		return
-	for v in get_tree().get_nodes_in_group("units"):
+	for v in UnitRegistry.world_units():
 		if v is Vehicle2D and not v.manned and v.alive \
 				and global_position.distance_to(v.global_position) < 36.0:
 			enter_target = v
@@ -530,7 +543,7 @@ func set_selected(value: bool) -> void:
 	selected = value
 	ring.visible = value or hp < max_hp
 	ring.queue_redraw()
-	if value and team == GameState.player_team and alive and not carried:
+	if value and team == MatchState.player_team and alive and not carried:
 		_play_voice("selected")
 
 

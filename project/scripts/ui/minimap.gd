@@ -50,7 +50,7 @@ func _water_mask(data: Dictionary) -> PackedByteArray:
 
 ## Zone ownership tint, baked into the texture pixels.
 func _bake_zone_tints() -> void:
-	for z in GameState.zones:
+	for z in MatchState.zones:
 		var zone: Zone = z as Zone
 		if zone == null:
 			continue
@@ -64,7 +64,7 @@ func _bake_zone_tints() -> void:
 
 func _refresh_owners() -> void:
 	var owners := []
-	for z in GameState.zones:
+	for z in MatchState.zones:
 		owners.append(z.owner_team)
 	if owners == _owners:
 		return
@@ -114,9 +114,8 @@ func _draw() -> void:
 	for b in get_tree().get_nodes_in_group("buildings"):
 		if b is Node2D and b.alive:
 			_blip(b.global_position, Teams.minimap_color(b.team), 3.0)
-	for u in get_tree().get_nodes_in_group("units"):
-		if u is Node2D and u.alive:
-			_blip(u.global_position, Teams.minimap_color(u.team), 2.0)
+	for u in UnitRegistry.world_units():
+		_blip(u.global_position, Teams.minimap_color(u.team), 2.0)
 	# camera viewport in world space (works under stretch + zoom)
 	var xform: Transform2D = get_viewport().get_canvas_transform()
 	var world_rect: Rect2 = xform.affine_inverse() * get_viewport().get_visible_rect()

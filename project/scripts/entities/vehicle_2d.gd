@@ -317,7 +317,7 @@ func _steer(delta: float) -> void:
 				and global_position.distance_to(waypoints[0]) > dist_before:
 			waypoints.remove_at(0)
 		global_position = global_position.clamp(
-			GameState.map_rect.position, GameState.map_rect.end)
+			NavWorld.map_rect.position, NavWorld.map_rect.end)
 	else:
 		_play_body()
 	_sync_wheels()
@@ -423,7 +423,7 @@ func _combat() -> void:
 			_fire_flash = 0.3
 			_lid_timer = 1.2  # hatch open: snipers take note
 			var def := ContentDB.def_for(kind, unit_name)
-			var amount := int(round(damage * GameState.vehicle_damage_mult(team)))
+			var amount := int(round(damage * MatchState.vehicle_damage_mult(team)))
 			Combat.fire(self, def, global_position + to_target.normalized() * 12.0,
 				_target, amount)
 
@@ -523,6 +523,37 @@ func _update_layer_transform() -> void:
 func _on_layer_finished() -> void:
 	if _layer and _layer.animation == "pop":
 		_layer.visible = false
+
+
+## ---- save contract: hardware state on top of the unit fields ----
+
+func to_dict() -> Dictionary:
+	var cargo_names := []
+	for c in cargo:
+		if c is Unit2D:
+			cargo_names.append(c.unit_name)
+	var out := super.to_dict()
+	out["manned"] = manned
+	out["driver"] = driver_type
+	out["cargo"] = cargo_names
+	return out
+
+
+func apply_dict(d: Dictionary) -> void:
+	super.apply_dict(d)
+	if bool(d.get("manned", false)) and not manned and String(d.get("driver", "")) != "":
+		driver_type = String(d.driver)
+		manned = true
+		team = int(d.get("team", team))
+		_build_frames()
+		_play_body()
+	var cargo_names: Array = d.get("cargo", [])
+	if not cargo_names.is_empty() and is_apc():
+		for name in cargo_names:
+			var passenger := Spawner.spawn(get_parent(), "robot",
+				String(name), team, global_position)
+			if passenger is Unit2D and load_robot(passenger):
+				passenger.hp = maxi(1, passenger.hp - 10)  # boarded hurt
 
 
 ## Crew hatch: opens for a moment whenever the gun fires — the window

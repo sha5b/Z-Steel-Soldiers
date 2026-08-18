@@ -23,7 +23,7 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		queue_redraw()
 		return
-	GameState.register_zone(self)
+	MatchState.register_zone(self)
 	_build_visuals()
 
 
@@ -56,10 +56,9 @@ func _process(delta: float) -> void:
 	queue_redraw()
 	var occupying := 0
 	var contested := false
-	for u in get_tree().get_nodes_in_group("units"):
+	for u in UnitRegistry.world_units():
 		# neutral hardware (empty vehicles) does not hold territory
-		if u is Node2D and u.alive and u.team != 0 \
-				and world_rect().has_point(u.global_position):
+		if u.team != 0 and world_rect().has_point(u.global_position):
 			if occupying == 0:
 				occupying = u.team
 			elif u.team != occupying:
@@ -129,11 +128,11 @@ func _perimeter_point(r: Rect2, d: float) -> Vector2:
 
 
 func set_owner_team(team: int) -> void:
-	if owner_team == GameState.player_team and team != GameState.player_team:
+	if owner_team == MatchState.player_team and team != MatchState.player_team:
 		Fx.announce("territory_lost")
 	owner_team = team
 	captured.emit(team)
-	GameState.notify_zone_captured(team)
+	MatchState.notify_zone_captured(team)
 	if _overlay:
 		_overlay.color = Teams.zone_color(team)
 		_overlay.color.a = 0.10

@@ -51,10 +51,10 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 			ai_teams[int(o.owner)] = true
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
-		if not GameState.money.has(t):
-			GameState.money[t] = 200
+		if not MatchState.money.has(t):
+			MatchState.money[t] = 200
 	for t in ai_teams:
-		if t != GameState.player_team:
+		if t != MatchState.player_team:
 			var ai := CpuAi.new(t)
 			ai.name = "CpuAi_T%d" % t
 			parent.add_child(ai)
@@ -90,8 +90,8 @@ static func _build_nav_grid(data: Dictionary, w: int, h: int) -> AStarGrid2D:
 		for x in w:
 			if data.passable != null and not bool(data.passable[y * w + x]):
 				grid.set_point_solid(Vector2i(x, y), true)
-	GameState.nav_grid = grid
-	GameState.map_rect = Rect2(0.0, 0.0, float(w) * TILE, float(h) * TILE)
+	NavWorld.nav_grid = grid
+	NavWorld.map_rect = Rect2(0.0, 0.0, float(w) * TILE, float(h) * TILE)
 	return grid
 
 
@@ -141,7 +141,7 @@ static func _build_vehicle_grid(grid: AStarGrid2D, data: Dictionary, w: int, h: 
 					or (data.water != null and bool(data.water[y * w + x]))
 			if solid:
 				vgrid.set_point_solid(Vector2i(x, y), true)
-	GameState.vehicle_grid = vgrid
+	NavWorld.vehicle_grid = vgrid
 	return vgrid
 
 
@@ -296,9 +296,9 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 
 	var vgrid := _build_vehicle_grid(grid,
 		{"water": _water_array(planet, painted, min_c, w, h)}, w, h)
-	GameState.nav_grid = grid
-	GameState.vehicle_grid = vgrid
-	GameState.map_rect = map_rect
+	NavWorld.nav_grid = grid
+	NavWorld.vehicle_grid = vgrid
+	NavWorld.map_rect = map_rect
 
 	# solid building footprints / bridge spans / CPU brains — same rules
 	# as the JSON path
@@ -323,17 +323,17 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 				ai_teams[child.team] = true
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
-		if not GameState.money.has(t):
-			GameState.money[t] = 200
+		if not MatchState.money.has(t):
+			MatchState.money[t] = 200
 	for t in ai_teams:
-		if t != GameState.player_team:
+		if t != MatchState.player_team:
 			var ai := CpuAi.new(t)
 			ai.name = "CpuAi_T%d" % t
 			parent.add_child(ai)
 
 	return {
 		"width": w, "height": h, "terrain": planet, "tiles": tiles,
-		"zones": GameState.zones.size(),
+		"zones": MatchState.zones.size(),
 		"objects": map.get_child_count(),
 	}
 

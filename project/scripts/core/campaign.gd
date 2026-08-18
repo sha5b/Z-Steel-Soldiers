@@ -10,12 +10,7 @@ var missions: PackedStringArray = []
 
 
 func _ready() -> void:
-	var files := DirAccess.get_files_at("res://assets/maps")
-	missions = PackedStringArray()
-	for f in files:
-		if String(f).ends_with(".json"):
-			missions.append(String(f).get_basename())
-	missions.sort()
+	missions = MapCatalog.campaign_missions()
 
 
 func start(from_save: bool = true) -> void:
