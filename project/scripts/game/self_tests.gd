@@ -283,6 +283,41 @@ static func run(ctx: Node) -> void:
 				vproblems.append("%s frames missing" % fx_name)
 		Fx.vehicle_smoke(Vector2(100, 100), 3, true)
 		Fx.laser(Vector2(0, 0), Vector2(50, 50))
+		# a demo row in front of the camera for screenshot verification
+		var fx_cam: Camera2D = ctx.get_viewport().get_camera_2d()
+		if fx_cam:
+			Fx.explosion(fx_cam.position + Vector2(-90, 0))
+			Fx.explosion(fx_cam.position + Vector2(0, -10), true)
+			Fx.impact(fx_cam.position + Vector2(60, 0))
+			Fx.play("muzzle", fx_cam.position + Vector2(110, 0))
+
+		# muzzle and impact must resolve REAL sprite art (particle
+		# fallbacks were the old bug); wreck flame variants resolve too
+		for fx_name in ["muzzle", "impact", "fire0", "fire1"]:
+			var def: Dictionary = ContentDB.effect_def(fx_name)
+			var art: SpriteFrames = AnimLibrary.effect_frames(
+				String(def.get("dir", "")),
+				String(def.get("art_name", fx_name)), float(def.get("fps", 10.0)))
+			if not art.has_animation("fx"):
+				vproblems.append("%s has no sprite art (fallback)" % fx_name)
+		# effect scales are relative to the 2x unit baseline — no giants
+		for fx_name in ContentDB.effect_names():
+			var scale_v := float(ContentDB.effect_def(fx_name).get("scale", 1.0))
+			if scale_v > 1.5:
+				vproblems.append("%s scale %.2f oversized" % [fx_name, scale_v])
+		# fire animations are ONE-SHOT everywhere (muzzle flash policy:
+		# never loop, never hold the flash frame)
+		var rf: SpriteFrames = AnimLibrary.robot_frames("grunt", 1)
+		for d in 8:
+			if rf.has_animation("fire_%d" % d) \
+					and rf.get_animation_loop("fire_%d" % d):
+				vproblems.append("robot fire_%d loops" % d)
+		var medium_dir := String(ContentDB.def_for("vehicle", "medium").get("dir", ""))
+		var vf: SpriteFrames = AnimLibrary.vehicle_frames(medium_dir, 1)
+		for d in 8:
+			if vf.has_animation("fire_%d" % d) \
+					and vf.get_animation_loop("fire_%d" % d):
+				vproblems.append("vehicle fire_%d loops" % d)
 		print("VFX: problems=%d %s" % [vproblems.size(),
 			", ".join(vproblems) if not vproblems.is_empty() else "(all vfx ok)"])
 	if "--pose-test" in args:

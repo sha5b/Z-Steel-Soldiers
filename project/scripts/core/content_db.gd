@@ -117,7 +117,12 @@ func _discover_unit_folders() -> void:
 func _discover_effects() -> void:
 	for name in EffectDefs.BY_NAME:
 		_effects[name] = EffectDefs.BY_NAME[name].duplicate()
-		_effects[name]["dir"] = "%s/effects/%s" % [ASSET_ROOT, name]
+		# `art` overrides the folder (impact plays the spark art, the
+		# fire0/fire1 wreck flames live in the shared fire folder);
+		# frames are named after the FOLDER, not the def
+		var art_folder: String = String(EffectDefs.BY_NAME[name].get("art", name))
+		_effects[name]["art_name"] = art_folder
+		_effects[name]["dir"] = "%s/effects/%s" % [ASSET_ROOT, art_folder]
 	var dir := DirAccess.open(ASSET_ROOT + "/effects")
 	if dir == null:
 		return

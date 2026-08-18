@@ -155,14 +155,15 @@ static func robot_frames(unit_type: String, team: int) -> SpriteFrames:
 					break
 			if frame == 0:
 				frames.remove_animation(name)
-	# per-type fire animation
+	# per-type fire animation: a one-shot — the muzzle flash must never
+	# loop or hold (the unit returns to stand when it finishes)
 	var type_dir := "res://assets/z/robots_%s" % unit_type
 	for d in DIRECTIONS:
 		var deg := d * 45
 		var name := "fire_%d" % d
 		frames.add_animation(name)
 		frames.set_animation_speed(name, 10.0)
-		frames.set_animation_loop(name, true)
+		frames.set_animation_loop(name, false)
 		var frame := 0
 		while true:
 			var path := "%s/fire_%s_r%03d_n%02d.png" % [type_dir, tn, deg, frame]

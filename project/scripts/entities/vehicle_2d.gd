@@ -337,6 +337,15 @@ func _steer(delta: float) -> void:
 ## Hull animation: move/idle cycle, briefly replaced by the gunner
 ## install animation when a robot mans the hardware, then the muzzle
 ## flash on shots (`fire` art is a one-shot in the original).
+func _on_anim_finished() -> void:
+	if alive and sprite.animation.begins_with("fire_"):
+		# the flash played once — never hold or restart it
+		_fire_flash = 0.0
+		_play_body()
+		return
+	super._on_anim_finished()
+
+
 func _play_body() -> void:
 	if _install_timer > 0.0 and sprite.sprite_frames \
 			and sprite.sprite_frames.has_animation("install_%d" % _last_dir):
@@ -485,6 +494,7 @@ func _add_oil_stain() -> void:
 	stain.name = "OilStain"
 	stain.sprite_frames = frames
 	stain.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	stain.scale = Vector2(2, 2)  # the unit baseline — was rendering 1x
 	stain.frame = randi() % frames.get_frame_count("fx")
 	stain.position = Vector2(0, 4)
 	add_child(stain)
@@ -637,9 +647,11 @@ func die() -> void:
 
 ## Burning wreck: looping smoke/fire from the original death_effects art.
 func _add_wreck_fx() -> void:
-	var fx_name := "big_smoke" if unit_name == "heavy" else "fire"
+	var fx_name: String = "big_smoke" if unit_name == "heavy" \
+			else ["fire", "fire0", "fire1"].pick_random()
+	var folder := "big_smoke" if fx_name == "big_smoke" else "fire"
 	var frames := AnimLibrary.effect_frames(
-		"res://assets/z/effects/%s" % fx_name, fx_name, 8.0)
+		"res://assets/z/effects/%s" % folder, fx_name, 8.0)
 	if frames == null or not frames.has_animation("fx"):
 		return
 	frames.set_animation_loop("fx", true)
@@ -647,6 +659,7 @@ func _add_wreck_fx() -> void:
 	fx.name = "WreckFx"
 	fx.sprite_frames = frames
 	fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	fx.scale = Vector2(2, 2)  # the unit baseline — was rendering 1x
 	fx.position = Vector2(0, -6)
 	add_child(fx)
 	fx.play("fx")

@@ -381,6 +381,9 @@ func _on_anim_finished() -> void:
 		var tween := create_tween()
 		tween.tween_property(self, "modulate:a", 0.0, 0.8)
 		tween.tween_callback(queue_free)
+	elif sprite.animation.begins_with("fire_"):
+		# the muzzle flash is a one-shot: straight back to standing
+		_play("stand", _last_dir)
 	elif _entering != null and sprite.animation.begins_with("enter_apc"):
 		_finish_entering()
 	elif _flavoring:
