@@ -173,7 +173,7 @@ func announce(event: String) -> void:
 		return
 	_announce_gates[event] = Time.get_ticks_msec() + int(ANNOUNCE_THROTTLE.get(event, 10000))
 	if event == "youre_losing":
-		_play_wav("comp_youre_losing_%02d" % randi() % 10, -2.0)
+		_play_wav("comp_youre_losing_%02d" % (randi() % 10), -2.0)
 		return
 	_play_wav("comp_%s" % event, -2.0)
 
