@@ -8,6 +8,8 @@ extends Node2D
 
 var speed := 260.0
 var impact_effect := "impact"
+var sprite_name := ""    # effect folder with animated frames
+var texture_path := ""   # single static sprite (e.g. the tank shell)
 
 var _from := Vector2.ZERO
 var _to := Vector2.ZERO
@@ -15,7 +17,6 @@ var _dir := Vector2.RIGHT
 var _travelled := 0.0
 var _length := 0.0
 var _on_hit: Callable
-var sprite_name := ""
 
 
 func setup(from: Vector2, to: Vector2, on_hit: Callable) -> void:
@@ -30,7 +31,12 @@ func setup(from: Vector2, to: Vector2, on_hit: Callable) -> void:
 
 func _ready() -> void:
 	z_index = 5  # above units, below explosions
-	if sprite_name != "":
+	if texture_path != "" and ResourceLoader.exists(texture_path):
+		var shell := Sprite2D.new()
+		shell.texture = load(texture_path)
+		shell.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		add_child(shell)
+	elif sprite_name != "":
 		var def: Dictionary = ContentDB.effect_def(sprite_name)
 		var frames := AnimLibrary.effect_frames(String(def.get("dir", "")), sprite_name, 12.0)
 		if frames != null and frames.has_animation("fx"):

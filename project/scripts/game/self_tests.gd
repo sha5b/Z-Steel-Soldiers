@@ -8,11 +8,18 @@ extends Object
 ## the first error you see.
 
 
+static func _all_nodes(root: Node) -> Array:
+	var out := [root]
+	for child in root.get_children():
+		out.append_array(_all_nodes(child))
+	return out
+
+
 static func should_run() -> bool:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	for flag in ["capture", "combat", "factory", "ai", "path", "dir", "near", "flag",
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
-			"campaign", "win", "fx", "mount"]:
+			"campaign", "win", "fx", "mount", "building", "parade", "cap"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -224,6 +231,11 @@ static func run(ctx: Node) -> void:
 		if fort2:
 			GameState.money[1] = 500
 			var ok2: bool = fort2.queue_unit("psycho")
+			for i in 8:
+				fort2.queue_unit("grunt")
+			print("QUEUECAP: size=%d (want 5)" % fort2.queue.items.size())
+			for i in 4:  # cancel only the grunts, keep the psycho
+				fort2.cancel_at(fort2.queue.items.size() - 1)
 			var count0 := tree.get_nodes_in_group("units").size()
 			for i in 40:
 				fort2._process(0.5)
@@ -274,7 +286,7 @@ static func run(ctx: Node) -> void:
 		# bridges must be walkable for wheels: no bridge SPAN cell solid in vgrid
 		var blocked_bridges := 0
 		var total_bridge_cells := 0
-		for b in ctx.get_children():
+		for b in _all_nodes(ctx):
 			if b is Building2D and (b.building_id == 6 or b.building_id == 7):
 				var tile := Vector2i(((b.global_position - Vector2(8, 8)) / 16.0).floor())
 				var span := Vector2i(2, 8) if b.building_id == 6 else Vector2i(8, 2)
@@ -336,8 +348,11 @@ static func run(ctx: Node) -> void:
 			print("WIN: fort_alive=%s game_over=%s" % [fort.alive, GameState.over])
 	if "--mount-test" in args:
 		# every spawnable vehicle/cannon must have a visible manned look
-		# (base art, equiped art, or the fire cycle aliased in)
+		# (base art, equiped art, or the fire cycle aliased in), neutral
+		# art while unmanned (never a team colour), and turrets on tanks
 		var no_manned := []
+		var team_colored := []
+		var no_turret := []
 		for kind in ["vehicle", "cannon"]:
 			for type_name in ContentDB.defs_of(kind):
 				if not ContentDB.has_sprites(kind, String(type_name)):
@@ -346,7 +361,108 @@ static func run(ctx: Node) -> void:
 				var frames := AnimLibrary.vehicle_frames(dir, 1)
 				if not frames.has_animation("base_0") or frames.get_frame_count("base_0") == 0:
 					no_manned.append(String(type_name))
-		print("MOUNT: types_without_manned_art=%s" % [no_manned])
+				# unmanned build must resolve neutral empty art
+				var empty := AnimLibrary.vehicle_frames(dir, 0)
+				if empty.has_animation("empty_0"):
+					var path := String(empty.get_frame_texture("empty_0", 0).resource_path)
+					for color in ["_red.", "_blue.", "_green.", "_yellow."]:
+						if path.ends_with(color):
+							team_colored.append("%s (%s)" % [type_name, path.get_file()])
+				else:
+					team_colored.append("%s (no empty art)" % type_name)
+				# tanks carry a turret layer; the jeep must not
+				var turret: Dictionary = AnimLibrary.turret_set(dir, 1)
+				var expect_turret := String(type_name) in ["light", "medium", "heavy", "apc"]
+				if expect_turret and (turret.is_empty() or not turret.frames.has_animation("turret_0")):
+					no_turret.append(String(type_name))
+				if String(type_name) == "jeep":
+					if not turret.is_empty():
+						no_turret.append("jeep (unexpected turret)")
+					var wheels: Dictionary = AnimLibrary.jeep_wheel_set(dir, 1)
+					if wheels.is_empty() or not wheels.frames.has_animation("wheels_0"):
+						no_turret.append("jeep (no wheel frames)")
+		print("MOUNT: types_without_manned_art=%s team_colored_empty=%s turret_issues=%s" % [
+			no_manned, team_colored, no_turret])
+	if "--cap-test" in args:
+		# unit cap: base 25 + zone bonuses; production refuses beyond it
+		var fort: FortBuilding = null
+		for c in ctx.get_children():
+			if c is FortBuilding and c.team == GameState.player_team:
+				fort = c
+				break
+		if fort:
+			GameState.money[1] = 99999
+			# drive production until the cap refuses everything
+			for i in 200:
+				fort.queue_unit("grunt")
+				fort._process(0.6)
+			var cap := GameState.unit_cap(1)
+			var used := GameState.unit_pop(1)
+			print("CAP: cap=%d pop_used=%d (want equal), queue=%d (want full)" % [
+				cap, used, fort.queue.items.size()])
+	if "--building-test" in args:
+		# every building kind: destroyed art resolves and animation
+		# overlays (radar dish, factory spinner, smoke stack) exist
+		var missing_destroyed := []
+		var no_overlay := []
+		for id in [2, 3, 4, 5, 0, 1]:
+			var def := ContentDB.building_def(id)
+			for planet in ["desert", "volcanic", "arctic", "city", "jungle"]:
+				var b: Building2D = def.script.new()
+				b.setup(id, 0 if id in [6, 7] else 1, planet)
+				ctx.add_child(b)
+				if not ResourceLoader.exists(b._texture_path(true)):
+					missing_destroyed.append("%d/%s" % [id, planet])
+				var anims: Array = def.get("anims", [])
+				if not anims.is_empty() and b.get_node_or_null(
+						"Overlay_%s" % String(anims[0].prefix)) == null:
+					no_overlay.append("%d (%s)" % [id, planet])
+				b.queue_free()
+		print("BUILDING: missing_destroyed=%s no_overlay=%s" % [
+			missing_destroyed, no_overlay])
+	if "--parade-test" in args:
+		# line up manned hardware + an empty jeep for visual inspection
+		var camera := ctx.get_node("RtsCamera2D")
+		var origin: Vector2 = camera.global_position
+		var x := 0
+		for spec in [["vehicle", "jeep", 1], ["vehicle", "light", 1], ["vehicle", "medium", 1],
+				["vehicle", "heavy", 1], ["vehicle", "apc", 1], ["cannon", "gatling", 1],
+				["cannon", "gun", 1], ["cannon", "howitzer", 1]]:
+			var v: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+			v.setup_vehicle(spec[0], spec[1], spec[2])
+			v.position = origin + Vector2(-240 + x * 70, -80)
+			ctx.add_child(v)
+			x += 1
+		var empty: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+		empty.setup_vehicle("vehicle", "jeep", 0)
+		empty.position = origin + Vector2(-240, 0)
+		ctx.add_child(empty)
+		# direction matrix: medium tanks facing all 8 directions
+		for i in 8:
+			var dt: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+			dt.setup_vehicle("vehicle", "medium", 1)
+			dt.position = origin + Vector2(-280 + i * 74, -170)
+			ctx.add_child(dt)
+			dt._last_dir = i
+			dt._play("base", i)
+			if dt._turret and dt._turret_offsets.size() == 8:
+				dt._turret_dir = i
+				dt._turret.position = dt._turret_offsets[i]
+		for c in ctx.get_children():
+			if c is RobotFactory:
+				# capture it for the player so the panel shows
+				for z in GameState.zones:
+					if z.world_rect().has_point(c.world_footprint().get_center()):
+						z.owner_team = GameState.player_team
+						break
+				c.owner_team = GameState.player_team
+				SelectionManager.clear_selection()
+				SelectionManager.toggle_select(c, false)
+				GameState.money[GameState.player_team] = 600
+				c.queue_unit("grunt")
+				c.queue_unit("psycho")
+				c.queue_unit("tough")
+				break
 	if "--fx-test" in args:
 		# effects/projectiles must spawn and clean up on their own
 		# (earlier flags may have paused the tree via game over)

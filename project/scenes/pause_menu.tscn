@@ -20,10 +20,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -130.0
-offset_top = -160.0
-offset_right = 130.0
-offset_bottom = 160.0
+offset_left = -192.0
+offset_top = -128.0
+offset_right = 192.0
+offset_bottom = 128.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -34,10 +34,10 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 10
-theme_override_constants/margin_right = 16
-theme_override_constants/margin_bottom = 10
+theme_override_constants/margin_left = 76
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 76
+theme_override_constants/margin_bottom = 8
 
 [node name="Menu" type="VBoxContainer" parent="Panel/Margin"]
 layout_mode = 2
@@ -45,32 +45,32 @@ theme_override_constants/separation = 10
 
 [node name="PauseLabel" type="Label" parent="Panel/Margin/Menu"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 32
 text = "Paused"
 horizontal_alignment = 1
 
 [node name="Resume" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
 text = "Resume"
 
 [node name="Restart" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
 text = "Restart Map"
 
 [node name="Save" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
 text = "Save Game"
 
 [node name="Maps" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
 text = "Map Select"
 
 [node name="Title" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(200, 40)
+custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
 text = "Quit to Title"
 

@@ -15,6 +15,7 @@ const BY_NAME := {
 	"explosion_big": {"fps": 8.0, "scale": 2.6, "sound": "explosion", "color": Color(1.0, 0.65, 0.25)},
 	"impact": {"fps": 12.0, "scale": 0.7, "sound": "", "color": Color(1.0, 0.9, 0.5)},
 	"muzzle": {"fps": 15.0, "scale": 0.8, "sound": "", "color": Color(1.0, 0.95, 0.6)},
+	"debris": {"fps": 12.0, "scale": 1.2, "sound": "", "color": Color(0.6, 0.5, 0.4)},
 }
 
 const FALLBACK := {"fps": 10.0, "scale": 1.0, "sound": "", "color": Color(1.0, 0.8, 0.4)}

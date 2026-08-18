@@ -40,10 +40,17 @@ func explosion(world_pos: Vector2, big := false) -> void:
 	play("explosion_big" if big else "explosion", world_pos)
 
 
-## Destruction of a manned unit / building — bigger boom.
+## Destruction of a manned unit / building — big boom, flying debris and
+## a staggered secondary blast.
 func destroyed(world_pos: Vector2) -> void:
 	play("explosion_big", world_pos)
+	play("debris", world_pos + Vector2(0, -6))
 	_play_set("destroyed")
+	var timer := get_tree().create_timer(0.22)
+	timer.timeout.connect(func():
+		if is_instance_valid(self):
+			play("explosion", world_pos + Vector2(
+				randf_range(-14.0, 14.0), randf_range(-10.0, 6.0))))
 
 
 func impact(world_pos: Vector2) -> void:
@@ -70,6 +77,7 @@ func shell(from: Vector2, to: Vector2, opts: Dictionary, on_hit: Callable) -> vo
 	shot.speed = float(opts.get("speed", 260.0))
 	shot.impact_effect = String(opts.get("impact", "impact"))
 	shot.sprite_name = String(opts.get("sprite", ""))
+	shot.texture_path = String(opts.get("texture", ""))
 	shot.setup(from, to, on_hit)
 	add_child(shot)
 
@@ -79,6 +87,11 @@ func gunfire(sound_name: String) -> void:
 	if sound_name == "":
 		return
 	_play_wav(sound_name, GUNSHOT_VOLUME_DB)
+
+
+## Unit cap reached — denial feedback (original UI beep).
+func cap_denied() -> void:
+	_play_wav("BEEP3L", -4.0)
 
 
 func ui_click() -> void:

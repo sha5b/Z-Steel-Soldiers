@@ -45,9 +45,14 @@ func queue_unit(type_name: String) -> bool:
 			or not ContentDB.has_sprites("vehicle", type_name):
 		return false
 	var stats: Dictionary = ContentDB.def_for("vehicle", type_name)
+	if not _pop_allows(stats):
+		return false
 	if not GameState.spend(owner_team, int(stats.cost)):
 		return false
-	queue.enqueue(type_name)
+	if not queue.enqueue(type_name):
+		GameState.money[owner_team] += int(stats.cost)  # queue full: refund
+		GameState.money_changed.emit(owner_team, GameState.money[owner_team])
+		return false
 	return true
 
 
@@ -58,6 +63,19 @@ func cancel_at(index: int) -> void:
 	var stats: Dictionary = ContentDB.def_for("vehicle", type_name)
 	GameState.money[owner_team] += int(stats.cost)
 	GameState.money_changed.emit(owner_team, GameState.money[owner_team])
+
+
+## Cap gate: alive + queued + this unit must fit under the team cap.
+func _pop_allows(stats: Dictionary) -> bool:
+	var team_id := team if team != 0 else owner_team
+	var queued := 0
+	for item in queue.items:
+		queued += int(ContentDB.def_for("robot" if kind_key() == "robot_factory" else "vehicle", item).get("pop", 1))
+	var cost := int(stats.get("pop", 1))
+	if GameState.unit_pop(team_id) + queued + cost > GameState.unit_cap(team_id):
+		Fx.cap_denied()
+		return false
+	return true
 
 
 func _spawn(type_name: String) -> void:

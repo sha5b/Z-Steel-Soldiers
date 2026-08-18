@@ -1,3 +1,4 @@
+@tool
 class_name Unit2D
 extends CharacterBody2D
 ## Z (1996) robot unit: 16x16 original sprites, 8 baked directions.
@@ -28,6 +29,8 @@ var waypoints := PackedVector2Array()
 var enter_target: Node2D = null
 var _idle_time := 0.0
 var _flavoring := false
+var _entering: Node2D = null  # vehicle being boarded (enter_apc gesture)
+var _enter_timer := 0.0
 var carried := false
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
@@ -35,6 +38,10 @@ var carried := false
 
 
 func _ready() -> void:
+	if Engine.is_editor_hint():
+		_build_frames()
+		_play("stand", 4)
+		return
 	add_to_group("selectable")
 	add_to_group("units")
 	var stats := ContentDB.stats_for(kind, unit_name)
@@ -62,12 +69,16 @@ func _build_frames() -> void:
 
 
 func _process(delta: float) -> void:
-	if carried:
+	if Engine.is_editor_hint() or carried:
 		return
 	voice_cooldown = maxf(0.0, voice_cooldown - delta)
 	if not alive:
 		return
 	_fire_timer = maxf(0.0, _fire_timer - delta)
+	if _entering != null:
+		_enter_timer += delta
+		if _enter_timer > 0.9:  # gesture missing or signal never came
+			_finish_entering()
 	_combat()
 	_steer(delta)
 	_separation(delta)
@@ -112,9 +123,29 @@ func _separation(delta: float) -> void:
 			push += (d / dist) * (14.0 - dist)
 		elif dist <= 0.01:
 			push += Vector2(randf() - 0.5, randf() - 0.5)  # perfectly stacked
-	global_position += push * clampf(delta * 6.0, 0.0, 1.0) * 0.5
+	var step := push * clampf(delta * 6.0, 0.0, 1.0) * 0.5
+	var target := global_position + step
+	if not _walkable(target):
+		# never shove units into water/rock: try axes separately, else stay
+		if _walkable(Vector2(target.x, global_position.y)):
+			target = Vector2(target.x, global_position.y)
+		elif _walkable(Vector2(global_position.x, target.y)):
+			target = Vector2(global_position.x, target.y)
+		else:
+			return
+	global_position = target
 	global_position = global_position.clamp(
 		GameState.map_rect.position, GameState.map_rect.end)
+
+
+func _walkable(p: Vector2) -> bool:
+	var grid := GameState.vehicle_grid if kind != "robot" else GameState.nav_grid
+	if grid == null:
+		return true
+	var cell := Vector2i((p / 16.0).floor())
+	if not grid.region.has_point(cell):
+		return false
+	return not grid.is_point_solid(cell)
 
 
 func _idle(delta: float) -> void:
@@ -139,6 +170,20 @@ func _idle(delta: float) -> void:
 			sprite.play(name)
 		else:
 			_flavoring = false
+
+
+## One-shot contextual animation (point, pickup-*, enter_apc...).
+## Directional gestures pick the current facing; plain ones run as-is.
+func play_gesture(gesture: String) -> void:
+	if not alive or carried:
+		return
+	var name := "%s_%d" % [gesture, _last_dir]
+	if not sprite.sprite_frames or not sprite.sprite_frames.has_animation(name):
+		name = "%s_0" % gesture
+	if sprite.sprite_frames and sprite.sprite_frames.has_animation(name) 			and sprite.sprite_frames.get_frame_count(name) > 0:
+		_flavoring = true
+		_idle_time = 0.0
+		sprite.play(name)
 
 
 func _combat() -> void:
@@ -221,11 +266,23 @@ func _on_game_over(winning_team: int) -> void:
 		_flavoring = true  # holds the anim until it finishes
 
 
+func _finish_entering() -> void:
+	var v := _entering
+	_entering = null
+	if v != null and is_instance_valid(v) and v.alive and not v.manned:
+		v.enter(self)
+		queue_free()
+		return
+	# vehicle lost mid-gesture: robot stays put
+
+
 func _on_anim_finished() -> void:
 	if not alive and sprite.animation == "die":
 		var tween := create_tween()
 		tween.tween_property(self, "modulate:a", 0.0, 0.8)
 		tween.tween_callback(queue_free)
+	elif _entering != null and sprite.animation.begins_with("enter_apc"):
+		_finish_entering()
 	elif _flavoring:
 		_flavoring = false
 		_idle_time = 0.0
@@ -233,6 +290,7 @@ func _on_anim_finished() -> void:
 
 func move_to(world_pos: Vector2) -> void:
 	enter_target = null  # a fresh order supersedes any pending man/load
+	_entering = null
 	move_target = world_pos
 	waypoints = GameState.request_path(global_position, world_pos, kind)
 	if waypoints.is_empty():
@@ -240,6 +298,7 @@ func move_to(world_pos: Vector2) -> void:
 	elif waypoints.size() > 1 and global_position.distance_to(waypoints[0]) < 10.0:
 		waypoints.remove_at(0)  # don't step back to the start cell centre
 	if team == GameState.player_team:
+		play_gesture("point")
 		_play_voice("acknowledge")
 		PathIndicator.show_path(get_parent(), waypoints)
 
@@ -254,12 +313,24 @@ func _try_enter() -> void:
 	var v := enter_target
 	enter_target = null
 	if v is Vehicle2D and v.alive:
-		if not v.manned:
+		if not v.manned and _entering == null:
 			SelectionManager.drop_from_selection(self)
-			v.enter(self)
-			queue_free()
+			move_target = Vector2.ZERO
+			velocity = Vector2.ZERO
+			_entering = v
+			_enter_timer = 0.0
+			play_gesture("enter_apc")  # boards when the anim finishes
 		elif v.is_apc() and v.team == team:
 			v.load_robot(self)
+
+
+## Original HUD icon (per type and team) for the selection bar.
+func icon_path() -> String:
+	var icon := "res://assets/z/ui/hud/icon_%s_%s.png" % [
+		unit_name, AnimLibrary.team_name(team)]
+	if ResourceLoader.exists(icon):
+		return icon
+	return portrait_path()
 
 
 func portrait_path() -> String:
@@ -280,6 +351,11 @@ func _play_voice(prefix: String) -> void:
 		"acknowledge":
 			for i in 10:
 				paths.append("res://assets/z/sounds/acknowledge_%02d.wav" % i)
+		"selected":
+			# per-type voice where the original shipped one
+			paths.append("res://assets/z/sounds/selected_%s.wav" % unit_name)
+			for i in 6:
+				paths.append("res://assets/z/sounds/selected_%02d.wav" % i)
 	paths.shuffle()
 	for path in paths:
 		if ResourceLoader.exists(path):
@@ -295,14 +371,25 @@ func set_selected(value: bool) -> void:
 	selected = value
 	ring.visible = value or hp < max_hp
 	ring.queue_redraw()
+	if value and team == GameState.player_team and alive and not carried:
+		_play_voice("selected")
 
 
-func _play(anim: String, dir: int, once := false) -> void:
+## `fallback` names the anim to keep showing when `anim` has no art
+## (tanks fire through their turret, so the hull keeps its base cycle).
+func _play(anim: String, dir: int, once := false, fallback := "") -> void:
 	var name := "%s_%d" % [anim, dir]
+	if sprite.sprite_frames and not sprite.sprite_frames.has_animation(name) \
+			and fallback != "" and sprite.sprite_frames.has_animation("%s_%d" % [fallback, dir]):
+		name = "%s_%d" % [fallback, dir]
 	if once and sprite.sprite_frames:
 		sprite.stop()
 	if sprite.sprite_frames and sprite.sprite_frames.has_animation(name):
-		if sprite.animation != name or not sprite.is_playing():
+		# finished one-shots (gunner install) hold their last frame —
+		# restarting them would loop the install animation forever
+		var restarts: bool = sprite.animation != name \
+				or not sprite.is_playing() and sprite.sprite_frames.get_animation_loop(name)
+		if restarts:
 			sprite.play(name)
 	elif sprite.is_playing():
 		sprite.stop()

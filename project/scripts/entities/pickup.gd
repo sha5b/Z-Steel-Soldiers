@@ -27,6 +27,8 @@ func _process(_delta: float) -> void:
 	for u in get_tree().get_nodes_in_group("units"):
 		if u is Node2D and u.alive and u.team != 0 \
 				and u.global_position.distance_to(global_position) < 12.0:
+			if u is Unit2D:
+				u.play_gesture("pickup-up")
 			_collect(u.team)
 			break
 

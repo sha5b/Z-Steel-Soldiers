@@ -5,19 +5,27 @@ extends Control
 
 
 func _ready() -> void:
-	var maps := DirAccess.get_files_at("res://assets/maps")
-	maps.sort()
-	for f in maps:
-		if not String(f).ends_with(".json"):
-			continue
-		var parsed = JSON.parse_string(
-			FileAccess.get_file_as_string("res://assets/maps/" + f))
-		var data: Dictionary = parsed if parsed is Dictionary else {}
-		var label := "%s  —  %s %dx%d" % [
-			String(f).get_basename(), String(data.get("terrain", "?")),
+	UiTheme.apply(self)
+	var entries := []  # [file, dir, tag]
+	for f in DirAccess.get_files_at("res://assets/maps"):
+		if String(f).ends_with(".json"):
+			entries.append([String(f), "res://assets/maps", "json"])
+	for f in DirAccess.get_files_at("res://assets/maps_scenes"):
+		if String(f).ends_with(".tscn"):
+			entries.append([String(f), "res://assets/maps_scenes", "scene"])
+	entries.sort_custom(func(a, b): return String(a[0]) < String(b[0]))
+	for entry in entries:
+		var f: String = entry[0]
+		var data: Dictionary = {}
+		if entry[2] == "json":
+			var parsed = JSON.parse_string(
+				FileAccess.get_file_as_string(entry[1] + "/" + f))
+			data = parsed if parsed is Dictionary else {}
+		var label := "[%s] %s  —  %s %dx%d" % [
+			entry[2], f.get_basename(), String(data.get("terrain", "?")),
 			int(data.get("width", 0)), int(data.get("height", 0))]
 		list.add_item(label)
-		list.set_item_metadata(list.item_count - 1, "res://assets/maps/" + f)
+		list.set_item_metadata(list.item_count - 1, entry[1] + "/" + f)
 	if list.item_count > 0:
 		list.select(0)
 

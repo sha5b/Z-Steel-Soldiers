@@ -52,6 +52,34 @@ original game data alongside port-specific resources:
 Only file skipped: `__support/.../vcredist_x86_2012.exe` (duplicate,
 no asset value).
 
+## 2b. GOG release internals (reverse-engineered 2026-08-17)
+
+`assets_original/gog/` — the Runesoft Mac/PC port of Z:
+
+- `en.lproj/sprites.rsc` (3.9 MB): **the packed original sprite
+  archive**. Format so far: `u16 entry_count` (7211), then
+  `entry_count × u32 LE` absolute offsets; each record starts with a
+  width byte (e.g. 0x10) followed by palette-index pixel runs (codec
+  not yet decoded — likely RLE per row). `SHEADBI0-4.DAT` (~72 KB each,
+  one per team?) look like the per-sprite header/index tables.
+- `<PLANET>.PAL` — standard 768-byte 256-color RGB palettes (one per
+  planet); `<PLANET>.BLK` (128 KB) — planet tile data blocks.
+- `OBJECT/BUILD/BRIDGE/CPUPLR ##.DAT` — per-level object lists
+  (10-byte records); `SINCOS/HSHWING/VSHWING` — precomputed render
+  math tables; `LEVEL##.MAP` — compressed level data (different
+  layout from zod's .map text format).
+- `audio/*.RAW` — 115 sfx (8-bit unsigned PCM mono 11025 Hz);
+  root + `lproj` oggs — soundtrack/voices.
+
+Everything usable as files from this release is already wired into the
+project (sfx, music, HUD panels, splash, backgrounds). The unit sprites
+in `project/assets/z/` are the SAME original Bitmap Brothers art,
+pre-extracted from the original archive by the Zod Engine project —
+`sprites.rsc` contains the identical pixels in packed form. Extracting
+them again would need: RLE codec, SHEADBI index semantics, sprite-ID →
+name mapping and team palette recoloring — documented here for a future
+attempt if GOG-only sourcing is ever required.
+
 ## 3. Game facts to recreate (Z, 1996)
 
 - 2D tile maps on 5 planets; screen ~640×480 in original; units are

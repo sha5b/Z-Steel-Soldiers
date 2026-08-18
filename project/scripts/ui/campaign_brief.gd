@@ -5,6 +5,7 @@ extends Control
 
 
 func _ready() -> void:
+	UiTheme.apply(self)
 	label.text = "%s\n\nCapture territory, build your army,\ndestroy the enemy fort." \
 		% Campaign.current_title()
 

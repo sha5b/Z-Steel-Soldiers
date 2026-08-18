@@ -1,9 +1,10 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/test_map_2d.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/game/rts_camera2d.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/ui/selection_rect.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/ui/production_panel.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/ui/facility_list.gd" id="4b"]
 [ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/ui/top_bar.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/ui/selection_bar.gd" id="7"]
@@ -49,26 +50,40 @@ anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 12.0
-offset_top = -280.0
-offset_right = 204.0
+offset_top = -172.0
+offset_right = 184.0
 offset_bottom = -12.0
 grow_vertical = 0
 script = ExtResource("5")
 
 [node name="SelectionBar" type="HBoxContainer" parent="CanvasLayer/HUD"]
 script = ExtResource("7")
-anchors_preset = 7
-anchor_left = 0.5
+anchors_preset = 3
+anchor_left = 1.0
 anchor_top = 1.0
-anchor_right = 0.5
+anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -260.0
-offset_top = -60.0
-offset_right = 260.0
+offset_left = -532.0
+offset_top = -64.0
+offset_right = -12.0
 offset_bottom = -12.0
-grow_horizontal = 2
+grow_horizontal = 0
 grow_vertical = 0
 theme_override_constants/separation = 4
+
+[node name="FacilityList" type="VBoxContainer" parent="CanvasLayer/HUD"]
+anchors_preset = 9
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -162.0
+offset_top = -70.0
+offset_right = -12.0
+offset_bottom = 70.0
+grow_horizontal = 0
+grow_vertical = 2
+script = ExtResource("4b")
 
 [node name="ProductionPanel" type="Control" parent="CanvasLayer/HUD"]
 anchors_preset = 7

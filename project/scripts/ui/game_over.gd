@@ -11,6 +11,7 @@ extends Control
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	UiTheme.apply(self)
 	OriginalPanel.attach($Box)
 	again.pressed.connect(func():
 		GameState.reset_for_new_map()

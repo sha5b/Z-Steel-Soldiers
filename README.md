@@ -29,6 +29,12 @@ assets and format knowledge from the open-source
 | `assets_original/zod/` | Zod Engine asset set — unit/map sprites (gitignored, 84 MB) |
 | `project/assets/z/` | Working asset set, built by `tools/gog/convert_assets.py` (gitignored) |
 
+Maps are playable as JSON or as editable Godot scenes — open any
+`project/assets/maps_scenes/*.tscn` in the editor, paint terrain with the
+generated tilesets, move buildings/zones/units, press F6 to play; regenerate
+them from the JSONs with `godot --headless --path project
+res://tools/build_map_resources.tscn`.
+
 Project code layout: `scripts/core` (autoloads: ContentDB, Fx, GameState,
 SelectionManager, MusicPlayer, Campaign), `scripts/content` (definition
 tables), `scripts/entities` (units, buildings, effects), `scripts/game`

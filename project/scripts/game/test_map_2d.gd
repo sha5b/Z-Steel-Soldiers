@@ -12,16 +12,23 @@ var _map_index := 0
 
 
 func _ready() -> void:
+	var cursor_path := "res://assets/z/ui/cursor/cursor_blue_n00.png"
+	if ResourceLoader.exists(cursor_path):
+		Input.set_custom_mouse_cursor(load(cursor_path), Input.CURSOR_ARROW,
+			Vector2(6, 3))  # original in-game pointer
+	UiTheme.apply($CanvasLayer/HUD)
 	SelectionManager.order_issued.connect(_on_order)
 	var chosen: String = GameState.next_map if GameState.next_map != "" else map_json
 	for arg in OS.get_cmdline_args() + OS.get_cmdline_user_args():
 		if String(arg).begins_with("--map="):  # test override: --map=res://assets/maps/x.json
 			chosen = String(arg).substr(6)
-	var all_maps := DirAccess.get_files_at("res://assets/maps")
 	_map_list = PackedStringArray()
-	for f in all_maps:
+	for f in DirAccess.get_files_at("res://assets/maps"):
 		if String(f).ends_with(".json"):
-			_map_list.append(f)
+			_map_list.append(String(f))
+	for f in DirAccess.get_files_at("res://assets/maps_scenes"):
+		if String(f).ends_with(".tscn"):
+			_map_list.append(String(f))
 	_map_list.sort()
 	_map_index = _map_list.find(chosen.get_file())
 	GameState.current_map = chosen
@@ -45,13 +52,33 @@ func _ready() -> void:
 		minimap.build(data, tileset)
 		minimap.move_order.connect(func(world: Vector2): SelectionManager.issue_order(world))
 	MusicPlayer.play_battle()
+	var shot_args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	if "--screenshot" in shot_args:
+		await _screenshot(shot_args[shot_args.find("--screenshot") + 1] if shot_args.size() > shot_args.find("--screenshot") + 1 else "2.0")
+
 	if SelfTests.should_run():
+		var terrain_cells := -1
+		if has_node("Terrain"):
+			terrain_cells = $Terrain.get_used_cells().size()
+		else:
+			for child in get_children():
+				if child is ZMap and child.has_node("Terrain"):
+					terrain_cells = child.get_node("Terrain").get_used_cells().size()
 		print("MAP OK: %dx%d terrain-cells=%d zones=%d units=%d" % [
-			data.width, data.height,
-			$Terrain.get_used_cells().size() if has_node("Terrain") else -1,
+			data.width, data.height, terrain_cells,
 			GameState.zones.size(),
 			get_tree().get_nodes_in_group("units").size()])
 		await SelfTests.run(self)
+
+
+## Test helper: capture the viewport after N seconds and quit.
+func _screenshot(delay_text: String) -> void:
+	var delay := float(delay_text)
+	await get_tree().create_timer(delay).timeout
+	var image := get_viewport().get_texture().get_image()
+	image.save_png("/home/sha5b/Documents/GitHub/Z-Steel-Soldiers/screenshot_tmp.png")
+	print("SCREENSHOT: saved ", image.get_size())
+	get_tree().quit()
 
 
 ## Restore a saved match: money, upgrades, zone owners, and units are
@@ -88,7 +115,9 @@ func _cycle_map() -> void:
 	if _map_list.is_empty():
 		return
 	_map_index = wrapi(_map_index + 1, 0, _map_list.size())
-	GameState.next_map = "res://assets/maps/" + _map_list[_map_index]
+	var dir := "res://assets/maps_scenes/" if _map_list[_map_index].ends_with(".tscn") \
+			else "res://assets/maps/"
+	GameState.next_map = dir + _map_list[_map_index]
 	print("MAP SWITCH -> ", _map_list[_map_index])
 	GameState.reset_for_new_map()
 	get_tree().reload_current_scene()

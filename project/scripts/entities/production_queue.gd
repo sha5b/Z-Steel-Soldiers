@@ -5,12 +5,17 @@ extends RefCounted
 ## and spawning stay with the producer; this class only tracks time and
 ## order.
 
+const MAX_ITEMS := 5
+
 var items: Array[String] = []
 var elapsed := 0.0
 
 
-func enqueue(type_name: String) -> void:
+func enqueue(type_name: String) -> bool:
+	if items.size() >= MAX_ITEMS:
+		return false
 	items.append(type_name)
+	return true
 
 
 ## Removes and returns the entry at `index` ("" when out of range) — the

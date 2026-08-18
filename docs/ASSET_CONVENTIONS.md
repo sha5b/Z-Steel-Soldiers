@@ -46,14 +46,24 @@ see it work — auto-discovery registers unknown folders with grunt stats.
 
 ```
 <dir>/empty_r<deg>.png            unmanned, directional  — or plain:
-<dir>/empty.png / empty_<team>.png  unmanned, single facing
-<dir>/base_<team>_r<deg>_n<frame>.png   manned idle
+<dir>/empty_null.png / empty.png  unmanned, single facing (always neutral)
+<dir>/base_<team>_r<deg>_n<frame>.png   manned idle (hull for tanks)
+<dir>/base_damaged_<team>_r<deg>_n<frame>.png  shown below half HP
+<dir>/equiped_<team>_r<deg>.png   gun-cannon manned idle
 <dir>/fire_[<team>_]r<deg>_n<frame>.png firing (shared when no team art)
-<dir>/wasted.png                  wreck
+<dir>/top_[<team>_]r<deg>.png     turret layer (tanks, APC) — aims
+                                   independently of the hull
+<dir>/topf_[<team>_]r<deg>.png    firing turret (where it exists)
+<dir>/top_pop_n<frame>.png        turret blowing off on destruction
+<dir>/wasted[_<team>].png         wreck (tanks have none — they explode)
 <dir>/under_<team>_r<deg>_n<frame>.png  jeep wheel layer
+<dir>/bullet.png                  tank shell sprite (projectile visual)
 ```
 
-A `projectile` key in the def (`{speed, sprite, impact}`) makes the gun
+Unmanned hardware always resolves neutral art (`empty_null.png` /
+`empty.png`) — never a team colour. Tanks fire through their turret
+layer; the hull keeps its base cycle when no hull fire art exists. A
+`projectile` key in the def (`{speed, impact, texture}`) makes the gun
 fire a travelling shell that damages on impact; without it, fire is
 hitscan with a tracer.
 
@@ -86,9 +96,24 @@ the upgrade). Scenery map items (non-rock, non-pickup ids) resolve through
 
 ## Maps
 
-JSON from `tools/zod/map_to_json.py` (drop the output into
-`project/assets/maps/`). No registration needed — map select and campaign
-pick up every `.json` automatically.
+Two interchangeable formats; the match, map select and the M-key map
+cycle accept both:
+
+- **JSON** from `tools/zod/map_to_json.py` (drop into
+  `project/assets/maps/`) — the campaign runs on these.
+- **Editable scenes** (`.tscn` in `project/assets/maps_scenes/`) — open
+  one in the Godot editor to see the map tile by tile: paint the Terrain
+  TileMapLayer with the planet tileset (`assets/tilesets/<planet>.tres`,
+  generated), move or add Zone / building / unit / scenery nodes, then
+  press F6 to fight it. Navigation derives from the painted tiles via
+  `assets/tilesets/tileinfo_<planet>.json`, so editing terrain updates
+  passability and water automatically.
+
+Regenerate the scenes and tilesets after converting new JSONs:
+
+    godot --headless --path project res://tools/build_map_resources.tscn
+
+Both formats and the derived scenes are gitignored (original-game data).
 
 ## GOG release assets
 
@@ -109,6 +134,36 @@ from the extracted GOG release in `assets_original/gog/`:
   the zod maps — not currently convertible; maps stay zod-sourced.
 - Robot/vehicle sprites are engine-packed in the GOG release and not
   present as files — they stay sourced from the zod pack.
+
+## Wired in the final sweep
+
+- Robot idle flavors: beer, cigarette, pope, look_around, head_stretch,
+  beat_ground, **confused, full_area_scan, praise_the_lord**.
+- One-shot gestures: **point** (order acknowledgement), **pickup-up**
+  (crate collection), **enter_apc** (boarding, completes the man on
+  finish), throw/dodge loaded and available. Death variants die1-5
+  **+ melt**.
+- Selection voices: `selected_<type>.wav` per robot type (+ generic
+  `selected_00-05`), played when a player unit is selected.
+- Building animation overlays (def `anims`): radar dish, robot/vehicle
+  factory spinner, repair smoke stack — hidden when destroyed.
+- Destroyed art naming fixed (`base_destroyed_<planet>.png`).
+- Original in-game mouse cursor (`ui/cursor/`, animated contextual
+  cursor set available in the zod pack: attack/grenade/enter/...).
+
+## Available in the packs, not yet wired (candidates)
+
+- Ambient animals: `other/birds`, `other/hut_animals` (planet birds,
+  rabbits) — converted maps carry no animal objects.
+- Vehicle movement effects: track dust/sparks/oil/dirt frames, jeep
+  `tire_spin_*`, APC `open_*` door animation, medium-tank `cannon_r*`
+  barrel layer, `initfire` muzzle flashes.
+- Robot anims: dodge, jump-*, escape_tank, tank_fire, throw (combat
+  context), `exhaust_*` puffs.
+- 75 `ROB*.wav` robot barks, `COMP*` computer voice, losing taunts.
+- Original production/factory GUI sheets (`other/production_gui`,
+  `factory_gui`), full HUD set (`other/hud`), menu art, animated
+  contextual cursors, `planets_1-10-10` alt tileset.
 
 ## Missing original art (wanted)
 

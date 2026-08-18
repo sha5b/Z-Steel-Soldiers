@@ -1,15 +1,15 @@
 class_name OriginalPanel
 extends Object
-## Dresses a plain Control with the original GOG HUD panel art: BoxLeft
-## and BoxRight caps with BoxCentre stretched between (2x art, painted to
-## sit adjacently). The Control must NOT be a container — containers
-## override the slices' anchors. Falls back silently when art is missing.
-##
-##	OriginalPanel.attach(self)          # wide centre
-##	OriginalPanel.attach(self, true)    # narrow centre
+## Original GOG HUD panel art, displayed at its natural size so nothing
+## distorts: BoxLeft/BoxRight caps (64px each) with BoxCentre between —
+## wide = 640x256, narrow = 384x256. Attach to a plain Control (never a
+## container — containers override the slice anchors) whose size matches
+## PANEL_WIDE / PANEL_NARROW. Falls back silently when art is missing.
 
 const UI_DIR := "res://assets/z/ui"
-const CAP_DISPLAY_WIDTH := 64.0  # 64px art shown 1:1 (HiDPI port art)
+const PANEL_WIDE := Vector2(640, 256)
+const PANEL_NARROW := Vector2(384, 256)
+const CAP_WIDTH := 64.0
 
 
 static func attach(panel: Control, narrow := false) -> void:
@@ -18,6 +18,7 @@ static func attach(panel: Control, narrow := false) -> void:
 	var centre := _tex("BoxCentreNarrow.png" if narrow else "BoxCentreWide.png")
 	if left == null or right == null or centre == null:
 		return
+	panel.custom_minimum_size = PANEL_NARROW if narrow else PANEL_WIDE
 	_slice(panel, left, centre, right)
 
 
@@ -32,7 +33,7 @@ static func _slice(panel: Control, left: Texture2D, centre: Texture2D, right: Te
 	l.stretch_mode = TextureRect.STRETCH_SCALE
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	l.anchor_bottom = 1.0
-	l.offset_right = CAP_DISPLAY_WIDTH
+	l.offset_right = CAP_WIDTH
 	_place_bottom(panel, l)
 
 	var c := TextureRect.new()
@@ -41,8 +42,8 @@ static func _slice(panel: Control, left: Texture2D, centre: Texture2D, right: Te
 	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	c.anchor_right = 1.0
 	c.anchor_bottom = 1.0
-	c.offset_left = CAP_DISPLAY_WIDTH
-	c.offset_right = -CAP_DISPLAY_WIDTH
+	c.offset_left = CAP_WIDTH
+	c.offset_right = -CAP_WIDTH
 	_place_bottom(panel, c)
 
 	var r := TextureRect.new()
@@ -51,7 +52,7 @@ static func _slice(panel: Control, left: Texture2D, centre: Texture2D, right: Te
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	r.anchor_left = 1.0
 	r.anchor_bottom = 1.0
-	r.offset_left = -CAP_DISPLAY_WIDTH
+	r.offset_left = -CAP_WIDTH
 	_place_bottom(panel, r)
 
 

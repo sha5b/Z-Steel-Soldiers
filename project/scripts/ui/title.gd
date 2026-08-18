@@ -7,6 +7,7 @@ extends Control
 
 
 func _ready() -> void:
+	UiTheme.apply(self)
 	MusicPlayer.play_menu()
 	var path := "res://assets/z/ui/splash.png"
 	if ResourceLoader.exists(path):

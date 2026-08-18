@@ -8,7 +8,8 @@ signal closed
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
-	OriginalPanel.attach(get_node("Panel"))
+	UiTheme.apply(self)
+	OriginalPanel.attach(get_node("Panel"), true)
 
 
 func open() -> void:

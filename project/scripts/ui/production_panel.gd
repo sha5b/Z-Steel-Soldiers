@@ -2,12 +2,19 @@ extends Control
 ## Production panel: shown when the player selects one of their factories.
 ## Robot factories (and the fort) offer every buildable robot from
 ## ContentDB; vehicle factories offer buildable vehicles — new unit types
-## appear here automatically. Buttons use the original sprites as icons;
-## payment is upfront.
+## appear here automatically. Built from the original UI art: the GOG box
+## panel, zod `object_button` chrome, factory labels and entry-bar
+## progress. Payment is upfront.
 
 signal queue_requested(type_name: String)
 
+const LABELS := {
+	"robot_factory": "res://assets/z/ui/production/fort_factory_label.png",
+	"vehicle_factory": "res://assets/z/ui/production/building_label.png",
+}
+
 var _wired: Node = null
+var _title: TextureRect
 var _box: HBoxContainer
 var _queue_row: HBoxContainer
 var _progress: ProgressBar
@@ -16,27 +23,38 @@ var _queue_cache: Array = []
 
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	UiTheme.apply(self)
+	# bottom-center, at the panel art's natural 640x256
+	set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	OriginalPanel.attach(self)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 76)
 	margin.add_theme_constant_override("margin_right", 76)
-	margin.add_theme_constant_override("margin_top", 8)
-	margin.add_theme_constant_override("margin_bottom", 8)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_bottom", 10)
 	add_child(margin)
 	var col := VBoxContainer.new()
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	margin.add_child(col)
+	_title = TextureRect.new()
+	_title.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
+	_title.custom_minimum_size = Vector2(0, 24)
+	col.add_child(_title)
 	_box = HBoxContainer.new()
-	_box.add_theme_constant_override("separation", 6)
+	_box.add_theme_constant_override("separation", 8)
+	_box.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(_box)
 	_progress = ProgressBar.new()
-	_progress.custom_minimum_size = Vector2(200, 12)
+	_progress.custom_minimum_size = Vector2(204, 24)
 	_progress.show_percentage = false
 	_progress.visible = false
+	_progress.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_entry_bar_chrome(_progress)
 	col.add_child(_progress)
 	_queue_row = HBoxContainer.new()
-	_queue_row.add_theme_constant_override("separation", 2)
+	_queue_row.add_theme_constant_override("separation", 4)
+	_queue_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(_queue_row)
 	hide()
 
@@ -65,7 +83,7 @@ func _update_queue(factory: Node) -> void:
 			c.queue_free()
 		for idx in q.size():
 			var btn := Button.new()
-			btn.custom_minimum_size = Vector2(26, 26)
+			btn.custom_minimum_size = Vector2(52, 56)
 			btn.tooltip_text = "Right-click to cancel"
 			var icon_path := _icon_path(factory.kind_key(), String(q[idx]))
 			if ResourceLoader.exists(icon_path):
@@ -96,6 +114,8 @@ func _selected_factory() -> Node:
 
 func _build_buttons(factory: Node) -> void:
 	_built_for = factory.kind_key()
+	var label_path: String = LABELS.get(_built_for, "")
+	_title.texture = load(label_path) if ResourceLoader.exists(label_path) else null
 	for c in _box.get_children():
 		c.queue_free()
 	# kind_key(), not `is RobotFactory`: the fort also builds robots but is
@@ -104,21 +124,74 @@ func _build_buttons(factory: Node) -> void:
 	for type_name in ContentDB.buildable(kind):
 		var stats: Dictionary = ContentDB.def_for(kind, String(type_name))
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(88, 64)
+		btn.custom_minimum_size = Vector2(88, 72)
 		btn.tooltip_text = "%s\nHP %d  DMG %d\n$%d" % [
 			String(type_name).capitalize(), stats.hp, stats.damage, stats.cost]
-		btn.text = "%s  $%d" % [String(type_name).capitalize(), stats.cost]
+		btn.text = "$%d" % stats.cost
+		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		_object_button_chrome(btn)
 		var icon_path := _icon_path(kind, String(type_name))
 		if ResourceLoader.exists(icon_path):
 			btn.icon = load(icon_path)
 			btn.expand_icon = true
-			btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		btn.pressed.connect(func(): queue_requested.emit(String(type_name)))
 		_box.add_child(btn)
 
 
+## zod `entry_bar` art (102x12 at 2x) as the progress bar chrome.
+func _entry_bar_chrome(bar: ProgressBar) -> void:
+	var grey := "res://assets/z/ui/production/entry_bar_grey.png"
+	var green := "res://assets/z/ui/production/entry_bar_green.png"
+	if not ResourceLoader.exists(grey):
+		return
+	var bg := StyleBoxTexture.new()
+	bg.texture = load(grey)
+	bg.texture_margin_left = 4
+	bg.texture_margin_right = 4
+	bar.add_theme_stylebox_override("background", bg)
+	if ResourceLoader.exists(green):
+		var fill := StyleBoxTexture.new()
+		fill.texture = load(green)
+		fill.texture_margin_left = 4
+		fill.texture_margin_right = 4
+		bar.add_theme_stylebox_override("fill", fill)
+
+
+## zod `object_button` chrome (45x51 at 2x) behind each unit button.
+func _object_button_chrome(btn: Button) -> void:
+	var path := "res://assets/z/ui/production/object_button.png"
+	if not ResourceLoader.exists(path):
+		return
+	var box := StyleBoxTexture.new()
+	box.texture = load(path)
+	box.texture_margin_left = 6
+	box.texture_margin_right = 6
+	box.texture_margin_top = 6
+	box.texture_margin_bottom = 6
+	btn.add_theme_stylebox_override("normal", box)
+	var pressed := StyleBoxTexture.new()
+	var ppath := "res://assets/z/ui/production/object_button_pressed.png"
+	pressed.texture = load(ppath) if ResourceLoader.exists(ppath) else load(path)
+	pressed.texture_margin_left = 6
+	pressed.texture_margin_right = 6
+	pressed.texture_margin_top = 6
+	pressed.texture_margin_bottom = 6
+	btn.add_theme_stylebox_override("pressed", pressed)
+	btn.add_theme_stylebox_override("hover", box.duplicate())
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+
+
 static func _icon_path(kind: String, type_name: String) -> String:
+	# original HUD icons exist for every type and team
+	var hud := "res://assets/z/ui/hud/icon_%s_red.png" % type_name
+	if ResourceLoader.exists(hud):
+		return hud
 	if kind == "robot":
 		return "res://assets/z/robots_%s/fire_red_r180_n00.png" % type_name
-	return "%s/empty_r180.png" % String(ContentDB.def_for(kind, type_name).get("dir", ""))
+	# not every vehicle ships empty_r180 — walk the fallbacks
+	var dir := String(ContentDB.def_for(kind, type_name).get("dir", ""))
+	for probe in ["%s/empty_r180.png" % dir, "%s/empty_null.png" % dir, "%s/empty.png" % dir]:
+		if ResourceLoader.exists(probe):
+			return probe
+	return ""

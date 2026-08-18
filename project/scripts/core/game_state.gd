@@ -117,6 +117,44 @@ func player_money() -> int:
 	return money.get(player_team, 0)
 
 
+## --- Unit population cap -------------------------------------------------
+## Base 25 per team; owned zones add a little (built-up sectors more).
+
+const UNIT_CAP_BASE := 25
+const CAP_PER_ZONE := 2
+const CAP_PER_BUILT_ZONE := 4
+
+
+## Population points a team currently fields (alive units only).
+func unit_pop(team: int) -> int:
+	var used := 0
+	for u in Engine.get_main_loop().root.get_tree().get_nodes_in_group("units"):
+		if u is Node2D and is_instance_valid(u) and u.alive and u.team == team:
+			used += int(ContentDB.def_for(u.kind, u.unit_name).get("pop", 1))
+	return used
+
+
+## Cap: base + zone bonuses (zones containing a building count more).
+func unit_cap(team: int) -> int:
+	var cap := UNIT_CAP_BASE
+	for z in zones:
+		if z.owner_team != team:
+			continue
+		cap += CAP_PER_BUILT_ZONE if _zone_has_building(z) else CAP_PER_ZONE
+	return cap
+
+
+func _zone_has_building(z: Node) -> bool:
+	var rect: Rect2 = z.world_rect()
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("facilities"):
+		if b is Node2D and is_instance_valid(b) and rect.has_point(b.global_position):
+			return true
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("buildings"):
+		if b is Node2D and is_instance_valid(b) and rect.has_point(b.global_position):
+			return true
+	return false
+
+
 func spend(team: int, amount: int) -> bool:
 	if money.get(team, 0) < amount:
 		return false
@@ -173,11 +211,19 @@ func _open_cell(cell: Vector2i, grid: AStarGrid2D) -> Vector2i:
 func report_fort_destroyed(losing_team: int) -> void:
 	if over:
 		return
-	over = true
-	var winner := player_team if losing_team != player_team else 2
+	# multiplayer maps carry up to 8 forts: the player only wins when
+	# EVERY enemy fort is gone — not when the first one falls
 	if losing_team == player_team:
+		over = true
+		var winner := 2
 		for t in money:
 			if t != losing_team:
 				winner = t
 				break
-	game_over.emit(winner)
+		game_over.emit(winner)
+		return
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("buildings"):
+		if b is Node2D and b.alive and b.is_fort and b.team != 0 				and b.team != player_team:
+			return  # other forts still standing
+	over = true
+	game_over.emit(player_team)

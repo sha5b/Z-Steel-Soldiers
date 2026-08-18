@@ -27,10 +27,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -400.0
-offset_top = -240.0
-offset_right = 400.0
-offset_bottom = 190.0
+offset_left = -360.0
+offset_top = -339.0
+offset_right = 360.0
+offset_bottom = 39.0
 grow_horizontal = 2
 grow_vertical = 2
 stretch_mode = 5
@@ -57,27 +57,27 @@ offset_right = 110.0
 offset_bottom = -40.0
 grow_horizontal = 2
 grow_vertical = 0
-theme_override_constants/separation = 10
+theme_override_constants/separation = 12
 
 [node name="Continue" type="Button" parent="Menu"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(220, 40)
+custom_minimum_size = Vector2(240, 44)
 text = "Continue"
 
 [node name="Campaign" type="Button" parent="Menu"]
-custom_minimum_size = Vector2(220, 40)
+custom_minimum_size = Vector2(240, 44)
 text = "Campaign"
 
 [node name="Start" type="Button" parent="Menu"]
-custom_minimum_size = Vector2(220, 40)
+custom_minimum_size = Vector2(240, 44)
 text = "Quick Start"
 
 [node name="Maps" type="Button" parent="Menu"]
-custom_minimum_size = Vector2(220, 40)
+custom_minimum_size = Vector2(240, 44)
 text = "Map Select"
 
 [node name="Difficulty" type="OptionButton" parent="Menu"]
-custom_minimum_size = Vector2(220, 40)
+custom_minimum_size = Vector2(240, 44)
 item_count = 3
 selected = 1
 popup/item_0/text = "Easy"
@@ -85,7 +85,7 @@ popup/item_1/text = "Normal"
 popup/item_2/text = "Hard"
 
 [node name="Quit" type="Button" parent="Menu"]
-custom_minimum_size = Vector2(220, 40)
+custom_minimum_size = Vector2(240, 44)
 text = "Quit"
 
 [connection signal="pressed" from="Menu/Continue" to="." method="_on_continue_pressed"]
