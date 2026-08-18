@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="PickupDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/pickup_def.gd" id="1_xxy0o"]
+[ext_resource type="Texture2D" path="res://assets/z/map_items/grenades.png" id="2_e03tj"]
+
+[resource]
+script = ExtResource("1_xxy0o")
+texture = ExtResource("2_e03tj")
+sound_set = "res://assets/z/sounds/GRENADE.wav"
+upgrade_key = "grenades"
+grenades = 4

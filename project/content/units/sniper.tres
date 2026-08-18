@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="UnitDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1_0ybom"]
+
+[resource]
+script = ExtResource("1_0ybom")
+id = "sniper"
+asset_dir = "res://assets/z/robots_sniper"
+sound = "RIFLE3"
+hp = 34
+damage = 15
+range_px = 110.0
+cooldown = 1.8
+speed = 58.0
+cost = 80
+hit_chance = 0.8
+snipe_chance = 0.8

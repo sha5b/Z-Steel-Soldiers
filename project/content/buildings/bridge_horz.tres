@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/building_anim.gd" id="1_2refd"]
+[ext_resource type="Script" path="res://scripts/entities/building.gd" id="2_k1412"]
+[ext_resource type="Script" path="res://scripts/content/defs/building_def.gd" id="3_dven7"]
+
+[resource]
+script = ExtResource("3_dven7")
+id = 7
+bname = "bridge_horz"
+size = Vector2i(8, 2)
+behaviour = ExtResource("2_k1412")
+tex = "bridge"
+solid = false
+bridge_span = Vector2i(8, 2)

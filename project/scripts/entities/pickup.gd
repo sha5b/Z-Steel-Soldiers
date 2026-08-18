@@ -1,21 +1,21 @@
 class_name Pickup
 extends Node2D
-## Grenade/rocket crate: collected by walking a unit over it. Grants the
-## collector's team the upgrade named by the def's `grants` key (Z
-## mechanic). Crate types live in PickupDefs — add art + an entry to make
-## a new drop.
+## Grenade/rocket crate: collected by walking a unit over it. What a
+## crate does is DATA on its PickupDef (content/pickups/): the upgrade it
+## grants and the grenades it arms the collector with (Z mechanic).
 
 @export var pickup_type := "grenades"
 
 var _taken := false
+var _def: PickupDef = null
 
 
 func _ready() -> void:
 	add_to_group("pickups")
+	_def = ContentDB.pickup_def(pickup_type)
 	var sprite := Sprite2D.new()
-	var info: Dictionary = ContentDB.pickup_def(pickup_type)
-	if ResourceLoader.exists(String(info.get("texture", ""))):
-		sprite.texture = load(String(info.texture))
+	if _def.texture != null:
+		sprite.texture = _def.texture
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	sprite.scale = Vector2(2, 2)
 	add_child(sprite)
@@ -31,15 +31,17 @@ func _process(_delta: float) -> void:
 				u.play_gesture("pickup-up")
 				# grenade crates arm the collector with throwables
 				# (original: SetGrenadeAmount on the robot)
-				if pickup_type == "grenades" and u.kind == "robot":
-					u.grenades += 4
+				if _def.grenades > 0 and u.kind == "robot":
+					u.grenades += _def.grenades
 			_collect(u.team)
 			break
 
 
 func _collect(team: int) -> void:
 	_taken = true
-	var info: Dictionary = ContentDB.pickup_def(pickup_type)
-	GameState.grant_upgrade(team, String(info.get("grants", pickup_type)))
-	Fx._play_set("pickup")
+	if _def == null:
+		_def = ContentDB.pickup_def(pickup_type)
+	if _def.upgrade_key != "":
+		GameState.grant_upgrade(team, _def.upgrade_key)
+	Fx._play_set(_def.sound_set if _def.sound_set != "" else "pickup")
 	queue_free()

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="PickupDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/pickup_def.gd" id="1_u027b"]
+[ext_resource type="Texture2D" path="res://assets/z/map_items/rockets.png" id="2_00j4w"]
+
+[resource]
+script = ExtResource("1_u027b")
+id = "rockets"
+texture = ExtResource("2_00j4w")
+upgrade_key = "rockets"

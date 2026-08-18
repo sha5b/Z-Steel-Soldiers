@@ -21,7 +21,7 @@ static func should_run() -> bool:
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
-			"ui", "tint"]:
+			"ui", "tint", "defs"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -208,7 +208,7 @@ static func run(ctx: Node) -> void:
 		var problems: Array[String] = []
 		for vname in ["light", "medium", "heavy", "apc", "missile_launcher", "jeep"]:
 			var lset: Dictionary = AnimLibrary.turret_set(vname,
-				String(ContentDB.def_for("vehicle", vname).dir), 1)
+				ContentDB.def_for("vehicle", vname).asset_dir, 1)
 			if lset.is_empty():
 				problems.append("%s: no turret/gun layer" % vname)
 				continue
@@ -218,7 +218,7 @@ static func run(ctx: Node) -> void:
 			if PackedVector2Array(lset.hull_off).size() != AnimLibrary.DIRECTIONS:
 				problems.append("%s: hull offsets missing" % vname)
 		var med: SpriteFrames = AnimLibrary.turret_set("medium",
-			String(ContentDB.def_for("vehicle", "medium").dir), 1).frames
+			ContentDB.def_for("vehicle", "medium").asset_dir, 1).frames
 		if med.get_frame_texture("turret_0", 0) \
 				!= load("res://assets/z/vehicles_medium/topf_r000.png"):
 			problems.append("medium: idle turret not the topf art")
@@ -242,19 +242,19 @@ static func run(ctx: Node) -> void:
 				problems.append("crane: arm_0 is not the r180 (inverted) art")
 		for vname in ["apc", "missile_launcher", "jeep"]:
 			var vframes: SpriteFrames = AnimLibrary.vehicle_frames(
-				String(ContentDB.def_for("vehicle", vname).dir), 1)
+				ContentDB.def_for("vehicle", vname).asset_dir, 1)
 			if not vframes.has_animation("wasted"):
 				problems.append("%s: no wreck sprite" % vname)
 		for tname in ["light", "medium", "heavy"]:
 			if AnimLibrary.plain_empty_path(
-					String(ContentDB.def_for("vehicle", tname).dir), "red") == "":
+					ContentDB.def_for("vehicle", tname).asset_dir, "red") == "":
 				problems.append("%s: no plain empty art" % tname)
 		var install := AnimLibrary.cannon_install_frames()
 		if install.size() != 3:
 			problems.append("cannons: shared init-place frames missing")
 		for cname in ["gatling", "howitzer"]:
 			var cframes: SpriteFrames = AnimLibrary.vehicle_frames(
-				String(ContentDB.def_for("cannon", cname).dir), 1)
+				ContentDB.def_for("cannon", cname).asset_dir, 1)
 			# manned idle holds the seated-gunner frame (last install
 			# frame); fire is only a flash
 			if not cframes.has_animation("base_0") or not cframes.has_animation("install_0"):
@@ -266,6 +266,39 @@ static func run(ctx: Node) -> void:
 				problems.append("%s: fire flash must not loop" % cname)
 		print("LAYER: problems=%d %s" % [problems.size(),
 			", ".join(problems) if not problems.is_empty() else "(all layers ok)"])
+	if "--defs-test" in args:
+		# the .tres registry: every def resolvable and sane, rosters point
+		# at real units, discovery still catches unregistered folders
+		var dproblems: Array[String] = []
+		for kind in ["robot", "vehicle", "cannon"]:
+			for name in ContentDB.defs_of(kind):
+				var d := ContentDB.def_for(kind, String(name))
+				if d.asset_dir == "" or not DirAccess.dir_exists_absolute(d.asset_dir):
+					dproblems.append("%s:%s asset_dir" % [kind, name])
+				if d.hp <= 0 or d.pop <= 0 or d.cost < 0:
+					dproblems.append("%s:%s stats" % [kind, name])
+				if d.projectile != null and d.projectile.texture == null:
+					dproblems.append("%s:%s projectile texture" % [kind, name])
+		if not ContentDB.has_unit("vehicle", "crane"):
+			dproblems.append("folder discovery (crane)")
+		for id in 8:
+			var b := ContentDB.building_def(id)
+			if b == null:
+				dproblems.append("building def %d missing" % id)
+				continue
+			if b.behaviour == null:
+				dproblems.append("%s behaviour" % b.bname)
+			for level in b.build_lists:
+				for item in b.build_lists[level]:
+					var parts: PackedStringArray = String(item).split(":")
+					if not ContentDB.has_unit(parts[0], parts[1]):
+						dproblems.append("%s roster %s" % [b.bname, item])
+		for pk in ["grenades", "rockets"]:
+			var pd := ContentDB.pickup_def(pk)
+			if pd == null or pd.texture == null:
+				dproblems.append("pickup %s" % pk)
+		print("DEFS: problems=%d %s" % [dproblems.size(),
+			", ".join(dproblems) if not dproblems.is_empty() else "(all defs ok)"])
 	if "--vfx-test" in args:
 		# damage smoke (per-direction track_dust), oil stains, wreck
 		# smoke variants and the grenade projectile sprite resolve
@@ -294,15 +327,15 @@ static func run(ctx: Node) -> void:
 		# muzzle and impact must resolve REAL sprite art (particle
 		# fallbacks were the old bug); wreck flame variants resolve too
 		for fx_name in ["muzzle", "impact", "fire0", "fire1"]:
-			var def: Dictionary = ContentDB.effect_def(fx_name)
-			var art: SpriteFrames = AnimLibrary.effect_frames(
-				String(def.get("dir", "")),
-				String(def.get("art_name", fx_name)), float(def.get("fps", 10.0)))
-			if not art.has_animation("fx"):
+			var def := ContentDB.effect_def(fx_name)
+			var art := def.art_name if def.art_name != "" else def.id
+			var frames_check: SpriteFrames = AnimLibrary.effect_frames(
+				"res://assets/z/effects/%s" % art, art, def.fps)
+			if not frames_check.has_animation("fx"):
 				vproblems.append("%s has no sprite art (fallback)" % fx_name)
 		# effect scales are relative to the 2x unit baseline — no giants
 		for fx_name in ContentDB.effect_names():
-			var scale_v := float(ContentDB.effect_def(fx_name).get("scale", 1.0))
+			var scale_v := ContentDB.effect_def(fx_name).scale
 			if scale_v > 1.5:
 				vproblems.append("%s scale %.2f oversized" % [fx_name, scale_v])
 		# fire animations are ONE-SHOT everywhere (muzzle flash policy:
@@ -312,7 +345,7 @@ static func run(ctx: Node) -> void:
 			if rf.has_animation("fire_%d" % d) \
 					and rf.get_animation_loop("fire_%d" % d):
 				vproblems.append("robot fire_%d loops" % d)
-		var medium_dir := String(ContentDB.def_for("vehicle", "medium").get("dir", ""))
+		var medium_dir := ContentDB.def_for("vehicle", "medium").asset_dir
 		var vf: SpriteFrames = AnimLibrary.vehicle_frames(medium_dir, 1)
 		for d in 8:
 			if vf.has_animation("fire_%d" % d) \
@@ -863,7 +896,7 @@ static func run(ctx: Node) -> void:
 			for type_name in ContentDB.defs_of(kind):
 				if not ContentDB.has_sprites(kind, String(type_name)):
 					continue
-				var dir := String(ContentDB.def_for(kind, String(type_name)).get("dir", ""))
+				var dir := ContentDB.def_for(kind, String(type_name)).asset_dir
 				var frames := AnimLibrary.vehicle_frames(dir, 1)
 				if not frames.has_animation("base_0") or frames.get_frame_count("base_0") == 0:
 					no_manned.append(String(type_name))
@@ -917,14 +950,13 @@ static func run(ctx: Node) -> void:
 		for id in [2, 3, 4, 5, 0, 1]:
 			var def := ContentDB.building_def(id)
 			for planet in ["desert", "volcanic", "arctic", "city", "jungle"]:
-				var b: Building2D = def.script.new()
+				var b: Building2D = def.behaviour.new()
 				b.setup(id, 0 if id in [6, 7] else 1, planet)
 				ctx.add_child(b)
 				if not ResourceLoader.exists(b._texture_path(true)):
 					missing_destroyed.append("%d/%s" % [id, planet])
-				var anims: Array = def.get("anims", [])
-				if not anims.is_empty() and b.get_node_or_null(
-						"Overlay_%s" % String(anims[0].prefix)) == null:
+				if not def.anims.is_empty() and b.get_node_or_null(
+						"Overlay_%s" % def.anims[0].prefix) == null:
 					no_overlay.append("%d (%s)" % [id, planet])
 				b.queue_free()
 		print("BUILDING: missing_destroyed=%s no_overlay=%s" % [
@@ -985,7 +1017,10 @@ static func run(ctx: Node) -> void:
 		Fx.impact(Vector2(300, 100))
 		Fx.bullet(Vector2(400, 100), Vector2(500, 100))
 		var hits := [0]  # boxed: lambdas capture locals by value
-		Fx.shell(Vector2(600, 100), Vector2(700, 100), {"speed": 500.0, "impact": "impact"},
+		var test_proj := ProjectileDef.new()
+		test_proj.speed = 500.0
+		test_proj.impact = "impact"
+		Fx.shell(Vector2(600, 100), Vector2(700, 100), test_proj,
 			func(): hits[0] += 1)
 		var spawned: int = fx_root.get_child_count() - before
 		for i in 120:
@@ -1041,7 +1076,7 @@ static func run(ctx: Node) -> void:
 						!= b.get_frame_texture(String(anim), 0):
 					fails.append("robot %s %s not master art" % [type_name, anim])
 					break
-		var heavy_dir := String(ContentDB.def_for("vehicle", "heavy").get("dir", ""))
+		var heavy_dir := ContentDB.def_for("vehicle", "heavy").asset_dir
 		var hv1 := AnimLibrary.vehicle_frames(heavy_dir, 1)
 		var hv2 := AnimLibrary.vehicle_frames(heavy_dir, 2)
 		if hv1.get_frame_texture("base_0", 0) != hv2.get_frame_texture("base_0", 0):

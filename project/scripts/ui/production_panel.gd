@@ -130,7 +130,7 @@ func _build_buttons(factory: Node) -> void:
 		var parts: PackedStringArray = String(item).split(":")
 		var kind := parts[0]
 		var type_name := parts[1]
-		var stats: Dictionary = ContentDB.def_for(kind, type_name)
+		var stats := ContentDB.def_for(kind, type_name)
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(56, 60)
 		btn.tooltip_text = "%s (%s) L%d\nHP %d  DMG %d\n$%d" % [
@@ -200,7 +200,7 @@ static func _icon_path(kind: String, type_name: String) -> String:
 	if kind == "robot":
 		return "res://assets/z/robots_%s/fire_red_r180_n00.png" % type_name
 	# not every vehicle ships empty_r180 — walk the fallbacks
-	var dir := String(ContentDB.def_for(kind, type_name).get("dir", ""))
+	var dir := ContentDB.def_for(kind, type_name).asset_dir
 	for probe in ["%s/empty_r180.png" % dir, "%s/empty_null.png" % dir, "%s/empty.png" % dir]:
 		if ResourceLoader.exists(probe):
 			return probe

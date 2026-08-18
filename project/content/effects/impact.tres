@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="EffectDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/effect_def_res.gd" id="1_mh2l7"]
+
+[resource]
+script = ExtResource("1_mh2l7")
+id = "impact"
+art_name = "spark"
+fps = 12.0
+scale = 0.55
+fallback_color = Color(1, 0.9, 0.5, 1)

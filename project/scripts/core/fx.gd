@@ -26,16 +26,14 @@ var _gates := {}  # sound name -> ticks_usec when it may play again
 
 
 ## Sprite-or-particles one-shot effect at a world position.
-func play(effect_name: String, world_pos: Vector2, scale := 1.0) -> void:
-	var def: Dictionary = ContentDB.effect_def(effect_name).duplicate()
-	def["_name"] = effect_name
-	def["scale"] = float(def.get("scale", 1.0)) * scale
+func play(effect_name: String, world_pos: Vector2, extra_scale := 1.0) -> void:
+	var def := ContentDB.effect_def(effect_name)
 	var player := EffectPlayer.new()
-	player.setup(def)
+	player.setup(def, extra_scale)
 	player.position = world_pos
 	add_child(player)
-	if String(def.get("sound", "")) != "":
-		_play_set(String(def.sound))
+	if def.sound_set != "":
+		_play_set(def.sound_set)
 
 
 func explosion(world_pos: Vector2, big := false) -> void:
@@ -131,12 +129,11 @@ func _spawn_drifting(frames: SpriteFrames, world_pos: Vector2,
 
 ## Vehicle/cannon shell: damage lands when the shot arrives (dodgeable,
 ## Z-style) via `on_hit` — bind target validation into the callback.
-func shell(from: Vector2, to: Vector2, opts: Dictionary, on_hit: Callable) -> void:
+func shell(from: Vector2, to: Vector2, proj: ProjectileDef, on_hit: Callable) -> void:
 	var shot := Projectile.new()
-	shot.speed = float(opts.get("speed", 260.0))
-	shot.impact_effect = String(opts.get("impact", "impact"))
-	shot.sprite_name = String(opts.get("sprite", ""))
-	shot.texture_path = String(opts.get("texture", ""))
+	shot.speed = proj.speed
+	shot.impact_effect = proj.impact
+	shot.texture = proj.texture
 	shot.setup(from, to, on_hit)
 	add_child(shot)
 

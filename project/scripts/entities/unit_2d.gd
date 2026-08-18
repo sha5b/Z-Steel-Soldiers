@@ -11,6 +11,8 @@ extends CharacterBody2D
 @export var sprite_scale := 2.0
 @export var kind := "robot"  # robot | vehicle | cannon
 
+const GRENADE: ProjectileDef = preload("res://content/projectiles/grenade.tres")
+
 var selected := false
 var hp := 1
 var max_hp := 1
@@ -53,7 +55,7 @@ func _ready() -> void:
 	hp = stats.hp
 	max_hp = stats.hp
 	damage = stats.damage
-	range_px = stats.range
+	range_px = stats.range_px
 	cooldown = stats.cooldown
 	speed = stats.speed
 	scale = Vector2(sprite_scale, sprite_scale)
@@ -235,9 +237,7 @@ func _combat() -> void:
 		play_gesture("throw")
 		var g_impact: Vector2 = _target.global_position
 		Fx.gunfire("GRENLOBX")
-		Fx.shell(global_position, g_impact,
-			{"speed": 150.0, "impact": "explosion",
-				"texture": "res://assets/z/effects/grenade/grenade_n00.png"},
+		Fx.shell(global_position, g_impact, GRENADE,
 			func():
 				Fx.area_damage(g_impact, 34.0, 26, team))
 		return
@@ -275,12 +275,12 @@ func _find_target() -> Node2D:
 ## hitscan with a beam flash; everything else is a tracer.
 func _shoot(target: Node2D, to_target: Vector2) -> void:
 	_play("fire", _last_dir, true)
-	var def: Dictionary = ContentDB.def_for(kind, unit_name)
-	Fx.gunfire(String(def.get("sound", "")))
+	var def := ContentDB.def_for(kind, unit_name)
+	Fx.gunfire(def.sound)
 	var muzzle := global_position + to_target.normalized() * 10.0
 	var amount := int(round(damage * GameState.robot_damage_mult(team)))
-	var hit_chance := float(def.get("hit", 1.0))
-	var snipe_chance := float(def.get("snipe", 0.0))
+	var hit_chance := def.hit_chance
+	var snipe_chance := def.snipe_chance
 	# the lid over a tank's crew hatch opens while it fires — that is the
 	# window a marksman takes (original: can_be_sniped = lid_open)
 	if snipe_chance > 0.0 and target is Vehicle2D and target.manned \
@@ -300,14 +300,14 @@ func _shoot(target: Node2D, to_target: Vector2) -> void:
 		else:
 			Fx.bullet(muzzle, past)
 		return
-	var projectile: Dictionary = def.get("projectile", {})
+	var projectile := def.projectile
 	if unit_name == "laser":
 		Fx.laser(muzzle, target.global_position)
 		Fx.play("muzzle", muzzle)
 		target.take_damage(amount)
-	elif not projectile.is_empty():
+	elif projectile != null:
 		var tid := target.get_instance_id()
-		var radius := float(def.get("radius", 0.0))
+		var radius := def.splash_radius
 		var impact: Vector2 = target.global_position
 		Fx.shell(muzzle, impact, projectile,
 			func():
@@ -464,7 +464,7 @@ func portrait_path() -> String:
 			# r270 = facing the camera (south, toward the viewer)
 			return "res://assets/z/robots/stand_%s_r270.png" % AnimLibrary.team_name(team)
 		"cannon", "vehicle":
-			return "%s/empty_r270.png" % String(ContentDB.def_for(kind, unit_name).get("dir", ""))
+			return "%s/empty_r270.png" % ContentDB.def_for(kind, unit_name).asset_dir
 	return ""
 
 

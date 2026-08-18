@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/building_anim.gd" id="1_i0qcd"]
+[ext_resource type="Script" path="res://scripts/entities/building.gd" id="2_7cy4j"]
+[ext_resource type="Script" path="res://scripts/content/defs/building_def.gd" id="3_l8bxg"]
+
+[resource]
+script = ExtResource("3_l8bxg")
+id = 6
+bname = "bridge_vert"
+size = Vector2i(2, 8)
+behaviour = ExtResource("2_7cy4j")
+tex = "bridge"
+solid = false
+bridge_span = Vector2i(2, 8)

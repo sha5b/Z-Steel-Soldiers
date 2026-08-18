@@ -44,9 +44,9 @@ func setup(id: int, owner_team_value: int, planet_name: String, building_level :
 
 # ----------------------- shared production -----------------------
 # Every producer (fort, robot factory, vehicle factory) builds from
-# BuildingDefs.BUILD_LISTS[producer_key()][level] — items are
-# "kind:name". Robots spawn crewed; vehicles and cannons spawn empty
-# beside the building for a robot to man (Z-style).
+# its BuildingDef's build_lists[level] — items are "kind:name". Robots
+# spawn crewed; vehicles and cannons spawn empty beside the building for
+# a robot to man (Z-style).
 
 func producer_key() -> String:
 	return ""  # not a producer
@@ -61,8 +61,10 @@ func build_time_mult() -> float:
 
 
 func build_options() -> Array:
-	var lists: Dictionary = BuildingDefs.BUILD_LISTS.get(producer_key(), {})
-	return lists.get(level, [])
+	var def := ContentDB.producer_def(producer_key())
+	if def == null:
+		return []
+	return def.build_lists.get(level, [])
 
 
 func queue_items() -> Array[String]:
@@ -85,13 +87,13 @@ func queue_unit(item: String, silent := false) -> bool:
 		return false
 	if kind != "robot" and not ContentDB.has_sprites(kind, type_name):
 		return false
-	var stats: Dictionary = ContentDB.def_for(kind, type_name)
+	var stats := ContentDB.def_for(kind, type_name)
 	if not _pop_allows(kind, stats, silent):
 		return false
-	if not GameState.spend(owner_team, int(stats.cost)):
+	if not GameState.spend(owner_team, stats.cost):
 		return false
 	if not queue.enqueue(item):
-		GameState.money[owner_team] += int(stats.cost)  # queue full: refund
+		GameState.money[owner_team] += stats.cost  # queue full: refund
 		GameState.money_changed.emit(owner_team, GameState.money[owner_team])
 		return false
 	return true
@@ -101,20 +103,20 @@ func cancel_at(index: int) -> void:
 	var item := queue.cancel_at(index)
 	if item == "" or owner_team == 0:
 		return
-	var stats: Dictionary = ContentDB.def_for(item.split(":")[0], item.split(":")[1])
-	GameState.money[owner_team] += int(stats.cost)
+	var stats := ContentDB.def_for(item.split(":")[0], item.split(":")[1])
+	GameState.money[owner_team] += stats.cost
 	GameState.money_changed.emit(owner_team, GameState.money[owner_team])
 
 
 ## Cap gate: alive + queued + this unit must fit under the team cap.
 ## `silent` suppresses the denial beep for CPU-initiated production.
-func _pop_allows(kind: String, stats: Dictionary, silent := false) -> bool:
+func _pop_allows(kind: String, stats: UnitDef, silent := false) -> bool:
 	var team_id := team if team != 0 else owner_team
 	var queued := 0
 	for item in queue.items:
 		var parts: PackedStringArray = item.split(":")
-		queued += int(ContentDB.def_for(parts[0], parts[1]).get("pop", 1))
-	var cost := int(stats.get("pop", 1))
+		queued += ContentDB.def_for(parts[0], parts[1]).pop
+	var cost := stats.pop
 	if GameState.unit_pop(team_id) + queued + cost > GameState.unit_cap(team_id):
 		if not silent:
 			Fx.cap_denied()
@@ -176,7 +178,8 @@ func _ready() -> void:
 	if is_fort:
 		add_to_group("buildings")
 	# producers register for the facility quick bar
-	if ContentDB.building_def(building_id).get("produces", false) or is_fort:
+	var bdef := ContentDB.building_def(building_id)
+	if (bdef != null and bdef.produces) or is_fort:
 		add_to_group("facilities")
 
 
@@ -237,9 +240,11 @@ func set_flag_team(for_team: int) -> void:
 
 
 ## Texture location comes from the building def's `tex` key — new building
-## types only add art + a BuildingDefs entry.
+## types only add art + a content/buildings entry.
 func _texture_path(destroyed: bool) -> String:
-	match String(ContentDB.building_def(building_id).get("tex", "")):
+	if ContentDB.building_def(building_id) == null:
+		return ""
+	match ContentDB.building_def(building_id).tex:
 		"fort_front":
 			return "res://assets/z/buildings/fort/fort_%s_front%s.png" % [
 				planet, "_destroyed" if destroyed else ""]
@@ -258,16 +263,18 @@ func _texture_path(destroyed: bool) -> String:
 ## spinner, repair smoke stack...): numbered frames `<prefix>_<i>.png`
 ## played as a loop over the base sprite.
 func _build_overlays() -> void:
-	for def in ContentDB.building_def(building_id).get("anims", []):
+	var bdef := ContentDB.building_def(building_id)
+	if bdef == null:
+		return
+	for anim in bdef.anims:
 		var frames := SpriteFrames.new()
 		frames.add_animation("loop")
-		frames.set_animation_speed("loop", float(def.get("fps", 6.0)))
+		frames.set_animation_speed("loop", anim.fps)
 		frames.set_animation_loop("loop", true)
 		var frame := 0
 		while true:
 			var path := "res://assets/z/buildings/%s/%s_%d.png" % [
-				String(ContentDB.building_def(building_id).get("tex", "")),
-				String(def.prefix), frame]
+				bdef.tex, anim.prefix, frame]
 			if not ResourceLoader.exists(path):
 				break
 			frames.add_frame("loop", load(path))
@@ -275,11 +282,11 @@ func _build_overlays() -> void:
 		if frame == 0:
 			continue
 		var overlay := AnimatedSprite2D.new()
-		overlay.name = "Overlay_%s" % String(def.prefix)
+		overlay.name = "Overlay_%s" % anim.prefix
 		overlay.sprite_frames = frames
 		overlay.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		overlay.centered = false
-		overlay.position = Vector2(def.get("offset", Vector2.ZERO)) - 			Vector2(8, 8) - _sort_lift  # small overlay sprites anchor near their centre
+		overlay.position = anim.offset - Vector2(8, 8) - _sort_lift  # small overlay sprites anchor near their centre
 		add_child(overlay)
 		overlay.play("loop")
 

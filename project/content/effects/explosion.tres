@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="EffectDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/effect_def_res.gd" id="1_g8upn"]
+
+[resource]
+script = ExtResource("1_g8upn")
+sound_set = "explosion"
+grounded = true
+fallback_color = Color(1, 0.75, 0.3, 1)

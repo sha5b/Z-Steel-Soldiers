@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/projectile_def.gd" id="1_d5lkk"]
+[ext_resource type="Texture2D" path="res://assets/z/vehicles_light/bullet.png" id="2_cwqox"]
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="3_ua5iy"]
+
+[sub_resource type="Resource" id="Resource_t64iv"]
+script = ExtResource("1_d5lkk")
+speed = 260.0
+impact = "explosion"
+texture = ExtResource("2_cwqox")
+
+[resource]
+script = ExtResource("3_ua5iy")
+id = "light"
+kind = "vehicle"
+asset_dir = "res://assets/z/vehicles_light"
+sound = "LTANKGUN"
+hp = 90
+damage = 9
+range_px = 78.0
+cooldown = 1.0
+speed = 75.0
+cost = 100
+pop = 2
+splash_radius = 30.0
+projectile = SubResource("Resource_t64iv")

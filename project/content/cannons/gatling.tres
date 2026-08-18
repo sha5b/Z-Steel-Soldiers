@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="UnitDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1_ndw3r"]
+
+[resource]
+script = ExtResource("1_ndw3r")
+id = "gatling"
+kind = "cannon"
+asset_dir = "res://assets/z/cannons_gatling"
+sound = "GATTGUN"
+hp = 55
+damage = 3
+range_px = 95.0
+cooldown = 0.35
+speed = 0.0
+cost = 0
+pop = 2
+hit_chance = 0.65

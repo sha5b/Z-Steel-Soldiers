@@ -130,7 +130,7 @@ func unit_pop(team: int) -> int:
 	var used := 0
 	for u in Engine.get_main_loop().root.get_tree().get_nodes_in_group("units"):
 		if u is Node2D and is_instance_valid(u) and u.alive and u.team == team:
-			used += int(ContentDB.def_for(u.kind, u.unit_name).get("pop", 1))
+			used += ContentDB.def_for(u.kind, u.unit_name).pop
 	return used
 
 

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/building_anim.gd" id="1_u7o31"]
+[ext_resource type="Script" path="res://scripts/entities/building.gd" id="2_tmjqi"]
+[ext_resource type="Script" path="res://scripts/content/defs/building_def.gd" id="3_v3eu4"]
+
+[sub_resource type="Resource" id="Resource_w8qfp"]
+script = ExtResource("1_u7o31")
+prefix = "dish"
+fps = 5.0
+offset = Vector2(0, -6)
+
+[resource]
+script = ExtResource("3_v3eu4")
+id = 2
+behaviour = ExtResource("2_tmjqi")
+tex = "radar"
+anims = Array[ExtResource("1_u7o31")]([SubResource("Resource_w8qfp")])

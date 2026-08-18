@@ -104,7 +104,7 @@ func setup_vehicle(vkind: String, type_name: String, owner_team: int) -> void:
 	manned = owner_team != 0
 	if manned:
 		team = owner_team
-	_asset_dir = String(ContentDB.def_for(vkind, type_name).get("dir", ""))
+	_asset_dir = ContentDB.def_for(vkind, type_name).asset_dir
 
 
 func _build_frames() -> void:
@@ -114,7 +114,7 @@ func _build_frames() -> void:
 			# naming convention so scene previews still build
 			_asset_dir = AnimLibrary.asset_dir_for(kind, unit_name)
 		else:
-			_asset_dir = String(ContentDB.def_for(kind, unit_name).get("dir", ""))
+			_asset_dir = ContentDB.def_for(kind, unit_name).asset_dir
 	# vehicles/cannons have no per-team walk cycle: empty / base / fire
 	# (base switches to the damaged hull set below half HP)
 	sprite.sprite_frames = AnimLibrary.vehicle_frames(_asset_dir, team, _damaged)
@@ -407,7 +407,8 @@ func _combat() -> void:
 			var gname := "grunt"
 			if gunner is Unit2D:
 				gname = gunner.unit_name
-			Fx.gunfire(String(ContentDB.def_for("robot", gname).get("sound", "RIFLE3")))
+			var gsound := ContentDB.def_for("robot", gname).sound
+			Fx.gunfire(gsound if gsound != "" else "RIFLE3")
 			Fx.bullet(global_position + to_squad_target.normalized() * 10.0,
 				_target.global_position)
 			_target.take_damage(6)
@@ -432,14 +433,14 @@ func _combat() -> void:
 			_turret_fire = 0.25
 			_fire_flash = 0.3
 			_lid_timer = 1.2  # hatch open: snipers take note
-			Fx.gunfire(String(ContentDB.def_for(kind, unit_name).get("sound", "")))
+			Fx.gunfire(ContentDB.def_for(kind, unit_name).sound)
 			Fx.play("muzzle", global_position + to_target.normalized() * 12.0)
-			var def: Dictionary = ContentDB.def_for(kind, unit_name)
+			var def := ContentDB.def_for(kind, unit_name)
 			var amount := int(round(damage * GameState.vehicle_damage_mult(team)))
-			var projectile: Dictionary = def.get("projectile", {})
-			var hit_chance := float(def.get("hit", 1.0))
+			var projectile := def.projectile
+			var hit_chance := def.hit_chance
 			var target := _target
-			if projectile.is_empty():
+			if projectile == null:
 				# hitscan weapon: per-shot chance, instant damage, tracer
 				if randf() <= hit_chance:
 					Fx.bullet(global_position + to_target.normalized() * 10.0, target.global_position)
@@ -451,7 +452,7 @@ func _combat() -> void:
 				# shell: damage lands when the shot arrives; explosive
 				# weapons splash around the impact
 				var tid := target.get_instance_id()
-				var radius := float(def.get("radius", 0.0))
+				var radius := def.splash_radius
 				var impact: Vector2 = target.global_position
 				Fx.shell(global_position + to_target.normalized() * 12.0,
 					impact, projectile,

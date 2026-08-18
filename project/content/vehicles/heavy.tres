@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/projectile_def.gd" id="1_gnuo3"]
+[ext_resource type="Texture2D" path="res://assets/z/vehicles_missile_launcher/bullet.png" id="2_3imj4"]
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="3_gm545"]
+
+[sub_resource type="Resource" id="Resource_jqvww"]
+script = ExtResource("1_gnuo3")
+speed = 200.0
+impact = "explosion_big"
+texture = ExtResource("2_3imj4")
+
+[resource]
+script = ExtResource("3_gm545")
+id = "heavy"
+kind = "vehicle"
+asset_dir = "res://assets/z/vehicles_heavy"
+sound = "HTANKGUN"
+hp = 190
+damage = 22
+range_px = 96.0
+cooldown = 2.0
+speed = 50.0
+cost = 220
+pop = 4
+splash_radius = 38.0
+projectile = SubResource("Resource_jqvww")

@@ -45,7 +45,8 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 	# one CPU brain per non-player team that owns a fort
 	var ai_teams := {}
 	for o in data.objects:
-		if String(o.type) == "building" and ContentDB.building_def(int(o.id)).get("fort", false) \
+		var fort_def := ContentDB.building_def(int(o.id))
+		if String(o.type) == "building" and fort_def != null and fort_def.is_fort \
 				and int(o.owner) != 0:
 			ai_teams[int(o.owner)] = true
 	# every fort team gets a ledger entry (income + spend work for all)
@@ -156,9 +157,9 @@ static func _build_zones(parent: Node, data: Dictionary) -> void:
 ## huts, map objects), rendered as Y-sorted sprites.
 static func _spawn_map_item(parent: Node, o: Dictionary, pos: Vector2, planet: String) -> void:
 	var id := int(o.id)
-	if PickupDefs.MAP_IDS.has(id):
+	if ZodIds.MAP_PICKUP_IDS.has(id):
 		var pickup := Pickup.new()
-		pickup.pickup_type = String(PickupDefs.MAP_IDS[id])
+		pickup.pickup_type = String(ZodIds.MAP_PICKUP_IDS[id])
 		pickup.position = pos
 		parent.add_child(pickup)
 		return
@@ -201,15 +202,15 @@ static func _spawn_unit(parent: Node, o: Dictionary, kind: String, pos: Vector2)
 static func _spawn_building(parent: Node, o: Dictionary, pos: Vector2, planet: String,
 		grid: AStarGrid2D, vgrid: AStarGrid2D, w: int, h: int) -> void:
 	var id := int(o.id)
-	var def: Dictionary = ContentDB.building_def(id)
-	if def.is_empty():
+	var def := ContentDB.building_def(id)
+	if def == null:
 		return
-	var node: Building2D = def.script.new()
+	var node: Building2D = def.behaviour.new()
 	node.setup(id, int(o.owner), planet, int(o.get("level", 0)))
 	node.position = pos
 	node.name = "Building_T%d_%d" % [int(o.owner), id]
 	parent.add_child(node)
-	if def.get("bridge_span", Vector2i.ZERO) != Vector2i.ZERO:
+	if def.bridge_span != Vector2i.ZERO:
 		var span: Vector2i = def.bridge_span
 		var lo := Vector2i(int(o.x) - int(span.x / 2.0), int(o.y) - int(span.y / 2.0))
 		for bx in span.x:
@@ -220,7 +221,7 @@ static func _spawn_building(parent: Node, o: Dictionary, pos: Vector2, planet: S
 				if vgrid.region.has_point(cell):
 					vgrid.set_point_solid(cell, false)
 				node.bridge_cells.append(cell)  # remembered for blow-up/repair
-	elif def.get("solid", false):
+	elif def.solid:
 		# solid buildings block movement on both grids — vehicles otherwise
 		# drive straight over fort/factory sprites
 		var fp := node.world_footprint()
@@ -308,11 +309,11 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 	for child in map.get_children():
 		if child is Building2D:
 			var def := ContentDB.building_def(child.building_id)
-			if def.is_empty():
+			if def == null:
 				continue
-			if def.get("bridge_span", Vector2i.ZERO) != Vector2i.ZERO:
+			if def.bridge_span != Vector2i.ZERO:
 				_clear_bridge(child, def, grid, vgrid)
-			elif def.get("solid", false):
+			elif def.solid:
 				var fp: Rect2 = child.world_footprint()
 				var lo := Vector2i((fp.position / TILE).floor())
 				var hi := Vector2i(((fp.position + fp.size) / TILE).ceil())
@@ -321,7 +322,7 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 						var cell := Vector2i(bx, by)
 						grid.set_point_solid(cell, true)
 						vgrid.set_point_solid(cell, true)
-			if def.get("fort", false) and child.team != 0:
+			if def.is_fort and child.team != 0:
 				ai_teams[child.team] = true
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
@@ -340,7 +341,7 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 	}
 
 
-static func _clear_bridge(bridge: Building2D, def: Dictionary,
+static func _clear_bridge(bridge: Building2D, def: BuildingDef,
 		grid: AStarGrid2D, vgrid: AStarGrid2D) -> void:
 	var tile := Vector2i(((bridge.global_position - Vector2(8, 8)) / TILE).floor())
 	var span: Vector2i = def.bridge_span

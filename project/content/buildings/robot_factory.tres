@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/building_anim.gd" id="1_ih7x2"]
+[ext_resource type="Script" path="res://scripts/entities/robot_factory.gd" id="2_dgykv"]
+[ext_resource type="Script" path="res://scripts/content/defs/building_def.gd" id="3_g056e"]
+
+[sub_resource type="Resource" id="Resource_4075i"]
+script = ExtResource("1_ih7x2")
+fps = 7.0
+offset = Vector2(0, -8)
+
+[resource]
+script = ExtResource("3_g056e")
+id = 4
+bname = "robot_factory"
+size = Vector2i(3, 3)
+behaviour = ExtResource("2_dgykv")
+tex = "robot"
+produces = true
+anims = Array[ExtResource("1_ih7x2")]([SubResource("Resource_4075i")])
+build_lists = {
+0: ["robot:grunt", "cannon:gatling"],
+1: ["robot:grunt", "robot:psycho", "cannon:gatling"],
+2: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "cannon:gatling", "cannon:gun"],
+3: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+4: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "robot:laser", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+5: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "robot:laser", "cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"]
+}

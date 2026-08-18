@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="UnitDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1_02h1a"]
+
+[resource]
+script = ExtResource("1_02h1a")
+id = "jeep"
+kind = "vehicle"
+asset_dir = "res://assets/z/vehicles_jeep"
+sound = "JEEPMGUN"
+hp = 60
+damage = 5
+range_px = 62.0
+cooldown = 0.55
+speed = 95.0
+cost = 60
+pop = 2
+hit_chance = 0.65
+snipe_chance = 0.4

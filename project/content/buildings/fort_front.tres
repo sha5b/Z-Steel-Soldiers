@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/building_anim.gd" id="1_a6a6p"]
+[ext_resource type="Script" path="res://scripts/entities/fort_building.gd" id="2_e13da"]
+[ext_resource type="Script" path="res://scripts/content/defs/building_def.gd" id="3_i8x4o"]
+
+[resource]
+script = ExtResource("3_i8x4o")
+producer = "fort"
+bname = "fort_front"
+size = Vector2i(5, 4)
+behaviour = ExtResource("2_e13da")
+tex = "fort_front"
+is_fort = true
+produces = true
+build_lists = {
+0: ["robot:grunt", "vehicle:jeep", "vehicle:crane", "cannon:gatling"],
+1: ["robot:grunt", "robot:psycho", "vehicle:jeep", "vehicle:light", "vehicle:crane", "cannon:gatling", "cannon:gun"],
+2: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:crane", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+3: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:apc", "vehicle:crane", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+4: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "robot:laser", "vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy", "vehicle:apc", "vehicle:crane", "cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"],
+5: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "robot:laser", "vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy", "vehicle:apc", "vehicle:missile_launcher", "vehicle:crane", "cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"]
+}

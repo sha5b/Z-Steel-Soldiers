@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="UnitDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/projectile_def.gd" id="1_8waaa"]
+[ext_resource type="Texture2D" path="res://assets/z/cannons_missile/bullet.png" id="2_fct68"]
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="3_dcuuh"]
+
+[sub_resource type="Resource" id="Resource_ci4x2"]
+script = ExtResource("1_8waaa")
+speed = 170.0
+impact = "explosion_big"
+texture = ExtResource("2_fct68")
+
+[resource]
+script = ExtResource("3_dcuuh")
+id = "missile_cannon"
+kind = "cannon"
+asset_dir = "res://assets/z/cannons_missile"
+sound = "MOBIMIS"
+hp = 70
+damage = 26
+range_px = 200.0
+cooldown = 3.4
+speed = 0.0
+cost = 0
+pop = 3
+splash_radius = 44.0
+projectile = SubResource("Resource_ci4x2")

@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="ProjectileDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/projectile_def.gd" id="1_w8n0o"]
+[ext_resource type="Texture2D" path="res://assets/z/vehicles_missile_launcher/bullet.png" id="2_1e74y"]
+
+[resource]
+script = ExtResource("1_w8n0o")
+speed = 180.0
+impact = "explosion_big"
+texture = ExtResource("2_1e74y")

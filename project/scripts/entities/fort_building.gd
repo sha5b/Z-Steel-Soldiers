@@ -8,6 +8,8 @@ extends Building2D
 
 const PRODUCE_SECONDS := 8.0
 const GARRISON_MISSILE_RANGE := 180.0
+const GARRISON_MISSILE: ProjectileDef = preload(
+	"res://content/projectiles/garrison_missile.tres")
 const GARRISON_MISSILE_COOLDOWN := 3.0
 const GARRISON_CAP := 5
 
@@ -73,9 +75,7 @@ func _garrison_fire(delta: float) -> void:
 	var from := visual_center() + Vector2(0, -10)
 	var tid := best.get_instance_id()
 	var impact: Vector2 = best.global_position
-	Fx.shell(from, impact,
-		{"speed": 180.0, "impact": "explosion_big",
-			"texture": "res://assets/z/vehicles_missile_launcher/bullet.png"},
+	Fx.shell(from, impact, GARRISON_MISSILE,
 		func():
 			var hit: Node2D = instance_from_id(tid) as Node2D
 			if hit and hit.alive:

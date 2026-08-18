@@ -93,7 +93,7 @@ func _produce() -> void:
 		for item in f.build_options():
 			var parts: PackedStringArray = String(item).split(":")
 			if parts[0] == "vehicle" \
-					and money - int(ContentDB.def_for("vehicle", parts[1]).cost) \
+					and money - ContentDB.def_for("vehicle", parts[1]).cost \
 					< BANK_BEFORE_VEHICLE[diff] - 150:
 				continue  # keep a reserve before committing to vehicles
 			options.append(item)
@@ -101,7 +101,7 @@ func _produce() -> void:
 			continue
 		var pick := String(_weighted_pick(options, diff))
 		var parts: PackedStringArray = pick.split(":")
-		var cost := int(ContentDB.def_for(parts[0], parts[1]).cost)
+		var cost := ContentDB.def_for(parts[0], parts[1]).cost
 		if money >= cost and f.queue_unit(pick, true):
 			money -= cost
 

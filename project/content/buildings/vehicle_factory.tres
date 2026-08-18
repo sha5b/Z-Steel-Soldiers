@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="BuildingDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/building_anim.gd" id="1_ofx76"]
+[ext_resource type="Script" path="res://scripts/entities/vehicle_factory.gd" id="2_pgcqo"]
+[ext_resource type="Script" path="res://scripts/content/defs/building_def.gd" id="3_jqc34"]
+
+[sub_resource type="Resource" id="Resource_febiy"]
+script = ExtResource("1_ofx76")
+fps = 7.0
+offset = Vector2(0, -8)
+
+[resource]
+script = ExtResource("3_jqc34")
+id = 5
+bname = "vehicle_factory"
+size = Vector2i(4, 3)
+behaviour = ExtResource("2_pgcqo")
+tex = "vehicle"
+produces = true
+anims = Array[ExtResource("1_ofx76")]([SubResource("Resource_febiy")])
+build_lists = {
+0: ["vehicle:jeep", "cannon:gatling"],
+1: ["vehicle:jeep", "vehicle:light", "cannon:gatling", "cannon:gun"],
+2: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "cannon:gatling", "cannon:gun"],
+3: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:apc", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+4: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy", "vehicle:apc", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+5: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy", "vehicle:apc", "vehicle:missile_launcher", "cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"]
+}

@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="UnitDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/projectile_def.gd" id="1_chdnc"]
+[ext_resource type="Texture2D" path="res://assets/z/robots_pyro/bullet_n00.png" id="2_mgpw6"]
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="3_jeytm"]
+
+[sub_resource type="Resource" id="Resource_5ugi6"]
+script = ExtResource("1_chdnc")
+speed = 110.0
+impact = "fire"
+texture = ExtResource("2_mgpw6")
+
+[resource]
+script = ExtResource("3_jeytm")
+id = "pyro"
+asset_dir = "res://assets/z/robots_pyro"
+sound = "FLAMER"
+hp = 52
+damage = 6
+range_px = 40.0
+cooldown = 0.6
+speed = 56.0
+cost = 70
+hit_chance = 0.7
+projectile = SubResource("Resource_5ugi6")
