@@ -99,8 +99,8 @@ func _discover_unit_folders() -> void:
 				prefix = "robot"
 			elif folder.begins_with("vehicles_"):
 				prefix = "vehicle"
-			elif folder.begins_with("cannons_"):
-				prefix = "cannon"
+			elif folder.begins_with("cannons_") and folder != "cannons_common":
+				prefix = "cannon"  # cannons_common = shared install art, not a unit
 			if prefix != "" and not folder == "robots":
 				var type_name := folder.substr(folder.find("_") + 1)
 				if not _units[prefix].has(type_name) and _dir_has_art(ASSET_ROOT + "/" + folder):

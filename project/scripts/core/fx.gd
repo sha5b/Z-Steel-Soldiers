@@ -14,7 +14,9 @@ const SOUNDS := {
 	"explosion": ["EXP1", "EXP2"],
 	"destroyed": ["OBJDEST3", "EXP2"],
 	"impact": ["RICOCH1"],
-	"pickup": ["GRENADE"],
+	# GRENADE.wav was never converted from the GOG dump — fall back to
+	# the grenade-launcher shot so pickups aren't silent
+	"pickup": ["GRENADE", "GRENLOBX"],
 	"click": ["CLICK1L", "CLICK5L", "CLICK6L"],
 }
 const GUNSHOT_VOLUME_DB := -10.0
@@ -68,6 +70,63 @@ func bullet(from: Vector2, to: Vector2) -> void:
 	var tween := line.create_tween()
 	tween.tween_property(line, "modulate:a", 0.0, 0.12)
 	tween.tween_callback(line.queue_free)
+
+
+## Laser fire: instant hit, thick beam flash (no tracer art in the
+## original — the beam itself is the weapon sprite).
+func laser(from: Vector2, to: Vector2) -> void:
+	var line := Line2D.new()
+	line.points = PackedVector2Array([from, to])
+	line.width = 2.5
+	line.default_color = Color(0.45, 1.0, 0.95, 0.95)
+	line.z_index = 5
+	add_child(line)
+	var glow := Line2D.new()
+	glow.points = PackedVector2Array([from, to])
+	glow.width = 5.0
+	glow.default_color = Color(0.3, 0.8, 1.0, 0.35)
+	glow.z_index = 4
+	add_child(glow)
+	var tween := line.create_tween()
+	tween.tween_property(line, "modulate:a", 0.0, 0.16)
+	tween.tween_callback(line.queue_free)
+	var tween2 := glow.create_tween()
+	tween2.tween_property(glow, "modulate:a", 0.0, 0.22)
+	tween2.tween_callback(glow.queue_free)
+
+
+## Damaged-vehicle smoke (original ETankSmoke): a puff of `track_dust`
+## art for the current facing drifting upward; badly damaged vehicles
+## spark as well (track_spark art).
+func vehicle_smoke(world_pos: Vector2, dir: int, heavy := false) -> void:
+	var frames: SpriteFrames = AnimLibrary.dir_effect_frames(
+		"res://assets/z/effects/track_dust", "track_dust", dir, 8.0)
+	if frames != null and frames.has_animation("fx"):
+		_spawn_drifting(frames, world_pos + Vector2(randf_range(-3, 3), 0),
+			randf_range(10.0, 16.0), 0.9)
+	if heavy and randf() < 0.5:
+		var spark: SpriteFrames = AnimLibrary.dir_effect_frames(
+			"res://assets/z/effects/track_spark", "track_spark", dir, 12.0)
+		if spark != null and spark.has_animation("fx"):
+			_spawn_drifting(spark, world_pos + Vector2(randf_range(-4, 4), 2),
+				randf_range(6.0, 10.0), 0.5)
+
+
+func _spawn_drifting(frames: SpriteFrames, world_pos: Vector2,
+		rise_speed: float, lifetime: float) -> void:
+	var puff := AnimatedSprite2D.new()
+	puff.sprite_frames = frames
+	puff.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	puff.z_index = 6
+	puff.position = world_pos
+	add_child(puff)
+	puff.play("fx")
+	var tween := puff.create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(puff, "position:y",
+		world_pos.y - rise_speed * lifetime, lifetime)
+	tween.tween_property(puff, "modulate:a", 0.0, lifetime).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(puff.queue_free)
 
 
 ## Vehicle/cannon shell: damage lands when the shot arrives (dodgeable,

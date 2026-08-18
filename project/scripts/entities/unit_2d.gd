@@ -103,11 +103,24 @@ func _steer(delta: float) -> void:
 	if velocity.length_squared() > 1.0:
 		_last_dir = _angle_to_dir(velocity.angle())
 		_play("walk", _last_dir)
+		var dist_before := offset_to_next_waypoint()
 		global_position += velocity * delta
+		# a large step can leapfrog the waypoint (the arrival check
+		# above only looks before moving): if we are now farther away
+		# than before the step, we passed it — consume it
+		if not waypoints.is_empty() \
+				and global_position.distance_to(waypoints[0]) > dist_before:
+			waypoints.remove_at(0)
 		global_position = global_position.clamp(
 			GameState.map_rect.position, GameState.map_rect.end)
 	else:
 		_play("fire" if _target else "stand", _last_dir)
+
+
+func offset_to_next_waypoint() -> float:
+	if waypoints.is_empty():
+		return INF
+	return global_position.distance_to(waypoints[0])
 
 
 ## Keep units from piling into one spot: push nearby units apart a little
@@ -218,14 +231,30 @@ func _find_target() -> Node2D:
 	return best
 
 
-## Robot small arms are hitscan: damage lands instantly, the tracer is
-## visual only (Z-style).
+## Robot weapons: a `projectile` def in the unit table fires a travelling
+## shot (tough rockets, pyro flames); lasers are hitscan with a beam
+## flash; everything else is hitscan with a tracer (Z-style).
 func _shoot(target: Node2D, to_target: Vector2) -> void:
 	_play("fire", _last_dir, true)
 	Fx.gunfire(String(ContentDB.def_for(kind, unit_name).get("sound", "")))
-	Fx.bullet(global_position + to_target.normalized() * 10.0, target.global_position)
-	Fx.play("muzzle", global_position + to_target.normalized() * 12.0)
-	target.take_damage(int(round(damage * GameState.robot_damage_mult(team))))
+	var muzzle := global_position + to_target.normalized() * 10.0
+	var projectile: Dictionary = ContentDB.def_for(kind, unit_name).get("projectile", {})
+	var amount := int(round(damage * GameState.robot_damage_mult(team)))
+	if unit_name == "laser":
+		Fx.laser(muzzle, target.global_position)
+		Fx.play("muzzle", global_position + to_target.normalized() * 12.0)
+		target.take_damage(amount)
+	elif not projectile.is_empty():
+		var tid := target.get_instance_id()
+		Fx.shell(muzzle, target.global_position, projectile,
+			func():
+				var hit: Node2D = instance_from_id(tid) as Node2D
+				if hit and hit.alive:
+					hit.take_damage(amount))
+	else:
+		Fx.bullet(muzzle, target.global_position)
+		Fx.play("muzzle", global_position + to_target.normalized() * 12.0)
+		target.take_damage(amount)
 
 
 func take_damage(amount: int) -> void:
@@ -336,9 +365,10 @@ func icon_path() -> String:
 func portrait_path() -> String:
 	match kind:
 		"robot":
-			return "res://assets/z/robots/stand_%s_r180.png" % AnimLibrary.team_name(team)
+			# r270 = facing the camera (south, toward the viewer)
+			return "res://assets/z/robots/stand_%s_r270.png" % AnimLibrary.team_name(team)
 		"cannon", "vehicle":
-			return "%s/empty_r180.png" % String(ContentDB.def_for(kind, unit_name).get("dir", ""))
+			return "%s/empty_r270.png" % String(ContentDB.def_for(kind, unit_name).get("dir", ""))
 	return ""
 
 
@@ -395,8 +425,9 @@ func _play(anim: String, dir: int, once := false, fallback := "") -> void:
 		sprite.stop()
 
 
-## Zod DirectionFromLoc: sector of atan2 (y-down) + PI/8, mapped
-## counter-clockwise; sprite r000 faces +X (right), r090 down, r180 left, r270 up.
+## Zod DirectionFromLoc: sector of atan2 (y-down) + PI/8, mapped so the
+## direction index runs counter-clockwise — dir d loads sprite r{d*45}:
+## r000 faces east (+X), r090 north (up), r180 west, r270 south (down).
 static func _angle_to_dir(angle: float) -> int:
 	var a := angle
 	if a < 0.0:

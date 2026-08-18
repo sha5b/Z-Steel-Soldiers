@@ -40,12 +40,12 @@ func _process(delta: float) -> void:
 		_spawn(done)
 
 
-func queue_unit(type_name: String) -> bool:
+func queue_unit(type_name: String, silent := false) -> bool:
 	if not ContentDB.has_unit("vehicle", type_name) \
 			or not ContentDB.has_sprites("vehicle", type_name):
 		return false
 	var stats: Dictionary = ContentDB.def_for("vehicle", type_name)
-	if not _pop_allows(stats):
+	if not _pop_allows(stats, silent):
 		return false
 	if not GameState.spend(owner_team, int(stats.cost)):
 		return false
@@ -66,14 +66,16 @@ func cancel_at(index: int) -> void:
 
 
 ## Cap gate: alive + queued + this unit must fit under the team cap.
-func _pop_allows(stats: Dictionary) -> bool:
+## `silent` suppresses the denial beep for CPU-initiated production.
+func _pop_allows(stats: Dictionary, silent := false) -> bool:
 	var team_id := team if team != 0 else owner_team
 	var queued := 0
 	for item in queue.items:
-		queued += int(ContentDB.def_for("robot" if kind_key() == "robot_factory" else "vehicle", item).get("pop", 1))
+		queued += int(ContentDB.def_for("vehicle", item).get("pop", 1))
 	var cost := int(stats.get("pop", 1))
 	if GameState.unit_pop(team_id) + queued + cost > GameState.unit_cap(team_id):
-		Fx.cap_denied()
+		if not silent:
+			Fx.cap_denied()
 		return false
 	return true
 
@@ -87,3 +89,5 @@ func _spawn(type_name: String) -> void:
 	var map := get_parent()
 	if map is Node2D:
 		map.add_child(vehicle)
+	if rally_point != Vector2.INF:
+		vehicle.move_to(rally_point)

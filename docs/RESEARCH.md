@@ -80,6 +80,53 @@ them again would need: RLE codec, SHEADBI index semantics, sprite-ID →
 name mapping and team palette recoloring — documented here for a future
 attempt if GOG-only sourcing is ever required.
 
+## 2c. Original sprite numbering & layer semantics (verified 2026-08-18)
+
+Cross-checked zod engine source (`DirectionFromLoc`, `ROTATION`,
+per-type `Init`/`DoRender`) against the actual sprite pixels:
+
+- **Directions are counter-clockwise**: `r000`=E, `r045`=NE, `r090`=UP,
+  `r135`=NW, `r180`=W, `r225`=SW, `r270`=DOWN, `r315`=SE. A unit moving
+  down the screen renders the `r270` sprite. Angle→dir = sector of
+  atan2 (y-down) + π/8 mapped counter-clockwise.
+- **Tank hulls ship 4 of 8 facings** ({r000,r045,r090,r315}); the
+  engine derives the rest. Zod reuses the source art *unflipped*
+  (`base[i][j+4][2-k] = base[i][j][k]`) — visually wrong; the original
+  mirrors. We flip horizontally and reverse the move anim.
+- **Per-type layers** (all offsets live in `AnimLibrary.TURRET_TABLES`):
+  light `top_r` + `initfire` muzzle effect + `tank_lid`; medium
+  `topf_r` (idle AND fire; `top_r`/`cannon_r` files are legacy, loaded
+  by nobody); heavy `top_<team>`; APC `top_r` scanner (always spins) +
+  `open_<team>` doors on unload; missile launcher `top_<team>`;
+  jeep `fire_r` gunner overlay (`n00` aim / `n01` flash); crane arm
+  `crane_r` with **INVERTED** numbering + 16-frame `hook`.
+- **Idle turrets scan** one sector per second (`turrent_time_int`);
+  tracking turrets follow the target. Turrets blow off on death
+  (`top_pop[_<team>]`, 8 frames).
+- **Cannons**: gatling/howitzer manned idle is the *empty/passive* art
+  (the gunner only exists in the fire frames); install = 3 shared
+  `init-place` frames + 4 team `place` frames; gun/missile cannons idle
+  on `equiped_r`. Missile-cannon/medium empty states exist per team but
+  the engine only ever shows the neutral `empty_null`.
+- **Weapons**: light tank fires a rocket (`light/bullet.png`); medium/
+  heavy fire missiles (`missile_launcher/bullet.png`); howitzer/gun lob
+  grenades (`other/grenades`); tough = rocket + mushroom, pyro = flame
+  puffs (`robots_pyro/bullet_n`), laser = beam flash. APC passengers
+  each fire their own weapon through the ports.
+- **Damage VFX**: below half HP vehicles smoke facing-aware
+  (`track_dust_r`), leak oil (`tank_oil_0-2`) and spark
+  (`track_spark_r`/`ground_spark`); deaths use `death_effects/`
+  (big_smoke/fire/little_fire/smoke/spark) and
+  `other/explosions/side_explosion`.
+
+### Original art still without a consumer (future work)
+
+Ambient life (birds 228, hut_animals 734), planet impact art (craters
+65, rock_effects 256, bridge_effects 60), ground track marks
+(`track_effects/`, per planet), tank_dirt, HUD portraits (24 animated
+faces), comp_messages announcer art, remaining factory/production GUI
+and cursors, `fort_old` BMPs, team palette BMPs.
+
 ## 3. Game facts to recreate (Z, 1996)
 
 - 2D tile maps on 5 planets; screen ~640×480 in original; units are

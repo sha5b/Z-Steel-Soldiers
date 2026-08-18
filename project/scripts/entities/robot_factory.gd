@@ -1,8 +1,8 @@
 class_name RobotFactory
 extends Building2D
-## Robot factory: belongs to the team owning its zone. Player factories
-## produce the queue from the production panel; CPU factories
-## auto-produce grunts when affordable.
+## Robot factory: belongs to the team owning its zone. Production is
+## queue-driven for everyone — the player uses the production panel,
+## the CPU opponent enqueues through CpuAi (which obeys the unit cap).
 
 const PRODUCE_SECONDS := 8.0
 
@@ -17,14 +17,9 @@ func queue_items() -> Array[String]:
 	return queue.items
 
 
-## CPU teams auto-produce; the player uses the queued production panel.
-func _auto() -> bool:
-	return owner_team != 0 and owner_team != GameState.player_team
-
-
-## 0..1 progress of the item currently building (auto-mode included).
+## 0..1 progress of the item currently building.
 func progress() -> float:
-	if owner_team == 0 or not (_auto() or not queue.items.is_empty()):
+	if owner_team == 0 or queue.items.is_empty():
 		return 0.0
 	return queue.progress(PRODUCE_SECONDS)
 
@@ -42,19 +37,16 @@ func _process(delta: float) -> void:
 		queue.clear()  # a capture scraps the old owner's queue
 	if owner_team == 0:
 		return
-	if _auto() and queue.items.is_empty() and _affordable_grunt():
-		GameState.spend(owner_team, _grunt_cost())
-		queue.enqueue("grunt")
 	var done := queue.tick(delta, PRODUCE_SECONDS)
 	if done != "":
 		_spawn(done)
 
 
-func queue_unit(type_name: String) -> bool:
+func queue_unit(type_name: String, silent := false) -> bool:
 	if not ContentDB.has_unit("robot", type_name):
 		return false
 	var stats: Dictionary = ContentDB.def_for("robot", type_name)
-	if not _pop_allows(stats):
+	if not _pop_allows(stats, silent):
 		return false
 	if not GameState.spend(owner_team, int(stats.cost)):
 		return false
@@ -74,23 +66,17 @@ func cancel_at(index: int) -> void:
 	GameState.money_changed.emit(owner_team, GameState.money[owner_team])
 
 
-func _grunt_cost() -> int:
-	return int(ContentDB.def_for("robot", "grunt").cost)
-
-
-func _affordable_grunt() -> bool:
-	return GameState.money.get(owner_team, 0) >= _grunt_cost()
-
-
 ## Cap gate: alive + queued + this unit must fit under the team cap.
-func _pop_allows(stats: Dictionary) -> bool:
+## `silent` suppresses the denial beep for CPU-initiated production.
+func _pop_allows(stats: Dictionary, silent := false) -> bool:
 	var team_id := team if team != 0 else owner_team
 	var queued := 0
 	for item in queue.items:
-		queued += int(ContentDB.def_for("robot" if kind_key() == "robot_factory" else "vehicle", item).get("pop", 1))
+		queued += int(ContentDB.def_for("robot", item).get("pop", 1))
 	var cost := int(stats.get("pop", 1))
 	if GameState.unit_pop(team_id) + queued + cost > GameState.unit_cap(team_id):
-		Fx.cap_denied()
+		if not silent:
+			Fx.cap_denied()
 		return false
 	return true
 
@@ -103,3 +89,5 @@ func _spawn(type_name: String) -> void:
 	var map := get_parent()
 	if map is Node2D:
 		map.add_child(unit)
+	if rally_point != Vector2.INF:
+		unit.move_to(rally_point)

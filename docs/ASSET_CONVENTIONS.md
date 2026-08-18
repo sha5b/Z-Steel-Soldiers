@@ -25,7 +25,15 @@ for — they double as a spec for generated assets.
 | `sounds/`, `music/`, `flags/`, `ui/` | audio, flags, UI art (GOG-sourced, see below) |
 
 `<team>` is `red | blue | green | yellow | null` (null = unmanned).
-Directions `r000 r045 r090 ... r315` face +X, down, -X, up (8 total).
+Directions `r000 r045 r090 ... r315` (8 total) are numbered
+**counter-clockwise**: r000 = east (+X), r045 = north-east, r090 =
+north (up), r135 = north-west, r180 = west, r225 = south-west, r270 =
+south (down), r315 = south-east. This matches the original engine's
+`DirectionFromLoc` + `ROTATION` tables (verified against the sprite
+pixels). Tank hulls ship only the right-hand half (r000/r045/r090/
+r315); left-hand facings render as horizontal flips with the move
+animation reversed. The crane arm is numbered the opposite way round
+(arm facing d is stored in `crane_r{(d+4)*45}`).
 Frame suffix `_n00 _n01 ...` (zero-padded, 2 digits).
 
 ## Robots
@@ -45,27 +53,42 @@ see it work — auto-discovery registers unknown folders with grunt stats.
 ## Vehicles & cannons
 
 ```
-<dir>/empty_r<deg>.png            unmanned, directional  — or plain:
+<dir>/empty_r<deg>.png            unmanned, directional (jeep, gatling,
+                                   howitzer) — or plain:
 <dir>/empty_null.png / empty.png  unmanned, single facing (always neutral)
 <dir>/base_<team>_r<deg>_n<frame>.png   manned idle (hull for tanks)
 <dir>/base_damaged_<team>_r<deg>_n<frame>.png  shown below half HP
-<dir>/equiped_<team>_r<deg>.png   gun-cannon manned idle
-<dir>/fire_[<team>_]r<deg>_n<frame>.png firing (shared when no team art)
-<dir>/top_[<team>_]r<deg>.png     turret layer (tanks, APC) — aims
-                                   independently of the hull
-<dir>/topf_[<team>_]r<deg>.png    firing turret (where it exists)
-<dir>/top_pop_n<frame>.png        turret blowing off on destruction
-<dir>/wasted[_<team>].png         wreck (tanks have none — they explode)
-<dir>/under_<team>_r<deg>_n<frame>.png  jeep wheel layer
-<dir>/bullet.png                  tank shell sprite (projectile visual)
+<dir>/equiped_<team>_r<deg>.png   gun/missile-cannon manned idle
+<dir>/fire_[<team>_]r<deg>_n<frame>.png muzzle FLASH (one-shot, holds its
+                                   last frame; gatling/howitzer idle art
+                                   IS their empty/passive art)
+<dir>/top_[<team>_]r<deg>.png     turret layer — aims independently of
+                                   the hull (light/APC neutral, heavy and
+                                   missile launcher team-coloured)
+<dir>/topf_r<deg>.png             medium tank turret (idle AND fire)
+<dir>/fire_r<deg>_n00/n01.png     jeep gunner overlay (aim / flash)
+<dir>/top_pop[_<team>]_n<frame>.png  turret blowing off on destruction
+<dir>/wasted[_<team>].png         wreck (tanks have none — they burn)
+<dir>/under_r<deg>_n<frame>.png   jeep wheel layer (no art for the
+                                   vertical facings — wheels hide)
+<dir>/open_<team>_r<deg>_n<frame>.png  APC doors (unload animation)
+<dir>/crane_r<deg>.png            crane arm — INVERTED numbering (facing
+                                   d uses r{(d+4)*45})
+<dir>/hook_n<frame>.png           crane hook (16-frame swing)
+<dir>/place_<team>_n<frame>.png   gunner install animation (plays once
+                                   when a robot mans the hardware)
+<dir>/bullet.png                  shell/rocket sprite (projectile visual)
+cannons_common/init-place_n<frame>.png  shared install anim prefix
 ```
 
 Unmanned hardware always resolves neutral art (`empty_null.png` /
-`empty.png`) — never a team colour. Tanks fire through their turret
-layer; the hull keeps its base cycle when no hull fire art exists. A
-`projectile` key in the def (`{speed, impact, texture}`) makes the gun
+`empty.png`) — never a team colour. Idle turrets scan (one sector per
+second, like the original); tracking turrets freeze on their target.
+A `projectile` key in the def (`{speed, impact, texture}`) makes the gun
 fire a travelling shell that damages on impact; without it, fire is
-hitscan with a tracer.
+hitscan with a tracer (lasers get a beam flash). Below half HP vehicles
+smoke (facing-aware `track_dust`) and leak oil; tanks die into a
+burning husk with their turret popped off.
 
 ## Effects
 

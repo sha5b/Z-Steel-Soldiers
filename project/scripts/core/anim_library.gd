@@ -8,10 +8,24 @@ extends Object
 ## Robot weapon art:   robots_<type>/fire_<team>_r<deg>_n<frame>.png
 ## Vehicles/cannons:   <dir>/<anim>[_<team>]_r<deg>[_n<frame>].png
 ## Effects:            effects/<name>/<name>_n<frame>.png
+##
+## Direction numbering (verified against the zod engine's
+## DirectionFromLoc + ROTATION and the sprite pixels themselves):
+## the 8 facings r000..r315 run COUNTER-clockwise on screen —
+##   r000 = east, r045 = north-east, r090 = north (up),
+##   r135 = north-west, r180 = west, r225 = south-west,
+##   r270 = south (down), r315 = south-east.
+## Tank hulls ship only the right-hand half (r000/r045/r090/r315); the
+## left-hand facings render as horizontal flips of their mirror partner
+## (0<->4, 1<->3, 2<->2, 5<->7) with the move animation reversed.
+## The crane arm is the exception: its files use the INVERTED rotation
+## table (arm facing d is stored in r{(d+4)%8*45}) — the arm trails
+## opposite the direction of travel.
 
 const DIRECTIONS := 8
 const TEAM_NAMES := {1: "red", 2: "blue", 3: "green", 4: "yellow"}
 const ROBOTS_DIR := "res://assets/z/robots"
+const CANNONS_COMMON := "res://assets/z/cannons_common"
 const IDLE_FLAVORS := ["beer", "cigarette", "pope", "look_around", "head_stretch",
 	"beat_ground", "confused", "full_area_scan", "praise_the_lord"]
 const DEATH_VARIANTS := ["die1", "die2", "die3", "die4", "die5", "melt"]
@@ -19,6 +33,60 @@ const DEATH_VARIANTS := ["die1", "die2", "die3", "die4", "die5", "melt"]
 ## point = order acknowledgement, pickup-* = crate collection,
 ## enter_apc = boarding hardware, throw/dodge available for combat flavor.
 const GESTURES := ["point", "pickup-up", "pickup-down", "enter_apc", "throw", "dodge"]
+
+## Zod per-type turret layer placement (from the DoRender offset tables):
+## hull_off indexes the hull facing, aim_off the turret facing; both are
+## added on top of the canvas top-left alignment (_layer_offset).
+const TURRET_TABLES := {
+	"light": {
+		"hull": [Vector2(2, 0), Vector2(0, 0), Vector2(-2, 0), Vector2(0, 0),
+			Vector2(2, 0), Vector2(0, 0), Vector2(-2, 0), Vector2(0, 0)],
+		"aim": [Vector2(0, -2), Vector2(0, -2), Vector2(0, -1), Vector2(-1, 0),
+			Vector2(0, 0), Vector2(0, 0), Vector2(0, 1), Vector2(1, -2)],
+		"scans": true,
+	},
+	"medium": {
+		"hull": [Vector2(0, 0), Vector2(0, 6), Vector2(-1, 0), Vector2(-2, 6),
+			Vector2(0, 0), Vector2(0, 6), Vector2(-1, 0), Vector2(-2, 6)],
+		"aim": [Vector2(4, -5), Vector2(5, -3), Vector2(7, -4), Vector2(5, -5),
+			Vector2(2, -5), Vector2(6, -5), Vector2(7, -5), Vector2(5, -5)],
+		"scans": true,
+	},
+	"heavy": {
+		"hull": [Vector2(4, 0), Vector2(2, -3), Vector2(-1, -5), Vector2(-3, -4),
+			Vector2(4, 0), Vector2(2, -3), Vector2(-1, -5), Vector2(-3, -4)],
+		"aim": [Vector2(4, 0), Vector2(0, -2), Vector2(0, -2), Vector2(0, -2),
+			Vector2(-4, 0), Vector2(0, 0), Vector2(0, 0), Vector2(0, 0)],
+		"scans": true,
+	},
+	"apc": {
+		"hull": [Vector2(1, 5), Vector2(5, 8), Vector2(9, 5), Vector2(13, 8),
+			Vector2(15, 5), Vector2(11, 3), Vector2(8, 3), Vector2(5, 4)],
+		"aim": [],
+		"scans": true,  # scanner spins, never tracks a target
+	},
+	"missile_launcher": {
+		"hull": [Vector2(0, 0), Vector2(2, 3), Vector2(3, 0), Vector2(8, 4),
+			Vector2(9, 0), Vector2(7, -2), Vector2(2, -3), Vector2(0, -3)],
+		"aim": [Vector2(2, 0), Vector2(0, 0), Vector2(0, 0), Vector2(0, -2),
+			Vector2(0, -2), Vector2(-2, 0), Vector2(0, 2), Vector2(0, -2)],
+		"scans": true,
+	},
+	"jeep": {  # the gunner/gun overlay (fire_* art)
+		"hull": [Vector2(0, 2), Vector2(6, 7), Vector2(12, 4), Vector2(20, 8),
+			Vector2(25, 2), Vector2(20, -4), Vector2(15, -3), Vector2(5, -4)],
+		"aim": [Vector2(0, 0), Vector2(-2, 0), Vector2(-5, 0), Vector2(-8, 0),
+			Vector2(-10, 0), Vector2(-8, 5), Vector2(-5, 6), Vector2(-2, 5)],
+		"scans": false,
+	},
+}
+## Crane arm + hook offsets (hook hangs at hull + arm + hook offsets).
+const CRANE_TABLES := {
+	"arm": [Vector2(-6, -6), Vector2(-3, -4), Vector2(0, -5), Vector2(3, -4),
+		Vector2(6, -6), Vector2(1, -8), Vector2(0, -9), Vector2(-2, -8)],
+	"hook": [Vector2(0, 14), Vector2(4, 20), Vector2(14, 23), Vector2(23, 20),
+		Vector2(25, 14), Vector2(21, 8), Vector2(14, 5), Vector2(5, 8)],
+}
 
 
 static func team_name(team: int) -> String:
@@ -125,13 +193,14 @@ static func _add_numbered(frames: SpriteFrames, anim: String, tn: String,
 
 
 ## Frame set for vehicles and cannons: empty / base / fire cycles per
-## direction plus the `wasted` wreck sprite. Manned-idle art varies by
-## type: vehicles have `base_*` (or `base_damaged_*` when `damaged`),
-## the gun cannon uses `equiped_*` single frames, gatling/howitzer have
-## none and show their fire cycle instead. Some types have no
-## directional empty art — only a plain `empty.png` / `empty_null.png` —
-## which is then used for every facing (never a team colour: unmanned
-## hardware is neutral).
+## direction plus the wreck sprite. Semantics per the original engine:
+## - `empty` (directional or plain `empty_null`/`empty`) is shown while
+##   unmanned AND as the passive look of manned gatling/howitzer (their
+##   gunner only appears in the fire frames).
+## - `base` is the manned hull/vehicle idle (`equiped` single frames for
+##   the gun cannon, `place` install art holds its last frame).
+## - `fire` is a short muzzle FLASH (plays once, holds the last frame).
+## - `wasted[_<team>]` is the wreck; tanks have none — they explode.
 static func vehicle_frames(asset_dir: String, team: int, damaged := false) -> SpriteFrames:
 	var tn := team_name(team)
 	var frames := SpriteFrames.new()
@@ -142,10 +211,9 @@ static func vehicle_frames(asset_dir: String, team: int, damaged := false) -> Sp
 			var name := "%s_%d" % [anim, d]
 			frames.add_animation(name)
 			frames.set_animation_speed(name, 6.0 if anim == "base" else 10.0)
-			# the gunner `place` install animation runs once and HOLDS its
-			# last frame (the manned idle pose)
-			frames.set_animation_loop(name, not (anim == "base"
-					and _is_place_path(asset_dir, tn, deg)))
+			# the fire flash and the install animation run once and hold
+			# their last frame
+			frames.set_animation_loop(name, anim != "fire")
 			var frame := 0
 			while true:
 				var tex: Texture2D = _vehicle_anim_texture(
@@ -162,78 +230,209 @@ static func vehicle_frames(asset_dir: String, team: int, damaged := false) -> Sp
 				found = true
 		if anim == "empty" and not found:
 			_add_plain_empty(frames, asset_dir, tn)
+	# gatling/howitzer: the manned steady look is the passive empty art
+	# (the gunner only appears in the fire frames); their `place_*` art is
+	# the one-shot install animation, registered separately below
+	for d in DIRECTIONS:
+		var base := "base_%d" % d
+		var empty := "empty_%d" % d
+		if not frames.has_animation(base) and frames.has_animation(empty):
+			frames.add_animation(base)
+			frames.set_animation_speed(base, 1.0)
+			frames.set_animation_loop(base, true)
+			for i in frames.get_frame_count(empty):
+				frames.add_frame(base, frames.get_frame_texture(empty, i))
+	# gunner install: shared init-place frames, then the team's place
+	# frames — plays once when a robot mans the hardware
+	var install: Array = cannon_install_frames()
+	var place_frame := 0
+	while true:
+		var place := "%s/place_%s_n%02d.png" % [asset_dir, tn, place_frame]
+		if not ResourceLoader.exists(place):
+			break
+		install.append(load(place))
+		place_frame += 1
+	if not install.is_empty():
+		for d in DIRECTIONS:
+			var name := "install_%d" % d
+			frames.add_animation(name)
+			frames.set_animation_speed(name, 8.0)
+			frames.set_animation_loop(name, false)
+			for tex in install:
+				frames.add_frame(name, tex)
 	frames.add_animation("wasted")
 	frames.set_animation_loop("wasted", false)
-	var wasted := "%s/wasted.png" % asset_dir
-	if ResourceLoader.exists(wasted):
+	var wasted := _first_existing([
+		"%s/wasted_%s.png" % [asset_dir, tn],
+		"%s/wasted.png" % asset_dir])
+	if wasted != "":
 		frames.add_frame("wasted", load(wasted))
 	else:
 		frames.remove_animation("wasted")
-	_alias_fire_as_base(frames)
 	return frames
 
 
-## Turret layer for tanks (`top_*` art): aims independently of the hull.
-## Idle `top_r<deg>` (team-coloured on some types), firing `topf_r<deg>`
-## where it exists, plus the `top_pop` destruction animation. Returns
-## {"frames": SpriteFrames, "offsets": per-direction Vector2} or null.
-## Offsets align the turret canvas' top-left with the hull canvas'
-## top-left — the original sprites share that anchor.
-static func turret_set(asset_dir: String, team: int) -> Dictionary:
+## Shared cannon install animation (`cannons_common/init-place_n00..02`)
+## played before the per-type `place_*` frames. Returns [""] when absent.
+static func cannon_install_frames() -> Array:
+	var out: Array = []
+	var frame := 0
+	while true:
+		var path := "%s/init-place_n%02d.png" % [CANNONS_COMMON, frame]
+		if not ResourceLoader.exists(path):
+			break
+		out.append(load(path))
+		frame += 1
+	return out
+
+
+## APC unload: `open_<team>_r<deg>_n00..01` door animation per facing.
+## The open art shares the hull canvas, so no extra offsets are needed.
+## Returns {"frames": SpriteFrames} or {}.
+static func apc_open_set(asset_dir: String, team: int) -> Dictionary:
 	var tn := team_name(team)
 	var frames := SpriteFrames.new()
 	var found := false
-	var offsets := PackedVector2Array()
-	offsets.resize(DIRECTIONS)
+	for d in DIRECTIONS:
+		var name := "open_%d" % d
+		frames.add_animation(name)
+		frames.set_animation_speed(name, 6.0)
+		frames.set_animation_loop(name, false)
+		var frame := 0
+		while true:
+			var path := "%s/open_%s_r%03d_n%02d.png" % [asset_dir, tn, d * 45, frame]
+			if not ResourceLoader.exists(path):
+				break
+			frames.add_frame(name, load(path))
+			frame += 1
+		if frame == 0:
+			frames.remove_animation(name)
+		else:
+			found = true
+	if not found:
+		return {}
+	return {"frames": frames}
+
+
+## Turret/gun layer for a unit type. Idle and fire art per the original
+## engine: light/apc use neutral `top_r<deg>`, medium uses `topf_r<deg>`
+## for BOTH idle and fire, heavy/missile_launcher use `top_<team>_r<deg>`.
+## Returns {"frames", "canvas_off": per-hull-dir alignment, "hull_off",
+## "aim_off", "scans"} or {} when the type has no layer.
+static func turret_set(unit_name: String, asset_dir: String, team: int) -> Dictionary:
+	var table: Dictionary = TURRET_TABLES.get(unit_name, {})
+	if table.is_empty():
+		return {}
+	var tn := team_name(team)
+	var frames := SpriteFrames.new()
+	var found := false
+	var canvas_off := PackedVector2Array()
+	canvas_off.resize(DIRECTIONS)
 	for d in DIRECTIONS:
 		var deg := d * 45
+		# jeep gun layer: the gunner aim/fire art doubles as the layer
+		# (aim = fire n00, flash = fire n01)
 		var idle := _first_existing([
-			"%s/top_%s_r%03d.png" % [asset_dir, tn, deg],
-			"%s/top_r%03d.png" % [asset_dir, deg],
-			"%s/top_%s_r%03d.png" % [asset_dir, tn, mirrored_dir(d) * 45],
-			"%s/top_r%03d.png" % [asset_dir, mirrored_dir(d) * 45]])
+			"%s/topf_r%03d.png" % [asset_dir, deg],          # medium (both states)
+			"%s/top_%s_r%03d.png" % [asset_dir, tn, deg],    # heavy / missile launcher
+			"%s/top_r%03d.png" % [asset_dir, deg],           # light / apc
+			"%s/fire_r%03d_n00.png" % [asset_dir, deg]])     # jeep
 		if idle == "":
 			continue
-		var art_deg := _deg_of(idle)
 		for anim in ["turret", "turretfire"]:
 			var path := idle
 			if anim == "turretfire":
 				path = _first_existing([
+					"%s/fire_r%03d_n01.png" % [asset_dir, deg],   # jeep flash
 					"%s/topf_%s_r%03d.png" % [asset_dir, tn, deg],
 					"%s/topf_r%03d.png" % [asset_dir, deg],
-					"%s/topf_%s_r%03d.png" % [asset_dir, tn, mirrored_dir(d) * 45],
-					"%s/topf_r%03d.png" % [asset_dir, mirrored_dir(d) * 45],
 					idle])
-			var tex: Texture2D = _top_texture(path, art_deg, d)
 			var name := "%s_%d" % [anim, d]
 			frames.add_animation(name)
 			frames.set_animation_speed(name, 1.0)
 			frames.set_animation_loop(name, true)
-			frames.add_frame(name, tex)
+			frames.add_frame(name, load(path))
 			found = true
-		# offsets pair the turret with the hull canvas of the same
-		# (possibly mirrored) direction art
 		var hull := _first_existing([
-			"%s/base_%s_r%03d_n00.png" % [asset_dir, tn, art_deg],
-			"%s/base_%s_r%03d_n00.png" % [asset_dir, tn, deg]])
-		offsets[d] = _layer_offset(
-			_canvas_size(hull), _canvas_size(idle))
+			"%s/base_%s_r%03d_n00.png" % [asset_dir, tn, deg],
+			"%s/base_%s_r%03d_n00.png" % [asset_dir, tn, mirrored_dir(d) * 45],
+			"%s/empty_r%03d.png" % [asset_dir, deg]])
+		canvas_off[d] = _layer_offset(_canvas_size(hull), _canvas_size(idle))
 	if not found:
 		return {}
-	# turret blowing off on destruction
+	# turret blowing off on destruction (`top_pop[_<team>]_n00..`)
 	frames.add_animation("pop")
 	frames.set_animation_speed("pop", 8.0)
 	frames.set_animation_loop("pop", false)
-	var pop := 0
-	while true:
-		var pop_path := "%s/top_pop_n%02d.png" % [asset_dir, pop]
-		if not ResourceLoader.exists(pop_path):
+	var pop_paths: Array = []
+	for prefix in ["top_pop_%s" % tn, "top_pop"]:
+		var pop := 0
+		pop_paths = []
+		while true:
+			var path := "%s/%s_n%02d.png" % [asset_dir, prefix, pop]
+			if not ResourceLoader.exists(path):
+				break
+			pop_paths.append(load(path))
+			pop += 1
+		if not pop_paths.is_empty():
 			break
-		frames.add_frame("pop", load(pop_path))
-		pop += 1
-	if pop == 0:
+	if pop_paths.is_empty():
 		frames.remove_animation("pop")
-	return {"frames": frames, "offsets": offsets}
+	else:
+		for tex in pop_paths:
+			frames.add_frame("pop", tex)
+	return {
+		"frames": frames,
+		"canvas_off": canvas_off,
+		"hull_off": PackedVector2Array(table.get("hull", [])),
+		"aim_off": PackedVector2Array(table.get("aim", [])),
+		"scans": bool(table.get("scans", false)),
+	}
+
+
+## Crane: arm layer (INVERTED rotation numbering — facing d lives in
+## r{(d+4)%8*45}) plus the 16-frame hook. Never aims; arm follows the
+## hull facing, hook swings on the same anchor.
+static func crane_set(asset_dir: String) -> Dictionary:
+	var frames := SpriteFrames.new()
+	var canvas_off := PackedVector2Array()
+	canvas_off.resize(DIRECTIONS)
+	var found := false
+	for d in DIRECTIONS:
+		var art_deg: int = ROTATION_INVERTED_DEG[d]
+		var arm := "%s/crane_r%03d.png" % [asset_dir, art_deg]
+		if not ResourceLoader.exists(arm):
+			continue
+		var name := "arm_%d" % d
+		frames.add_animation(name)
+		frames.set_animation_speed(name, 1.0)
+		frames.set_animation_loop(name, true)
+		frames.add_frame(name, load(arm))
+		found = true
+		var hull := _first_existing([
+			"%s/base_red_r%03d_n00.png" % [asset_dir, d * 45],
+			"%s/base_red_r%03d_n00.png" % [asset_dir, mirrored_dir(d) * 45]])
+		canvas_off[d] = _layer_offset(_canvas_size(hull), _canvas_size(arm))
+	if not found:
+		return {}
+	frames.add_animation("hook")
+	frames.set_animation_speed("hook", 10.0)
+	frames.set_animation_loop("hook", true)
+	var hook := 0
+	while true:
+		var path := "%s/hook_n%02d.png" % [asset_dir, hook]
+		if not ResourceLoader.exists(path):
+			break
+		frames.add_frame("hook", load(path))
+		hook += 1
+	if hook == 0:
+		frames.remove_animation("hook")
+	return {"frames": frames, "canvas_off": canvas_off,
+		"arm_off": PackedVector2Array(CRANE_TABLES.arm),
+		"hook_off": PackedVector2Array(CRANE_TABLES.hook)}
+
+
+const ROTATION_INVERTED_DEG := [180, 225, 270, 315, 0, 45, 90, 135]
 
 
 ## Offset that makes a centered layer sprite share the base canvas'
@@ -243,7 +442,7 @@ static func _layer_offset(base_size: Vector2i, layer_size: Vector2i) -> Vector2:
 
 
 static func _canvas_size(path: String) -> Vector2i:
-	if not ResourceLoader.exists(path):
+	if path == "" or not ResourceLoader.exists(path):
 		return Vector2i.ZERO
 	var tex: Texture2D = load(path)
 	return Vector2i(tex.get_width(), tex.get_height())
@@ -257,8 +456,8 @@ static func _first_existing(paths: Array) -> String:
 
 
 ## Direction index mirrored horizontally (r000<->r180, r045<->r135...).
-## The original art ships only the right-facing half; the engine drew
-## left-facing sprites as horizontal flips.
+## The original art ships only the right-facing half; left-facing
+## sprites render as horizontal flips of their mirror partner.
 static func mirrored_dir(d: int) -> int:
 	return wrapi(4 - d, 0, DIRECTIONS)
 
@@ -279,21 +478,6 @@ static func _dir_texture(path_fmt: String, deg: int) -> Texture2D:
 
 static func deg_to_dir(deg: int) -> int:
 	return wrapi(int(round(deg / 45.0)), 0, DIRECTIONS)
-
-
-## Types without dedicated manned-idle art (gatling, howitzer) show their
-## fire cycle as the manned look.
-static func _alias_fire_as_base(frames: SpriteFrames) -> void:
-	for d in DIRECTIONS:
-		var fire := "fire_%d" % d
-		var base := "base_%d" % d
-		if not frames.has_animation(fire) or frames.has_animation(base):
-			continue
-		frames.add_animation(base)
-		frames.set_animation_speed(base, 6.0)
-		frames.set_animation_loop(base, true)
-		for i in frames.get_frame_count(fire):
-			frames.add_frame(base, frames.get_frame_texture(fire, i))
 
 
 ## Plain (non-directional) empty art registered under every facing so
@@ -331,8 +515,8 @@ static func _is_place_path(asset_dir: String, tn: String, deg: int) -> bool:
 
 
 ## Texture for a vehicle anim frame: the direct file, or a horizontally
-## flipped copy of the mirrored direction (the original engine mirrored
-## the right-facing half of the art for left facings).
+## flipped copy of the mirrored direction (the original engine derived
+## the left-hand facings from the shipped right-hand half).
 static func _vehicle_anim_texture(asset_dir: String, anim: String, tn: String,
 		deg: int, frame: int, damaged: bool) -> Texture2D:
 	var path := _vehicle_anim_path(asset_dir, anim, tn, deg, frame, damaged)
@@ -345,10 +529,6 @@ static func _vehicle_anim_texture(asset_dir: String, anim: String, tn: String,
 		var mirror_dmg := _vehicle_anim_path(asset_dir, anim, tn, mdeg, frame, damaged)
 		if ResourceLoader.exists(mirror_dmg):
 			return _flipped(mirror_dmg)
-		# gunner `place` art is not directional — try it directly
-		var place := "%s/place_%s_n%02d.png" % [asset_dir, tn, frame]
-		if ResourceLoader.exists(place):
-			return load(place)
 		return null
 	var mdeg2 := mirrored_dir(deg_to_dir(deg)) * 45
 	var mirror := _vehicle_anim_path(asset_dir, anim, tn, mdeg2, frame, false)
@@ -365,14 +545,6 @@ static func _deg_of(path: String) -> int:
 	return int(path.substr(marker + 2, 3))
 
 
-## Loads a `top*` texture, flipped when its art direction is the mirror
-## of the direction we need.
-static func _top_texture(path: String, art_deg: int, want_dir: int) -> Texture2D:
-	if deg_to_dir(art_deg) == want_dir:
-		return load(path)
-	return _flipped(path)
-
-
 static func _flipped(path: String) -> Texture2D:
 	var img: Image = (load(path) as Texture2D).get_image()
 	img.flip_x()
@@ -382,7 +554,10 @@ static func _flipped(path: String) -> Texture2D:
 static func _vehicle_anim_path(asset_dir: String, anim: String, tn: String, deg: int, frame: int, damaged := false) -> String:
 	match anim:
 		"empty":
-			return "%s/empty_r%03d.png" % [asset_dir, deg]
+			var directional := "%s/empty_r%03d.png" % [asset_dir, deg]
+			if ResourceLoader.exists(directional):
+				return directional
+			return "%s/empty_%s_r%03d.png" % [asset_dir, tn, deg]  # missile cannon
 		"base":
 			if damaged:
 				var dmg := "%s/base_damaged_%s_r%03d_n%02d.png" % [asset_dir, tn, deg, frame]
@@ -391,14 +566,10 @@ static func _vehicle_anim_path(asset_dir: String, anim: String, tn: String, deg:
 			var base_path := "%s/base_%s_r%03d_n%02d.png" % [asset_dir, tn, deg, frame]
 			if ResourceLoader.exists(base_path):
 				return base_path
-			# the gun cannon's manned idle is a single `equiped` frame
+			# the gun/missile cannon's manned idle is a single `equiped` frame
 			var equiped := "%s/equiped_%s_r%03d.png" % [asset_dir, tn, deg]
 			if ResourceLoader.exists(equiped) and frame == 0:
 				return equiped
-			# gatling/howitzer idle WITH the gunner figure (`place` art)
-			var place := "%s/place_%s_n%02d.png" % [asset_dir, tn, frame]
-			if ResourceLoader.exists(place):
-				return place
 			return base_path  # nonexistent -> caller stops scanning
 		"fire":
 			var team_path := "%s/fire_%s_r%03d_n%02d.png" % [asset_dir, tn, deg, frame]
@@ -409,9 +580,10 @@ static func _vehicle_anim_path(asset_dir: String, anim: String, tn: String, deg:
 
 
 ## Jeep wheels: separate `under_*` sprites (shared art, no team prefix).
-## Returns {"frames", "offsets"} aligned to the body canvas like turrets,
-## or {} when the type has no wheel art.
-static func jeep_wheel_set(asset_dir: String, team: int) -> Dictionary:
+## The original ships no wheel art for the vertical facings (r090/r270) —
+## the wheels are hidden behind the body — so those directions simply
+## have no animation. Returns {"frames", "offsets"} or {}.
+static func jeep_wheel_set(asset_dir: String, team: int, manned: bool) -> Dictionary:
 	var tn := team_name(team)
 	var frames := SpriteFrames.new()
 	var found := false
@@ -433,8 +605,12 @@ static func jeep_wheel_set(asset_dir: String, team: int) -> Dictionary:
 			frames.remove_animation(name)
 		else:
 			found = true
+			# align against the body canvas actually shown: the empty
+			# hull while unmanned, the team base while crewed
 			var body := _first_existing([
+				"%s/empty_r%03d.png" % [asset_dir, d * 45] if not manned else "",
 				"%s/base_%s_r%03d_n00.png" % [asset_dir, tn, d * 45],
+				"%s/base_%s_r%03d_n00.png" % [asset_dir, tn, mirrored_dir(d) * 45],
 				"%s/empty_r%03d.png" % [asset_dir, d * 45]])
 			if body != "":
 				offsets[d] = _layer_offset(_canvas_size(body),
@@ -455,6 +631,24 @@ static func effect_frames(dir: String, name: String, fps: float) -> SpriteFrames
 	var frame := 0
 	while true:
 		var path := "%s/%s_n%02d.png" % [dir, name, frame]
+		if not ResourceLoader.exists(path):
+			break
+		frames.add_frame("fx", load(path))
+		frame += 1
+	if frame == 0:
+		frames.remove_animation("fx")
+	return frames
+
+
+## Directional effect frames (vehicle smoke/dust): `<dir>/<name>_r<deg>_n<frame>.png`.
+static func dir_effect_frames(dir: String, name: String, d: int, fps: float) -> SpriteFrames:
+	var frames := SpriteFrames.new()
+	frames.add_animation("fx")
+	frames.set_animation_speed("fx", fps)
+	frames.set_animation_loop("fx", true)
+	var frame := 0
+	while true:
+		var path := "%s/%s_r%03d_n%02d.png" % [dir, name, d * 45, frame]
 		if not ResourceLoader.exists(path):
 			break
 		frames.add_frame("fx", load(path))

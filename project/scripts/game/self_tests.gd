@@ -19,7 +19,8 @@ static func should_run() -> bool:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	for flag in ["capture", "combat", "factory", "ai", "path", "dir", "near", "flag",
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
-			"campaign", "win", "fx", "mount", "building", "parade", "cap"]:
+			"campaign", "win", "fx", "mount", "building", "parade", "cap",
+			"layer", "vfx", "tactics"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -61,13 +62,20 @@ static func run(ctx: Node) -> void:
 		f.position = z2.position + z2.world_rect().get_center() - Vector2(24, 24)
 		ctx.add_child(f)
 		z2.owner_team = GameState.player_team
+		# pretend the factory was already ours — otherwise the first
+		# _process treats the zone capture as new and scraps the queue
+		f.owner_team = GameState.player_team
+		f.team = GameState.player_team
 		var before := tree.get_nodes_in_group("units").size()
 		var money_before := GameState.player_money()
+		GameState.money[GameState.player_team] = 500
+		for i in 3:
+			f.queue_unit("grunt")
 		for i in 30:
 			f._process(0.5)
-		print("FACTORY: units %d -> %d money %d -> %d" % [
+		print("FACTORY: units %d -> %d money %d -> %d queue=%d" % [
 			before, tree.get_nodes_in_group("units").size(),
-			money_before, GameState.player_money()])
+			money_before, GameState.player_money(), f.queue.items.size()])
 	if "--ai-test" in args:
 		var ai := ctx.get_node_or_null("CpuAi_T2")
 		if ai:
@@ -133,7 +141,9 @@ static func run(ctx: Node) -> void:
 					solid, u4.waypoints.size(), crossed_solid, total,
 					u4.move_target == Vector2.ZERO, dist])
 	if "--dir-test" in args:
-		# zod convention: r000 faces +X (right), r090 down, r180 left, r270 up
+		# zod convention: r000 faces +X (right), r090 up, r180 left, r270
+		# down — the numbering runs counter-clockwise, so facing down
+		# (angle PI/2 on the y-down screen) uses the r270 sprite
 		var dirs := {
 			0.0: 0, PI / 2.0: 6, PI: 4, -PI / 2.0: 2,
 			PI / 4.0: 7, -PI / 4.0: 1, 3.0 * PI / 4.0: 5, -3.0 * PI / 4.0: 3,
@@ -144,6 +154,152 @@ static func run(ctx: Node) -> void:
 			if got != dirs[ang]:
 				bad += 1
 		print("DIR: mismatches=%d of 8" % bad)
+	if "--layer-test" in args:
+		# layered rendering: turrets (with the original offset tables),
+		# the medium tank's topf turret art, jeep wheel coverage, the
+		# crane arm's inverted numbering and team wreck sprites
+		var problems: Array[String] = []
+		for vname in ["light", "medium", "heavy", "apc", "missile_launcher", "jeep"]:
+			var lset: Dictionary = AnimLibrary.turret_set(vname,
+				String(ContentDB.def_for("vehicle", vname).dir), 1)
+			if lset.is_empty():
+				problems.append("%s: no turret/gun layer" % vname)
+				continue
+			var lframes: SpriteFrames = lset.frames
+			if not lframes.has_animation("turret_0") or not lframes.has_animation("turret_7"):
+				problems.append("%s: turret idle anims incomplete" % vname)
+			if PackedVector2Array(lset.hull_off).size() != AnimLibrary.DIRECTIONS:
+				problems.append("%s: hull offsets missing" % vname)
+		var med: SpriteFrames = AnimLibrary.turret_set("medium",
+			String(ContentDB.def_for("vehicle", "medium").dir), 1).frames
+		if med.get_frame_texture("turret_0", 0) \
+				!= load("res://assets/z/vehicles_medium/topf_r000.png"):
+			problems.append("medium: idle turret not the topf art")
+		var wheels: Dictionary = AnimLibrary.jeep_wheel_set(
+			"res://assets/z/vehicles_jeep", 1, true)
+		var wframes: SpriteFrames = wheels.frames
+		for d in [0, 1, 3, 4, 5, 7]:
+			if not wframes.has_animation("wheels_%d" % d):
+				problems.append("jeep: wheels_%d missing" % d)
+		for d in [2, 6]:
+			if wframes.has_animation("wheels_%d" % d):
+				problems.append("jeep: wheels_%d should not exist (hidden)" % d)
+		var crane: Dictionary = AnimLibrary.crane_set("res://assets/z/vehicles_crane")
+		if crane.is_empty() or not crane.frames.has_animation("arm_0") \
+				or not crane.frames.has_animation("hook"):
+			problems.append("crane: arm/hook layers missing")
+		else:
+			# inverted numbering: arm facing E (dir 0) is the r180 file
+			if crane.frames.get_frame_texture("arm_0", 0) \
+					!= load("res://assets/z/vehicles_crane/crane_r180.png"):
+				problems.append("crane: arm_0 is not the r180 (inverted) art")
+		for vname in ["apc", "missile_launcher", "jeep"]:
+			var vframes: SpriteFrames = AnimLibrary.vehicle_frames(
+				String(ContentDB.def_for("vehicle", vname).dir), 1)
+			if not vframes.has_animation("wasted"):
+				problems.append("%s: no wreck sprite" % vname)
+		for tname in ["light", "medium", "heavy"]:
+			if AnimLibrary.plain_empty_path(
+					String(ContentDB.def_for("vehicle", tname).dir), "red") == "":
+				problems.append("%s: no plain empty art" % tname)
+		var install := AnimLibrary.cannon_install_frames()
+		if install.size() != 3:
+			problems.append("cannons: shared init-place frames missing")
+		for cname in ["gatling", "howitzer"]:
+			var cframes: SpriteFrames = AnimLibrary.vehicle_frames(
+				String(ContentDB.def_for("cannon", cname).dir), 1)
+			# manned passive look is the empty art (fire is only a flash)
+			if not cframes.has_animation("base_0"):
+				problems.append("%s: no manned idle alias" % cname)
+			elif cframes.get_frame_texture("base_0", 0) \
+					!= cframes.get_frame_texture("empty_0", 0):
+				problems.append("%s: manned idle should show passive art" % cname)
+			if cframes.get_animation_loop("fire_0"):
+				problems.append("%s: fire flash must not loop" % cname)
+		print("LAYER: problems=%d %s" % [problems.size(),
+			", ".join(problems) if not problems.is_empty() else "(all layers ok)"])
+	if "--vfx-test" in args:
+		# damage smoke (per-direction track_dust), oil stains, wreck
+		# smoke variants and the grenade projectile sprite resolve
+		var vproblems: Array[String] = []
+		for d in 8:
+			var dust: SpriteFrames = AnimLibrary.dir_effect_frames(
+				"res://assets/z/effects/track_dust", "track_dust", d, 8.0)
+			if not dust.has_animation("fx"):
+				vproblems.append("track_dust dir %d missing" % d)
+		for fx_name in ["tank_oil", "smoke", "little_smoke", "small_fire_smoke",
+				"spark", "ground_spark", "explosion_missile2", "grenade"]:
+			var frames: SpriteFrames = AnimLibrary.effect_frames(
+				"res://assets/z/effects/%s" % fx_name, fx_name, 8.0)
+			if not frames.has_animation("fx"):
+				vproblems.append("%s frames missing" % fx_name)
+		Fx.vehicle_smoke(Vector2(100, 100), 3, true)
+		Fx.laser(Vector2(0, 0), Vector2(50, 50))
+		print("VFX: problems=%d %s" % [vproblems.size(),
+			", ".join(vproblems) if not vproblems.is_empty() else "(all vfx ok)"])
+	if "--tactics-test" in args:
+		# the tactical AI, end to end: with funds and hardware on the
+		# map it must produce units, man empty vehicles/cannons and
+		# take zones — not just charge the enemy fort
+		var ai2: CpuAi = null
+		for c2 in ctx.get_children():
+			if c2 is CpuAi and c2.team != GameState.player_team:
+				ai2 = c2
+				break
+		if ai2 == null:
+			print("TACTICS: no cpu ai found")
+		else:
+			GameState.money[ai2.team] = 2000
+			var t := ai2.team
+			var count := func() -> Dictionary:
+				var robots2 := 0
+				var manned2 := 0
+				var zones2 := 0
+				for u3 in tree.get_nodes_in_group("units"):
+					if u3 is Unit2D and u3.alive and u3.team == t:
+						if u3 is Vehicle2D:
+							if u3.manned:
+								manned2 += 1
+						elif u3.kind == "robot":
+							robots2 += 1
+				for z3 in GameState.zones:
+					if z3.owner_team == t:
+						zones2 += 1
+				return {"robots": robots2, "manned": manned2, "zones": zones2}
+			var before_t: Dictionary = count.call()
+			var manned_peak := 0
+			var empty_start := 0
+			for u4 in tree.get_nodes_in_group("units"):
+				if u4 is Vehicle2D and not u4.manned:
+					empty_start += 1
+			# simulate a few minutes: think cycles + factory, unit and
+			# zone time (units must walk, capture zones, board hardware)
+			for i in 40:
+				GameState.money[t] = 2000
+				ai2._think()
+				for c3 in ctx.get_children():
+					if c3 is RobotFactory or c3 is VehicleFactory or c3 is FortBuilding:
+						for j in 8:
+							c3._process(0.5)
+				for u6 in tree.get_nodes_in_group("units"):
+					if u6 is Unit2D and u6.alive:
+						for j in 8:
+							u6._process(0.5)
+				for z4 in GameState.zones:
+					for j in 8:
+						z4._process(0.2)
+				manned_peak = maxi(manned_peak, int(count.call().manned))
+			var after_t: Dictionary = count.call()
+			var man_orders := 0
+			var dbg := ""
+			for u5 in tree.get_nodes_in_group("units"):
+				if u5 is Unit2D and u5.team == t and u5.kind == "robot" \
+						and u5.enter_target != null:
+					man_orders += 1
+
+			print("TACTICS: robots %d->%d manned %d->%d zones %d->%d man_orders=%d empty_start=%d manned_peak=%d%s (want production>0, manning>0, zones>0)" % [
+				before_t.robots, after_t.robots, before_t.manned, after_t.manned,
+				before_t.zones, after_t.zones, man_orders, empty_start, manned_peak, dbg])
 	if "--near-test" in args:
 		var jeep3: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 		jeep3.setup_vehicle("vehicle", "jeep", 0)
@@ -370,15 +526,15 @@ static func run(ctx: Node) -> void:
 							team_colored.append("%s (%s)" % [type_name, path.get_file()])
 				else:
 					team_colored.append("%s (no empty art)" % type_name)
-				# tanks carry a turret layer; the jeep must not
-				var turret: Dictionary = AnimLibrary.turret_set(dir, 1)
+				# tanks carry a turret layer; the jeep gets its gun layer
+				var turret: Dictionary = AnimLibrary.turret_set(String(type_name), dir, 1)
 				var expect_turret := String(type_name) in ["light", "medium", "heavy", "apc"]
 				if expect_turret and (turret.is_empty() or not turret.frames.has_animation("turret_0")):
 					no_turret.append(String(type_name))
 				if String(type_name) == "jeep":
-					if not turret.is_empty():
-						no_turret.append("jeep (unexpected turret)")
-					var wheels: Dictionary = AnimLibrary.jeep_wheel_set(dir, 1)
+					if turret.is_empty():
+						no_turret.append("jeep (no gun layer)")
+					var wheels: Dictionary = AnimLibrary.jeep_wheel_set(dir, 1, true)
 					if wheels.is_empty() or not wheels.frames.has_animation("wheels_0"):
 						no_turret.append("jeep (no wheel frames)")
 		print("MOUNT: types_without_manned_art=%s team_colored_empty=%s turret_issues=%s" % [
@@ -398,7 +554,10 @@ static func run(ctx: Node) -> void:
 				fort._process(0.6)
 			var cap := GameState.unit_cap(1)
 			var used := GameState.unit_pop(1)
-			print("CAP: cap=%d pop_used=%d (want equal), queue=%d (want full)" % [
+			# note: with live CPU opponents the cap moves as zones flip;
+			# the invariant is that the queue went full (production
+			# refused) — pop may sit above a freshly shrunken cap
+			print("CAP: cap=%d pop_used=%d queue=%d (queue full = cap enforced)" % [
 				cap, used, fort.queue.items.size()])
 	if "--building-test" in args:
 		# every building kind: destroyed art resolves and animation
@@ -445,9 +604,9 @@ static func run(ctx: Node) -> void:
 			ctx.add_child(dt)
 			dt._last_dir = i
 			dt._play("base", i)
-			if dt._turret and dt._turret_offsets.size() == 8:
-				dt._turret_dir = i
-				dt._turret.position = dt._turret_offsets[i]
+			if dt._layer:
+				dt._layer_dir = i
+				dt._update_layer_transform()
 		for c in ctx.get_children():
 			if c is RobotFactory:
 				# capture it for the player so the panel shows
