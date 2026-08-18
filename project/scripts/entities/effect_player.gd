@@ -5,7 +5,6 @@ extends Node2D
 ## the effect def. Frees itself when finished. Spawn via Fx.play(...).
 
 var _def: Dictionary = {}
-var _frames: SpriteFrames = null
 
 
 func setup(def: Dictionary) -> void:
@@ -14,13 +13,13 @@ func setup(def: Dictionary) -> void:
 
 func _ready() -> void:
 	z_index = 6  # above units and projectiles
-	var name: String = _def.get("_name", "fx")
-	if _frames == null:
-		_frames = AnimLibrary.effect_frames(String(_def.get("dir", "")), name, float(_def.get("fps", 10.0)))
+	var fx_name := String(_def.get("_name", "fx"))
+	var frames := AnimLibrary.effect_frames(String(_def.get("dir", "")), fx_name,
+		float(_def.get("fps", 10.0)))
 	var scale_factor := float(_def.get("scale", 1.0))
-	if _frames != null and _frames.has_animation("fx"):
+	if frames != null and frames.has_animation("fx"):
 		var sprite := AnimatedSprite2D.new()
-		sprite.sprite_frames = _frames
+		sprite.sprite_frames = frames
 		sprite.scale = Vector2(2.0, 2.0) * scale_factor
 		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		add_child(sprite)

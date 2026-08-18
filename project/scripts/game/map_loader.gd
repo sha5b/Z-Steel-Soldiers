@@ -211,7 +211,7 @@ static func _spawn_building(parent: Node, o: Dictionary, pos: Vector2, planet: S
 	parent.add_child(node)
 	if def.get("bridge_span", Vector2i.ZERO) != Vector2i.ZERO:
 		var span: Vector2i = def.bridge_span
-		var lo := Vector2i(int(o.x) - span.x / 2, int(o.y) - span.y / 2)
+		var lo := Vector2i(int(o.x) - int(span.x / 2.0), int(o.y) - int(span.y / 2.0))
 		for bx in span.x:
 			for by in span.y:
 				var cell := lo + Vector2i(bx, by)
@@ -344,7 +344,7 @@ static func _clear_bridge(bridge: Building2D, def: Dictionary,
 		grid: AStarGrid2D, vgrid: AStarGrid2D) -> void:
 	var tile := Vector2i(((bridge.global_position - Vector2(8, 8)) / TILE).floor())
 	var span: Vector2i = def.bridge_span
-	var lo := tile - span / 2
+	var lo := tile - Vector2i(int(span.x / 2.0), int(span.y / 2.0))
 	for bx in span.x:
 		for by in span.y:
 			var cell := lo + Vector2i(bx, by)

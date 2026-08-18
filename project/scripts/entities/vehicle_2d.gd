@@ -86,10 +86,10 @@ func unload() -> void:
 func _play_doors() -> void:
 	if _doors == null or _doors.sprite_frames == null:
 		return
-	var name := "open_%d" % _last_dir
-	if _doors.sprite_frames.has_animation(name):
+	var anim := "open_%d" % _last_dir
+	if _doors.sprite_frames.has_animation(anim):
 		_doors.visible = true
-		_doors.play(name)
+		_doors.play(anim)
 
 
 func _on_arrived() -> void:
@@ -109,7 +109,12 @@ func setup_vehicle(vkind: String, type_name: String, owner_team: int) -> void:
 
 func _build_frames() -> void:
 	if _asset_dir == "":
-		_asset_dir = String(ContentDB.def_for(kind, unit_name).get("dir", ""))
+		if Engine.is_editor_hint():
+			# autoloads don't run in the editor — derive the folder from the
+			# naming convention so scene previews still build
+			_asset_dir = AnimLibrary.asset_dir_for(kind, unit_name)
+		else:
+			_asset_dir = String(ContentDB.def_for(kind, unit_name).get("dir", ""))
 	# vehicles/cannons have no per-team walk cycle: empty / base / fire
 	# (base switches to the damaged hull set below half HP)
 	sprite.sprite_frames = AnimLibrary.vehicle_frames(_asset_dir, team, _damaged)
@@ -266,6 +271,8 @@ func _stop_crane_repair() -> void:
 
 
 func _process(delta: float) -> void:
+	if Engine.is_editor_hint():
+		return
 	voice_cooldown = maxf(0.0, voice_cooldown - delta)
 	if _wreck:
 		_update_wreck(delta)
@@ -550,11 +557,11 @@ func eject_driver() -> void:
 		var map := get_parent()
 		if map is Node2D:
 			map.add_child(survivor)
-			survivor.hp = maxi(1, survivor.max_hp / 3)
+			survivor.hp = maxi(1, int(survivor.max_hp / 3.0))
 	manned = false
 	team = 0
 	driver_type = ""
-	hp = maxi(hp, max_hp / 2)
+	hp = maxi(hp, int(max_hp / 2.0))
 	_damaged = hp < max_hp * 0.5
 	if is_apc():
 		unload()

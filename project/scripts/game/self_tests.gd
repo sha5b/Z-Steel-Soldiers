@@ -38,8 +38,9 @@ static func maybe_screenshot(ctx: Node, out := "screenshot_tmp.png") -> void:
 		delay = float(args[i + 1])
 	await ctx.get_tree().create_timer(delay).timeout
 	var image := ctx.get_viewport().get_texture().get_image()
-	image.save_png("/home/sha5b/Documents/GitHub/Z-Steel-Soldiers/" + out)
-	print("SCREENSHOT: saved ", out, " ", image.get_size())
+	var out_path := ProjectSettings.globalize_path("res://") + out
+	image.save_png(out_path)
+	print("SCREENSHOT: saved ", out_path, " ", image.get_size())
 	ctx.get_tree().quit()
 
 
@@ -760,7 +761,7 @@ static func run(ctx: Node) -> void:
 				var span := Vector2i(2, 8) if b.building_id == 6 else Vector2i(8, 2)
 				for bx2 in span.x:
 					for by2 in span.y:
-						var cell := tile + Vector2i(bx2 - span.x / 2, by2 - span.y / 2)
+						var cell := tile + Vector2i(bx2 - int(span.x / 2.0), by2 - int(span.y / 2.0))
 						total_bridge_cells += 1
 						if vg.is_point_solid(cell):
 							blocked_bridges += 1

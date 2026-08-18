@@ -101,11 +101,11 @@ func _process(delta: float) -> void:
 	while _accum >= TICK_SECONDS:
 		_accum -= TICK_SECONDS
 		for team in money:
-			var income := 0
+			var income := 0.0
 			for z in zones:
 				if z.owner_team == team:
 					income += INCOME_PER_ZONE
-			money[team] += income
+			money[team] += int(income)
 			money_changed.emit(team, money[team])
 
 

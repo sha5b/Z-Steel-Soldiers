@@ -124,15 +124,6 @@ func _weighted_pick(options: Array, _diff: int) -> String:
 	return String(options[0])
 
 
-## Bigger tanks when rich, jeeps and lights when scraping by.
-func _vehicle_pick(spare: int) -> String:
-	if spare >= 320:
-		return ["heavy", "medium"].pick_random()
-	if spare >= 200:
-		return ["medium", "light"].pick_random()
-	return ["light", "jeep"].pick_random()
-
-
 # ------------------------- defense -------------------------
 
 ## Enemy units near our fort or standing in an owned zone draw the

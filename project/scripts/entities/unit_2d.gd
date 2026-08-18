@@ -187,12 +187,12 @@ func _idle(delta: float) -> void:
 		_flavoring = true
 		_idle_time = 0.0
 		var flavor: String = AnimLibrary.IDLE_FLAVORS.pick_random()
-		var name := "%s_%d" % [flavor, _last_dir]
-		if not sprite.sprite_frames or not sprite.sprite_frames.has_animation(name):
-			name = "%s_0" % flavor
-		if sprite.sprite_frames and sprite.sprite_frames.has_animation(name) \
-				and sprite.sprite_frames.get_frame_count(name) > 0:
-			sprite.play(name)
+		var anim := "%s_%d" % [flavor, _last_dir]
+		if not sprite.sprite_frames or not sprite.sprite_frames.has_animation(anim):
+			anim = "%s_0" % flavor
+		if sprite.sprite_frames and sprite.sprite_frames.has_animation(anim) \
+				and sprite.sprite_frames.get_frame_count(anim) > 0:
+			sprite.play(anim)
 		else:
 			_flavoring = false
 
@@ -202,13 +202,14 @@ func _idle(delta: float) -> void:
 func play_gesture(gesture: String) -> void:
 	if not alive or carried:
 		return
-	var name := "%s_%d" % [gesture, _last_dir]
-	if not sprite.sprite_frames or not sprite.sprite_frames.has_animation(name):
-		name = "%s_0" % gesture
-	if sprite.sprite_frames and sprite.sprite_frames.has_animation(name) 			and sprite.sprite_frames.get_frame_count(name) > 0:
+	var anim := "%s_%d" % [gesture, _last_dir]
+	if not sprite.sprite_frames or not sprite.sprite_frames.has_animation(anim):
+		anim = "%s_0" % gesture
+	if sprite.sprite_frames and sprite.sprite_frames.has_animation(anim) \
+			and sprite.sprite_frames.get_frame_count(anim) > 0:
 		_flavoring = true
 		_idle_time = 0.0
-		sprite.play(name)
+		sprite.play(anim)
 
 
 func _combat() -> void:
@@ -317,10 +318,6 @@ func _shoot(target: Node2D, to_target: Vector2) -> void:
 		Fx.bullet(muzzle, target.global_position)
 		Fx.play("muzzle", muzzle)
 		target.take_damage(amount)
-
-
-func _to_point(target: Node2D) -> Vector2:
-	return target.global_position if is_instance_valid(target) else global_position
 
 
 func take_damage(amount: int) -> void:
@@ -456,15 +453,6 @@ func _building_order(b: Building2D) -> void:
 	move_target = Vector2.ZERO
 
 
-## Original HUD icon (per type and team) for the selection bar.
-func icon_path() -> String:
-	var icon := "res://assets/z/ui/hud/icon_%s_%s.png" % [
-		unit_name, AnimLibrary.team_name(team)]
-	if ResourceLoader.exists(icon):
-		return icon
-	return portrait_path()
-
-
 func portrait_path() -> String:
 	match kind:
 		"robot":
@@ -511,19 +499,19 @@ func set_selected(value: bool) -> void:
 ## `fallback` names the anim to keep showing when `anim` has no art
 ## (tanks fire through their turret, so the hull keeps its base cycle).
 func _play(anim: String, dir: int, once := false, fallback := "") -> void:
-	var name := "%s_%d" % [anim, dir]
-	if sprite.sprite_frames and not sprite.sprite_frames.has_animation(name) \
+	var anim_name := "%s_%d" % [anim, dir]
+	if sprite.sprite_frames and not sprite.sprite_frames.has_animation(anim_name) \
 			and fallback != "" and sprite.sprite_frames.has_animation("%s_%d" % [fallback, dir]):
-		name = "%s_%d" % [fallback, dir]
+		anim_name = "%s_%d" % [fallback, dir]
 	if once and sprite.sprite_frames:
 		sprite.stop()
-	if sprite.sprite_frames and sprite.sprite_frames.has_animation(name):
+	if sprite.sprite_frames and sprite.sprite_frames.has_animation(anim_name):
 		# finished one-shots (gunner install) hold their last frame —
 		# restarting them would loop the install animation forever
-		var restarts: bool = sprite.animation != name \
-				or not sprite.is_playing() and sprite.sprite_frames.get_animation_loop(name)
+		var restarts: bool = sprite.animation != anim_name \
+				or not sprite.is_playing() and sprite.sprite_frames.get_animation_loop(anim_name)
 		if restarts:
-			sprite.play(name)
+			sprite.play(anim_name)
 	elif sprite.is_playing():
 		sprite.stop()
 
@@ -537,11 +525,3 @@ static func _angle_to_dir(angle: float) -> int:
 		a += TAU
 	a += PI / 8.0
 	return wrapi(8 - int(a / (PI / 4.0)), 0, AnimLibrary.DIRECTIONS)
-
-
-static func team_color(team: int) -> Color:
-	match team:
-		1: return Color(1.0, 0.25, 0.2)
-		2: return Color(0.25, 0.5, 1.0)
-		3: return Color(0.3, 0.9, 0.3)
-		_: return Color(1.0, 0.9, 0.2)

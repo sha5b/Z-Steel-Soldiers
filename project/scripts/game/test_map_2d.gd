@@ -76,8 +76,9 @@ func _screenshot(delay_text: String) -> void:
 	var delay := float(delay_text)
 	await get_tree().create_timer(delay).timeout
 	var image := get_viewport().get_texture().get_image()
-	image.save_png("/home/sha5b/Documents/GitHub/Z-Steel-Soldiers/screenshot_tmp.png")
-	print("SCREENSHOT: saved ", image.get_size())
+	var out_path := ProjectSettings.globalize_path("res://") + "screenshot_tmp.png"
+	image.save_png(out_path)
+	print("SCREENSHOT: saved ", out_path, " ", image.get_size())
 	get_tree().quit()
 
 

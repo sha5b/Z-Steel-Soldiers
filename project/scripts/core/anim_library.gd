@@ -34,6 +34,17 @@ const DEATH_VARIANTS := ["die1", "die2", "die3", "die4", "die5", "melt"]
 ## enter_apc = boarding hardware, throw/dodge available for combat flavor.
 const GESTURES := ["point", "pickup-up", "pickup-down", "enter_apc", "throw", "dodge"]
 
+## Convention folder for a unit type (robots_<t>/vehicles_<t>/cannons_<t>).
+## Used where the ContentDB autoload isn't running (editor scene previews);
+## at runtime defs stay the source of truth.
+static func asset_dir_for(kind: String, unit_name: String) -> String:
+	var folder: String = {"robot": "robots", "vehicle": "vehicles", "cannon": "cannons"}.get(kind, "")
+	if folder == "":
+		return ""
+	var dir := "res://assets/z/%s_%s" % [folder, unit_name]
+	return dir if DirAccess.dir_exists_absolute(dir) else ""
+
+
 ## Zod per-type turret layer placement (from the DoRender offset tables):
 ## hull_off indexes the hull facing, aim_off the turret facing; both are
 ## added on top of the canvas top-left alignment (_layer_offset).
