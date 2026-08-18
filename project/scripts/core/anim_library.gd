@@ -230,18 +230,6 @@ static func vehicle_frames(asset_dir: String, team: int, damaged := false) -> Sp
 				found = true
 		if anim == "empty" and not found:
 			_add_plain_empty(frames, asset_dir, tn)
-	# gatling/howitzer: the manned steady look is the passive empty art
-	# (the gunner only appears in the fire frames); their `place_*` art is
-	# the one-shot install animation, registered separately below
-	for d in DIRECTIONS:
-		var base := "base_%d" % d
-		var empty := "empty_%d" % d
-		if not frames.has_animation(base) and frames.has_animation(empty):
-			frames.add_animation(base)
-			frames.set_animation_speed(base, 1.0)
-			frames.set_animation_loop(base, true)
-			for i in frames.get_frame_count(empty):
-				frames.add_frame(base, frames.get_frame_texture(empty, i))
 	# gunner install: shared init-place frames, then the team's place
 	# frames — plays once when a robot mans the hardware
 	var install: Array = cannon_install_frames()
@@ -260,6 +248,24 @@ static func vehicle_frames(asset_dir: String, team: int, damaged := false) -> Sp
 			frames.set_animation_loop(name, false)
 			for tex in install:
 				frames.add_frame(name, tex)
+	# gatling/howitzer manned steady look: the seated gunner (LAST install
+	# frame); the passive empty art is the fallback when there is no
+	# place art at all
+	for d in DIRECTIONS:
+		var base := "base_%d" % d
+		var empty := "empty_%d" % d
+		if frames.has_animation(base) or install.is_empty():
+			continue
+		frames.add_animation(base)
+		frames.set_animation_speed(base, 1.0)
+		frames.set_animation_loop(base, true)
+		if frames.has_animation("install_%d" % d) \
+				and frames.get_frame_count("install_%d" % d) > 0:
+			frames.add_frame(base, frames.get_frame_texture(
+				"install_%d" % d, frames.get_frame_count("install_%d" % d) - 1))
+		elif frames.has_animation(empty):
+			for i in frames.get_frame_count(empty):
+				frames.add_frame(base, frames.get_frame_texture(empty, i))
 	frames.add_animation("wasted")
 	frames.set_animation_loop("wasted", false)
 	var wasted := _first_existing([
@@ -355,8 +361,9 @@ static func turret_set(unit_name: String, asset_dir: String, team: int) -> Dicti
 			found = true
 		var hull := _first_existing([
 			"%s/base_%s_r%03d_n00.png" % [asset_dir, tn, deg],
-			"%s/base_%s_r%03d_n00.png" % [asset_dir, tn, mirrored_dir(d) * 45],
-			"%s/empty_r%03d.png" % [asset_dir, deg]])
+			"%s/base_%s_r%03d_n00.png" % [asset_dir, tn, hull_source(d).dir * 45],
+			"%s/empty_r%03d.png" % [asset_dir, deg],
+			"%s/empty_r%03d.png" % [asset_dir, hull_source(d).dir * 45]])
 		canvas_off[d] = _layer_offset(_canvas_size(hull), _canvas_size(idle))
 	if not found:
 		return {}
@@ -458,8 +465,24 @@ static func _first_existing(paths: Array) -> String:
 ## Direction index mirrored horizontally (r000<->r180, r045<->r135...).
 ## The original art ships only the right-facing half; left-facing
 ## sprites render as horizontal flips of their mirror partner.
+## EXCEPTION: the north/south pair — facing south derives from the
+## north art with a VERTICAL flip (a horizontal flip of r090 is still
+## r090-facing), see hull_source().
 static func mirrored_dir(d: int) -> int:
 	return wrapi(4 - d, 0, DIRECTIONS)
+
+
+## Where the hull art for facing `d` really lives: the shipped half
+## stores {E, NE, N, SE}; W/NW/SW are horizontal flips of their
+## partners and SOUTH is a vertical flip of NORTH. Returns
+## {dir, flip_x, flip_y}.
+static func hull_source(d: int) -> Dictionary:
+	match d:
+		4: return {"dir": 0, "flip_x": true, "flip_y": false}
+		3: return {"dir": 1, "flip_x": true, "flip_y": false}
+		5: return {"dir": 7, "flip_x": true, "flip_y": false}
+		6: return {"dir": 2, "flip_x": false, "flip_y": true}
+		_: return {"dir": d, "flip_x": false, "flip_y": false}
 
 
 ## Load the texture for direction `deg` from a path format; when the
@@ -514,26 +537,28 @@ static func _is_place_path(asset_dir: String, tn: String, deg: int) -> bool:
 	return ResourceLoader.exists("%s/place_%s_n00.png" % [asset_dir, tn])
 
 
-## Texture for a vehicle anim frame: the direct file, or a horizontally
-## flipped copy of the mirrored direction (the original engine derived
-## the left-hand facings from the shipped right-hand half).
+## Texture for a vehicle anim frame: the direct file, or a flipped copy
+## of the shipped half's art (horizontal flip for W/NW/SW, vertical for
+## S — see hull_source).
 static func _vehicle_anim_texture(asset_dir: String, anim: String, tn: String,
 		deg: int, frame: int, damaged: bool) -> Texture2D:
 	var path := _vehicle_anim_path(asset_dir, anim, tn, deg, frame, damaged)
 	if ResourceLoader.exists(path):
 		return load(path)
+	var src := hull_source(deg_to_dir(deg))
+	var sdeg: int = src.dir * 45
 	if anim == "base":
-		# place/equiped are direction-bound; mirrored base resolves below
-		# through the plain pattern only when it exists for the mirror
-		var mdeg := mirrored_dir(deg_to_dir(deg)) * 45
-		var mirror_dmg := _vehicle_anim_path(asset_dir, anim, tn, mdeg, frame, damaged)
+		var mirror_dmg := _vehicle_anim_path(asset_dir, anim, tn, sdeg, frame, damaged)
 		if ResourceLoader.exists(mirror_dmg):
-			return _flipped(mirror_dmg)
+			return _flipped(mirror_dmg, src.flip_x, src.flip_y)
+		# the gun/missile cannon's manned idle is a single `equiped` frame
+		var equiped := "%s/equiped_%s_r%03d.png" % [asset_dir, tn, sdeg]
+		if ResourceLoader.exists(equiped) and frame == 0:
+			return _flipped(equiped, src.flip_x, src.flip_y)
 		return null
-	var mdeg2 := mirrored_dir(deg_to_dir(deg)) * 45
-	var mirror := _vehicle_anim_path(asset_dir, anim, tn, mdeg2, frame, false)
+	var mirror := _vehicle_anim_path(asset_dir, anim, tn, sdeg, frame, false)
 	if ResourceLoader.exists(mirror):
-		return _flipped(mirror)
+		return _flipped(mirror, src.flip_x, src.flip_y)
 	return null
 
 
@@ -545,9 +570,12 @@ static func _deg_of(path: String) -> int:
 	return int(path.substr(marker + 2, 3))
 
 
-static func _flipped(path: String) -> Texture2D:
+static func _flipped(path: String, flip_x := true, flip_y := false) -> Texture2D:
 	var img: Image = (load(path) as Texture2D).get_image()
-	img.flip_x()
+	if flip_x:
+		img.flip_x()
+	if flip_y:
+		img.flip_y()
 	return ImageTexture.create_from_image(img)
 
 

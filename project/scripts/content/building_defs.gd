@@ -35,3 +35,60 @@ const BY_ID := {
 
 static func for_id(id: int) -> Dictionary:
 	return BY_ID.get(id, {})
+
+
+## What each producer may build, by building LEVEL 0..5 (the map `level`
+## field). Entries are "kind:name". Transcribed from the original engine's
+## zbuildlist.cpp — the roster unlocks as the building levels up, and the
+## fort builds a bit of everything. Higher levels also build faster
+## (Building2D.build_time_mult).
+const BUILD_LISTS := {
+	"fort": {
+		0: ["robot:grunt", "vehicle:jeep", "vehicle:crane", "cannon:gatling"],
+		1: ["robot:grunt", "robot:psycho", "vehicle:jeep", "vehicle:light",
+			"vehicle:crane", "cannon:gatling", "cannon:gun"],
+		2: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough",
+			"vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:crane",
+			"cannon:gatling", "cannon:gun", "cannon:howitzer"],
+		3: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough",
+			"robot:pyro", "vehicle:jeep", "vehicle:light", "vehicle:medium",
+			"vehicle:apc", "vehicle:crane", "cannon:gatling", "cannon:gun",
+			"cannon:howitzer"],
+		4: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough",
+			"robot:pyro", "robot:laser", "vehicle:jeep", "vehicle:light",
+			"vehicle:medium", "vehicle:heavy", "vehicle:apc", "vehicle:crane",
+			"cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"],
+		5: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough",
+			"robot:pyro", "robot:laser", "vehicle:jeep", "vehicle:light",
+			"vehicle:medium", "vehicle:heavy", "vehicle:apc",
+			"vehicle:missile_launcher", "vehicle:crane",
+			"cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"],
+	},
+	"robot_factory": {
+		0: ["robot:grunt", "cannon:gatling"],
+		1: ["robot:grunt", "robot:psycho", "cannon:gatling"],
+		2: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough",
+			"cannon:gatling", "cannon:gun"],
+		3: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough",
+			"robot:pyro", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+		4: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough",
+			"robot:pyro", "robot:laser", "cannon:gatling", "cannon:gun",
+			"cannon:howitzer"],
+		5: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough",
+			"robot:pyro", "robot:laser", "cannon:gatling", "cannon:gun",
+			"cannon:howitzer", "cannon:missile_cannon"],
+	},
+	"vehicle_factory": {
+		0: ["vehicle:jeep", "cannon:gatling"],
+		1: ["vehicle:jeep", "vehicle:light", "cannon:gatling", "cannon:gun"],
+		2: ["vehicle:jeep", "vehicle:light", "vehicle:medium",
+			"cannon:gatling", "cannon:gun"],
+		3: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:apc",
+			"cannon:gatling", "cannon:gun", "cannon:howitzer"],
+		4: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy",
+			"vehicle:apc", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+		5: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy",
+			"vehicle:apc", "vehicle:missile_launcher",
+			"cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"],
+	},
+}

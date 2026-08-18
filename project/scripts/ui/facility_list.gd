@@ -7,6 +7,7 @@ extends VBoxContainer
 
 const SCAN_SECONDS := 0.5
 const LABELS := {
+	"fort": "res://assets/z/ui/production/fort_factory_label.png",
 	"fort_factory": "res://assets/z/ui/production/fort_factory_label.png",
 	"robot_factory": "res://assets/z/ui/production/fort_factory_label.png",
 	"vehicle_factory": "res://assets/z/ui/production/building_label.png",

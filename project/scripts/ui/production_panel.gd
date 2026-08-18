@@ -9,6 +9,7 @@ extends Control
 signal queue_requested(type_name: String)
 
 const LABELS := {
+	"fort": "res://assets/z/ui/production/fort_factory_label.png",
 	"robot_factory": "res://assets/z/ui/production/fort_factory_label.png",
 	"vehicle_factory": "res://assets/z/ui/production/building_label.png",
 }
@@ -70,7 +71,9 @@ func _process(_delta: float) -> void:
 		if factory:
 			queue_requested.connect(factory.queue_unit)
 	if factory:
-		if _built_for != factory.kind_key():
+		# rebuild the button row when the producer (or its level) changes:
+		# the roster unlocks as the building levels up
+		if _built_for != "%s:%d" % [factory.kind_key(), factory.level]:
 			_build_buttons(factory)
 		_update_queue(factory)
 
@@ -85,7 +88,8 @@ func _update_queue(factory: Node) -> void:
 			var btn := Button.new()
 			btn.custom_minimum_size = Vector2(52, 56)
 			btn.tooltip_text = "Right-click to cancel"
-			var icon_path := _icon_path(factory.kind_key(), String(q[idx]))
+			var parts: PackedStringArray = String(q[idx]).split(":")
+			var icon_path := _icon_path(parts[0], parts[1])
 			if ResourceLoader.exists(icon_path):
 				btn.icon = load(icon_path)
 				btn.expand_icon = true
@@ -113,29 +117,32 @@ func _selected_factory() -> Node:
 
 
 func _build_buttons(factory: Node) -> void:
-	_built_for = factory.kind_key()
-	var label_path: String = LABELS.get(_built_for, "")
+	_built_for = "%s:%d" % [factory.kind_key(), factory.level]
+	var label_path: String = LABELS.get(factory.kind_key(), "")
 	_title.texture = load(label_path) if ResourceLoader.exists(label_path) else null
 	for c in _box.get_children():
 		c.queue_free()
-	# kind_key(), not `is RobotFactory`: the fort also builds robots but is
-	# not a RobotFactory subclass
-	var kind := "robot" if factory.kind_key() == "robot_factory" else "vehicle"
-	for type_name in ContentDB.buildable(kind):
-		var stats: Dictionary = ContentDB.def_for(kind, String(type_name))
+	# the level-gated roster from the original build lists — mixed
+	# kinds: "robot:grunt", "vehicle:jeep", "cannon:gatling"...
+	for item in factory.build_options():
+		var parts: PackedStringArray = String(item).split(":")
+		var kind := parts[0]
+		var type_name := parts[1]
+		var stats: Dictionary = ContentDB.def_for(kind, type_name)
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(88, 72)
-		btn.tooltip_text = "%s\nHP %d  DMG %d\n$%d" % [
-			String(type_name).capitalize(), stats.hp, stats.damage, stats.cost]
+		btn.tooltip_text = "%s (%s) L%d\nHP %d  DMG %d\n$%d" % [
+			type_name.capitalize(), kind, factory.level,
+			stats.hp, stats.damage, stats.cost]
 		btn.text = "$%d" % stats.cost
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		_object_button_chrome(btn)
-		var icon_path := _icon_path(kind, String(type_name))
+		var icon_path := _icon_path(kind, type_name)
 		if ResourceLoader.exists(icon_path):
 			btn.icon = load(icon_path)
 			btn.expand_icon = true
-		btn.pressed.connect(func(): queue_requested.emit(String(type_name)))
+		btn.pressed.connect(func(): queue_requested.emit(String(item)))
 		_box.add_child(btn)
 
 

@@ -152,6 +152,8 @@ func _perimeter_point(r: Rect2, d: float) -> Vector2:
 
 
 func set_owner_team(team: int) -> void:
+	if owner_team == GameState.player_team and team != GameState.player_team:
+		Fx.announce("territory_lost")
 	owner_team = team
 	if _overlay:
 		_overlay.color = FLAG_COLORS.get(team, FLAG_COLORS[0])

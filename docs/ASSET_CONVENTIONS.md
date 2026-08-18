@@ -81,6 +81,11 @@ see it work — auto-discovery registers unknown folders with grunt stats.
 cannons_common/init-place_n<frame>.png  shared install anim prefix
 ```
 
+Building LEVELS (0-5, the map `level` field) gate each producer's
+roster — see `BuildingDefs.BUILD_LISTS` (transcribed from the original
+zbuildlist: the fort builds robots AND vehicles AND cannons). Higher
+levels also build faster.
+
 Unmanned hardware always resolves neutral art (`empty_null.png` /
 `empty.png`) — never a team colour. Idle turrets scan (one sector per
 second, like the original); tracking turrets freeze on their target.

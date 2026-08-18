@@ -20,7 +20,7 @@ static func should_run() -> bool:
 	for flag in ["capture", "combat", "factory", "ai", "path", "dir", "near", "flag",
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
-			"layer", "vfx", "tactics"]:
+			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -70,7 +70,7 @@ static func run(ctx: Node) -> void:
 		var money_before := GameState.player_money()
 		GameState.money[GameState.player_team] = 500
 		for i in 3:
-			f.queue_unit("grunt")
+			f.queue_unit("robot:grunt")
 		for i in 30:
 			f._process(0.5)
 		print("FACTORY: units %d -> %d money %d -> %d queue=%d" % [
@@ -208,12 +208,13 @@ static func run(ctx: Node) -> void:
 		for cname in ["gatling", "howitzer"]:
 			var cframes: SpriteFrames = AnimLibrary.vehicle_frames(
 				String(ContentDB.def_for("cannon", cname).dir), 1)
-			# manned passive look is the empty art (fire is only a flash)
-			if not cframes.has_animation("base_0"):
-				problems.append("%s: no manned idle alias" % cname)
-			elif cframes.get_frame_texture("base_0", 0) \
-					!= cframes.get_frame_texture("empty_0", 0):
-				problems.append("%s: manned idle should show passive art" % cname)
+			# manned idle holds the seated-gunner frame (last install
+			# frame); fire is only a flash
+			if not cframes.has_animation("base_0") or not cframes.has_animation("install_0"):
+				problems.append("%s: no manned idle/install art" % cname)
+			elif cframes.get_frame_texture("base_0", 0) != cframes.get_frame_texture(
+					"install_0", cframes.get_frame_count("install_0") - 1):
+				problems.append("%s: manned idle should hold the seated gunner" % cname)
 			if cframes.get_animation_loop("fire_0"):
 				problems.append("%s: fire flash must not loop" % cname)
 		print("LAYER: problems=%d %s" % [problems.size(),
@@ -237,6 +238,273 @@ static func run(ctx: Node) -> void:
 		Fx.laser(Vector2(0, 0), Vector2(50, 50))
 		print("VFX: problems=%d %s" % [vproblems.size(),
 			", ".join(vproblems) if not vproblems.is_empty() else "(all vfx ok)"])
+	if "--pose-test" in args:
+		# dump the exact layer positioning the engine computes per type
+		# and facing: turret art file, canvas sizes, final position
+		var lines: Array[String] = []
+		for vname in ["light", "medium", "heavy", "apc", "missile_launcher", "jeep", "crane"]:
+			for state in [0, 1]:
+				var v9: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+				v9.setup_vehicle("vehicle", vname, state)
+				ctx.add_child(v9)
+				v9._build_frames()
+				for d in 8:
+					v9._last_dir = d
+					v9._layer_dir = d
+					v9._update_layer_transform()
+					var hull_tex: Texture2D = null
+					if v9.sprite.sprite_frames and v9.sprite.sprite_frames.has_animation(("base" if state == 1 else "empty") + "_%d" % d):
+						hull_tex = v9.sprite.sprite_frames.get_frame_texture(("base" if state == 1 else "empty") + "_%d" % d, 0)
+					var layer_tex: Texture2D = null
+					if v9._layer and v9._layer.sprite_frames:
+						var lname := "arm_%d" % d if vname == "crane" else "turret_%d" % d
+						if v9._layer.sprite_frames.has_animation(lname):
+							layer_tex = v9._layer.sprite_frames.get_frame_texture(lname, 0)
+					lines.append("%s state=%d d=%d hull=%s layer=%s layer_pos=%s" % [
+						vname, state, d,
+						"%dx%d" % [hull_tex.get_width(), hull_tex.get_height()] if hull_tex else "NONE",
+						"%dx%d" % [layer_tex.get_width(), layer_tex.get_height()] if layer_tex else "NONE",
+						v9._layer.position if v9._layer else Vector2.INF])
+				v9.remove_from_group("units")  # deferred frees must not eat pop cap
+				v9.queue_free()
+		for line in lines:
+			print("POSE ", line)
+	if "--level-test" in args:
+		# building levels gate the build roster (original zbuildlist) and
+		# speed up production; forts build robots AND vehicles AND cannons
+		var lproblems: Array[String] = []
+		var fort_l0: FortBuilding = FortBuilding.new()
+		fort_l0.level = 0
+		if fort_l0.build_options() != ["robot:grunt", "vehicle:jeep",
+				"vehicle:crane", "cannon:gatling"]:
+			lproblems.append("fort L0 roster wrong: %s" % fort_l0.build_options())
+		fort_l0.level = 4
+		var opts4: Array = fort_l0.build_options()
+		if not "vehicle:heavy" in opts4 or not "cannon:missile_cannon" in opts4:
+			lproblems.append("fort L4 missing heavy/missile_cannon")
+		if "vehicle:missile_launcher" in opts4:
+			lproblems.append("fort L4 must not have missile_launcher yet")
+		var vf := VehicleFactory.new()
+		vf.level = 5
+		var vopts: Array = vf.build_options()
+		if not "vehicle:missile_launcher" in vopts or not "cannon:missile_cannon" in vopts:
+			lproblems.append("vehicle factory L5 roster wrong")
+		var rf := RobotFactory.new()
+		rf.level = 0
+		if rf.build_options() != ["robot:grunt", "cannon:gatling"]:
+			lproblems.append("robot factory L0 roster wrong")
+		if not is_equal_approx(fort_l0.build_time_mult(), 1.0 - 0.08 * 4):
+			lproblems.append("build time mult wrong")
+		fort_l0.queue_free()
+		vf.queue_free()
+		rf.queue_free()
+		# end to end: a fort building a jeep delivers it UNMANNED, a
+		# gatling spawns as an unmanned cannon
+		var fort_lv: FortBuilding = null
+		for c4 in ctx.get_children():
+			if c4 is FortBuilding and c4.team == GameState.player_team:
+				fort_lv = c4
+				break
+		if fort_lv:
+			fort_lv.level = 5
+			GameState.money[GameState.player_team] = 9999
+			# the sandbox roster can start above the base cap — hand the
+			# player some zones for headroom before producing
+			for z5 in GameState.zones:
+				z5.owner_team = GameState.player_team
+			var units_before := tree.get_nodes_in_group("units").size()
+			if not fort_lv.queue_unit("vehicle:jeep"):
+				lproblems.append("fort refused to build a jeep")
+			if not fort_lv.queue_unit("cannon:gatling"):
+				lproblems.append("fort refused to build a gatling")
+			for i in 120:
+				fort_lv._process(0.5)
+			var new_units := tree.get_nodes_in_group("units").size() - units_before
+			var unmanned := 0
+			for u9 in tree.get_nodes_in_group("units"):
+				if u9 is Vehicle2D and not u9.manned:
+					unmanned += 1
+			if new_units < 2:
+				lproblems.append("fort produced %d/2 items" % new_units)
+			elif unmanned < 2:
+				lproblems.append("fort hardware spawned manned (want unmanned)")
+		else:
+			lproblems.append("no player fort on this map")
+		print("LEVEL: problems=%d %s" % [lproblems.size(),
+			", ".join(lproblems) if not lproblems.is_empty() else "(levels ok)"])
+	if "--repair-test" in args:
+		# repair shop heals a damaged vehicle; a crane rebuilds a
+		# damaged building; a blown bridge becomes impassable and is
+		# restored by the crane
+		var rproblems: Array[String] = []
+		var shop: Building2D = Building2D.new()
+		shop.setup(3, GameState.player_team, "desert", 0)
+		shop.position = Vector2(600, 600)
+		ctx.add_child(shop)
+		var wrecked_jeep: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+		wrecked_jeep.setup_vehicle("vehicle", "jeep", GameState.player_team)
+		wrecked_jeep.position = Vector2(630, 640)
+		ctx.add_child(wrecked_jeep)
+		wrecked_jeep.take_damage(50)
+		wrecked_jeep.move_to(shop.world_footprint().get_center())
+		wrecked_jeep.enter_target = shop  # after move_to: it clears enter_target
+		for i in 60:
+			wrecked_jeep._process(0.1)
+			shop._process(0.1)
+		if wrecked_jeep.hp < wrecked_jeep.max_hp:
+			rproblems.append("jeep not repaired: %d/%d" % [wrecked_jeep.hp, wrecked_jeep.max_hp])
+		if not wrecked_jeep.visible or not wrecked_jeep.is_in_group("units"):
+			rproblems.append("jeep never left the shop")
+		# crane repairs a damaged radar
+		var radar2: Building2D = Building2D.new()
+		radar2.setup(2, GameState.player_team, "desert", 0)
+		radar2.position = Vector2(700, 600)
+		ctx.add_child(radar2)
+		radar2.max_hp = 500
+		radar2.hp = 200
+		var crane2: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+		crane2.setup_vehicle("vehicle", "crane", GameState.player_team)
+		crane2.position = Vector2(700, 640)
+		ctx.add_child(crane2)
+		crane2.move_to(radar2.world_footprint().get_center())
+		crane2.enter_target = radar2
+		for i in 80:
+			crane2._process(0.1)
+			radar2._process(0.1)
+		if radar2.hp < radar2.max_hp:
+			rproblems.append("radar not rebuilt: %d/%d" % [radar2.hp, radar2.max_hp])
+		# bridge: blow it up -> cells solid; crane restores
+		var bridge: Building2D = null
+		for c5 in ctx.get_children():
+			if c5 is Building2D and c5.is_bridge():
+				bridge = c5
+				break
+		if bridge and not bridge.bridge_cells.is_empty():
+			bridge.take_damage(9999)
+			var solid_after := true
+			for cell in bridge.bridge_cells:
+				if GameState.nav_grid and not GameState.nav_grid.is_point_solid(cell):
+					solid_after = false
+			if not solid_after:
+				rproblems.append("destroyed bridge still passable")
+			crane2._start_crane_repair(bridge)
+			for i in 200:
+				crane2._process(0.1)
+			if bridge.hp < bridge.max_hp:
+				rproblems.append("bridge not rebuilt: %d/%d" % [bridge.hp, bridge.max_hp])
+			var open_after := true
+			for cell in bridge.bridge_cells:
+				if GameState.nav_grid and GameState.nav_grid.is_point_solid(cell):
+					open_after = false
+			if not open_after:
+				rproblems.append("repaired bridge still impassable")
+		else:
+			rproblems.append("no bridge on this map")
+		print("REPAIR: problems=%d %s" % [rproblems.size(),
+			", ".join(rproblems) if not rproblems.is_empty() else "(repair ok)"])
+	if "--combat2-test" in args:
+		# sniping ejects drivers, grenade crates arm throwers, splash
+		# crumbles rocks and cracks bridges, garrisoned forts fire
+		var cproblems: Array[String] = []
+		# --- sniping: a sniper vs a freshly-fired tank ---
+		var tank3: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+		tank3.setup_vehicle("vehicle", "light", 2)
+		tank3.position = Vector2(500, 700)
+		ctx.add_child(tank3)
+		var sniper3: Unit2D = load("res://scenes/unit.tscn").instantiate()
+		sniper3.unit_name = "sniper"
+		sniper3.team = 1
+		sniper3.position = Vector2(540, 700)
+		ctx.add_child(sniper3)
+		tank3._lid_timer = 1.0  # hatch open: snipe window
+		var ejected := false
+		for i in 200:
+			sniper3._process(0.1)
+			if not is_instance_valid(tank3):
+				break  # sniper chose to destroy it outright instead
+			tank3._process(0.1)
+			if not tank3.alive:
+				break
+			if not tank3.manned:
+				ejected = true
+				break
+		if ejected and is_instance_valid(tank3) and tank3.driver_type != "":
+			cproblems.append("driver type not cleared on eject")
+		# --- grenades: armed robot throws at a vehicle ---
+		var target_tank: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+		target_tank.setup_vehicle("cannon", "missile_cannon", 2)  # stationary: the AI can't drive it off
+		target_tank.position = Vector2(830, 700)
+		ctx.add_child(target_tank)
+		var gren: Unit2D = load("res://scenes/unit.tscn").instantiate()
+		gren.unit_name = "grunt"
+		gren.team = 1
+		gren.position = Vector2(800, 700)
+		ctx.add_child(gren)
+		gren.grenades = 2
+		# isolate: earlier tests leave enemy units roaming that would
+		# steal the grenade target — clear the neighbourhood
+		for u10 in tree.get_nodes_in_group("units"):
+			if u10 is Unit2D and u10.alive and u10.team == 2 \
+					and u10 != target_tank and u10.global_position.distance_to(gren.position) < 300.0:
+				u10.alive = false
+				u10.remove_from_group("units")
+				u10.queue_free()
+		var hp_before := target_tank.hp
+		for i in 200:
+			gren._process(0.1)
+			target_tank._process(0.1)
+			if i % 4 == 0:
+				await Engine.get_main_loop().process_frame  # grenade in flight
+		if gren.grenades >= 2:
+			cproblems.append("grenade never thrown")
+		elif target_tank.hp >= hp_before:
+			cproblems.append("grenade did no damage")
+		# --- area damage crumbles a rock ---
+		var rock_found := false
+		var rock_cleared := false
+		var rocks := tree.get_nodes_in_group("rocks")
+		if not rocks.is_empty():
+			rock_found = true
+			var rock: Node2D = rocks[0]
+			var cell := Vector2i(((rock.global_position - Vector2(8, 8)) / 16.0).floor())
+			Fx.area_damage(rock.global_position, 40.0, 99, 0)
+			await Engine.get_main_loop().process_frame
+			rock_cleared = not is_instance_valid(rock) and \
+				(not GameState.nav_grid or not GameState.nav_grid.is_point_solid(cell))
+			if not rock_cleared:
+				cproblems.append("rock not destroyed/cleared by blast")
+		# --- garrison: robots inside make the fort shoot missiles ---
+		var fort_g: FortBuilding = null
+		for c6 in ctx.get_children():
+			if c6 is FortBuilding and c6.team == GameState.player_team:
+				fort_g = c6
+				break
+		if fort_g:
+			var rb: Unit2D = load("res://scenes/unit.tscn").instantiate()
+			rb.unit_name = "grunt"
+			rb.team = GameState.player_team
+			rb.position = fort_g.visual_center()
+			ctx.add_child(rb)
+			if not fort_g.garrison_robot(rb):
+				cproblems.append("garrison refused a robot")
+			var enemy_g: Unit2D = load("res://scenes/unit.tscn").instantiate()
+			enemy_g.unit_name = "grunt"
+			enemy_g.team = 2
+			enemy_g.position = fort_g.visual_center() + Vector2(90, 0)
+			ctx.add_child(enemy_g)
+			var ehp := enemy_g.hp
+			for i in 240:
+				fort_g._process(0.1)
+				await Engine.get_main_loop().process_frame  # let the missile fly
+			# freed/dead means the missile killed it — that IS the fort firing
+			if is_instance_valid(enemy_g) and enemy_g.alive and enemy_g.hp >= ehp:
+				cproblems.append("garrisoned fort never fired")
+		else:
+			cproblems.append("no player fort")
+		if not rock_found:
+			cproblems.append("no rocks on this map")
+		print("COMBAT2: problems=%d %s" % [cproblems.size(),
+			", ".join(cproblems) if not cproblems.is_empty() else "(new combat ok)"])
 	if "--tactics-test" in args:
 		# the tactical AI, end to end: with funds and hardware on the
 		# map it must produce units, man empty vehicles/cannons and
@@ -367,7 +635,7 @@ static func run(ctx: Node) -> void:
 				zone_hit.owner_team = GameState.player_team
 				GameState.money[GameState.player_team] = 500
 				f2._process(0.1)  # sync owner from zone before queueing
-				var ok: bool = f2.queue_unit("psycho")
+				var ok: bool = f2.queue_unit("robot:psycho")
 				var count_before := tree.get_nodes_in_group("units").size()
 				for i in 40:
 					f2._process(0.5)
@@ -386,9 +654,9 @@ static func run(ctx: Node) -> void:
 				break
 		if fort2:
 			GameState.money[1] = 500
-			var ok2: bool = fort2.queue_unit("psycho")
+			var ok2: bool = fort2.queue_unit("robot:psycho")
 			for i in 8:
-				fort2.queue_unit("grunt")
+				fort2.queue_unit("robot:grunt")
 			print("QUEUECAP: size=%d (want 5)" % fort2.queue.items.size())
 			for i in 4:  # cancel only the grunts, keep the psycho
 				fort2.cancel_at(fort2.queue.items.size() - 1)
@@ -409,8 +677,8 @@ static func run(ctx: Node) -> void:
 				break
 		if fort3:
 			GameState.money[1] = 500
-			fort3.queue_unit("grunt")
-			fort3.queue_unit("sniper")
+			fort3.queue_unit("robot:grunt")
+			fort3.queue_unit("robot:sniper")
 			var money_mid: int = GameState.money[1]
 			fort3.cancel_at(1)  # refund the sniper ($80)
 			print("CANCEL: queue=%s money %d -> %d (sniper refund %d)" % [
@@ -550,7 +818,7 @@ static func run(ctx: Node) -> void:
 			GameState.money[1] = 99999
 			# drive production until the cap refuses everything
 			for i in 200:
-				fort.queue_unit("grunt")
+				fort.queue_unit("robot:grunt")
 				fort._process(0.6)
 			var cap := GameState.unit_cap(1)
 			var used := GameState.unit_pop(1)
@@ -618,9 +886,9 @@ static func run(ctx: Node) -> void:
 				SelectionManager.clear_selection()
 				SelectionManager.toggle_select(c, false)
 				GameState.money[GameState.player_team] = 600
-				c.queue_unit("grunt")
-				c.queue_unit("psycho")
-				c.queue_unit("tough")
+				c.queue_unit("robot:grunt")
+				c.queue_unit("robot:psycho")
+				c.queue_unit("robot:tough")
 				break
 	if "--fx-test" in args:
 		# effects/projectiles must spawn and clean up on their own

@@ -6,64 +6,82 @@ extends RefCounted
 ## dictionaries so generated content (tools, AI asset gen) can extend them.
 ##
 ## Fields: hp, damage, range, cooldown, speed, cost, dir (sprite folder),
-## projectile (optional: {speed, sprite, impact} — damage lands on impact
-## instead of instantly).
+## hit (per-shot hit chance, original zsettings), snipe (chance to kill
+## the driver of manned hardware while its lid is open), radius
+## (explosive splash for missile weapons), projectile (optional:
+## {speed, sprite, impact} — damage lands on impact instead of
+## instantly), grenades (throws them when carrying).
 
 const ROBOTS := {
 	"grunt":  {"hp": 42, "damage": 4,  "range": 58.0,  "cooldown": 0.75, "speed": 60.0, "cost": 40,
-		"dir": "res://assets/z/robots_grunt", "sound": "RIFLE3", "pop": 1},
+		"dir": "res://assets/z/robots_grunt", "sound": "RIFLE3", "pop": 1,
+		"hit": 0.7, "snipe": 0.3},
 	"psycho": {"hp": 46, "damage": 3,  "range": 58.0,  "cooldown": 0.40, "speed": 62.0, "cost": 60,
-		"dir": "res://assets/z/robots_psycho", "sound": "MACHGUN2", "pop": 1},
+		"dir": "res://assets/z/robots_psycho", "sound": "MACHGUN2", "pop": 1,
+		"hit": 0.65, "snipe": 0.3},
 	"sniper": {"hp": 34, "damage": 15, "range": 110.0, "cooldown": 1.80, "speed": 58.0, "cost": 80,
-		"dir": "res://assets/z/robots_sniper", "sound": "RIFLE3", "pop": 1},
+		"dir": "res://assets/z/robots_sniper", "sound": "RIFLE3", "pop": 1,
+		"hit": 0.8, "snipe": 0.8},
 	"tough":  {"hp": 72, "damage": 8,  "range": 50.0,  "cooldown": 1.10, "speed": 50.0, "cost": 70,
 		"dir": "res://assets/z/robots_tough", "sound": "GRENLOBX", "pop": 1,
+		"hit": 1.0, "radius": 30.0,
 		"projectile": {"speed": 160.0, "impact": "explosion",
 			"texture": "res://assets/z/robots_tough/bullet_n00.png"}},
 	"pyro":   {"hp": 52, "damage": 6,  "range": 40.0,  "cooldown": 0.60, "speed": 56.0, "cost": 70,
 		"dir": "res://assets/z/robots_pyro", "sound": "FLAMER", "pop": 1,
+		"hit": 0.7,
 		"projectile": {"speed": 110.0, "impact": "fire",
 			"texture": "res://assets/z/robots_pyro/bullet_n00.png"}},
 	"laser":  {"hp": 44, "damage": 10, "range": 85.0,  "cooldown": 1.30, "speed": 56.0, "cost": 90,
-		"dir": "res://assets/z/robots_laser", "sound": "LASERGUN", "pop": 1},
+		"dir": "res://assets/z/robots_laser", "sound": "LASERGUN", "pop": 1,
+		"hit": 0.7, "snipe": 0.6},
 }
 
 const VEHICLES := {
 	"jeep":   {"hp": 60,  "damage": 5,  "range": 62.0, "cooldown": 0.55, "speed": 95.0, "cost": 60,
-		"dir": "res://assets/z/vehicles_jeep", "sound": "JEEPMGUN", "pop": 2},
+		"dir": "res://assets/z/vehicles_jeep", "sound": "JEEPMGUN", "pop": 2,
+		"hit": 0.65, "snipe": 0.4},
 	"light":  {"hp": 90,  "damage": 9,  "range": 78.0, "cooldown": 1.00, "speed": 75.0, "cost": 100,
 		"dir": "res://assets/z/vehicles_light", "sound": "LTANKGUN", "pop": 2,
+		"hit": 1.0, "radius": 30.0,
 		"projectile": {"speed": 260.0, "impact": "explosion",
 			"texture": "res://assets/z/vehicles_light/bullet.png"}},
 	"medium": {"hp": 130, "damage": 14, "range": 88.0, "cooldown": 1.40, "speed": 62.0, "cost": 150,
 		"dir": "res://assets/z/vehicles_medium", "sound": "MTANKGUN", "pop": 3,
+		"hit": 1.0, "radius": 34.0,
 		"projectile": {"speed": 230.0, "impact": "explosion",
 			"texture": "res://assets/z/vehicles_missile_launcher/bullet.png"}},
 	"heavy":  {"hp": 190, "damage": 22, "range": 96.0, "cooldown": 2.00, "speed": 50.0, "cost": 220,
 		"dir": "res://assets/z/vehicles_heavy", "sound": "HTANKGUN", "pop": 4,
+		"hit": 1.0, "radius": 38.0,
 		"projectile": {"speed": 200.0, "impact": "explosion_big",
 			"texture": "res://assets/z/vehicles_missile_launcher/bullet.png"}},
 	"apc":    {"hp": 150, "damage": 0,  "range": 0.0,  "cooldown": 9.9,  "speed": 80.0, "cost": 120,
-		"dir": "res://assets/z/vehicles_apc", "sound": "", "pop": 3},
+		"dir": "res://assets/z/vehicles_apc", "sound": "", "pop": 3, "hit": 0.0},
 	"missile_launcher": {"hp": 110, "damage": 20, "range": 180.0, "cooldown": 3.00, "speed": 55.0, "cost": 200,
 		"dir": "res://assets/z/vehicles_missile_launcher", "sound": "MOBIMIS2", "pop": 3,
+		"hit": 1.0, "radius": 42.0,
 		"projectile": {"speed": 190.0, "impact": "explosion_big",
 			"texture": "res://assets/z/vehicles_missile_launcher/bullet.png"}},
 }
 
 const CANNONS := {
 	"gatling":  {"hp": 55, "damage": 3,  "range": 95.0, "cooldown": 0.35, "speed": 0.0, "cost": 0,
-		"dir": "res://assets/z/cannons_gatling", "sound": "GATTGUN", "pop": 2},
+		"dir": "res://assets/z/cannons_gatling", "sound": "GATTGUN", "pop": 2,
+		"hit": 0.65},
 	"gun":      {"hp": 75, "damage": 8,  "range": 110.0, "cooldown": 0.90, "speed": 0.0, "cost": 0,
 		"dir": "res://assets/z/cannons_gun", "sound": "LTGUN", "pop": 2,
+		"hit": 1.0, "radius": 26.0,
 		"projectile": {"speed": 300.0, "impact": "impact",
 			"texture": "res://assets/z/effects/grenade/grenade_n00.png"}},
 	"howitzer": {"hp": 80, "damage": 18, "range": 170.0, "cooldown": 2.60, "speed": 0.0, "cost": 0,
 		"dir": "res://assets/z/cannons_howitzer", "sound": "GRENLOBX", "pop": 3,
+		"hit": 1.0, "radius": 36.0,
 		"projectile": {"speed": 180.0, "impact": "explosion",
 			"texture": "res://assets/z/effects/grenade/grenade_n00.png"}},
 	"missile_cannon": {"hp": 70, "damage": 26, "range": 200.0, "cooldown": 3.40, "speed": 0.0, "cost": 0,
 		"dir": "res://assets/z/cannons_missile", "sound": "MOBIMIS", "pop": 3,
+		"hit": 1.0, "radius": 44.0,
 		"projectile": {"speed": 170.0, "impact": "explosion_big",
 			"texture": "res://assets/z/cannons_missile/bullet.png"}},
 }

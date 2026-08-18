@@ -14,6 +14,9 @@ extends Unit2D
 
 @export var manned := false
 
+var driver_type := ""  # robot type of the crew (for sniper ejections)
+var _lid_timer := 0.0  # crew hatch open while firing — the snipe window
+
 var _asset_dir := ""
 var _wheels: AnimatedSprite2D
 var _wheel_offsets := PackedVector2Array()
@@ -33,6 +36,9 @@ var _smoke_timer := 0.0
 var _fire_flash := 0.0
 var _install_timer := 0.0
 var _wreck := false
+var _repairing_building: Building2D = null
+var _repair_tick_time := 0.0
+var _cones: AnimatedSprite2D = null
 var cargo: Array[Node] = []
 
 const APC_CAPACITY := 3
@@ -177,6 +183,88 @@ func _build_layer() -> void:
 	_layer_dir = _last_dir
 
 
+## Ordered onto a building: damaged vehicles enter their repair shop
+## and heal; manned cranes set up cones and rebuild damaged buildings
+## and blown-up bridges (original: UnitEnterRepairBuilding +
+## ProcessCraneRepairWP with the conco animation).
+func _building_order(b: Building2D) -> void:
+	var dist := global_position.distance_to(b.world_footprint().get_center())
+	if unit_name == "crane" and manned and b.team == team \
+			and b.hp < b.max_hp and dist < 60.0:
+		_start_crane_repair(b)
+		return
+	if b.is_repair_shop() and b.owner_team == team and dist < 60.0:
+		if b.try_start_repair(self):
+			enter_target = null
+			move_target = Vector2.ZERO
+			waypoints = PackedVector2Array()
+			return
+		# shop busy or we're healthy: don't keep trying
+		if hp >= max_hp or b.repair_unit != null:
+			enter_target = null
+			move_target = Vector2.ZERO
+		return
+	if dist < 44.0:
+		enter_target = null
+		move_target = Vector2.ZERO
+
+
+func _start_crane_repair(b: Building2D) -> void:
+	_repairing_building = b
+	_repair_tick_time = 0.0
+	enter_target = null
+	move_target = Vector2.ZERO
+	waypoints = PackedVector2Array()
+	velocity = Vector2.ZERO
+	_play_body()
+	if _cones == null:
+		var frames := SpriteFrames.new()
+		frames.add_animation("loop")
+		frames.set_animation_speed("loop", 8.0)
+		frames.set_animation_loop("loop", true)
+		var tn := AnimLibrary.team_name(team)
+		var i := 0
+		while true:
+			var path := "%s/effects/conco_%s_n%02d.png" % [_asset_dir, tn, i]
+			if not ResourceLoader.exists(path):
+				break
+			frames.add_frame("loop", load(path))
+			i += 1
+		if i > 0:
+			_cones = AnimatedSprite2D.new()
+			_cones.sprite_frames = frames
+			_cones.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			add_child(_cones)
+	if _cones:
+		_cones.visible = true
+		_cones.play("loop")
+
+
+func _crane_repair_tick(delta: float) -> void:
+	if _repairing_building == null:
+		return
+	var b := _repairing_building
+	if not is_instance_valid(b) or not manned or not alive or not b.alive \
+			or b.hp >= b.max_hp:
+		_stop_crane_repair()
+		return
+	_repair_tick_time += delta
+	if _repair_tick_time >= 0.4:
+		_repair_tick_time = 0.0
+		b.repair_by(40)
+		if _hook and _hook.sprite_frames and _hook.sprite_frames.has_animation("hook"):
+			_hook.frame = 0  # yank the hook
+	if b.hp >= b.max_hp:
+		_stop_crane_repair()
+
+
+func _stop_crane_repair() -> void:
+	_repairing_building = null
+	if _cones:
+		_cones.visible = false
+		_cones.stop()
+
+
 func _process(delta: float) -> void:
 	voice_cooldown = maxf(0.0, voice_cooldown - delta)
 	if _wreck:
@@ -187,12 +275,15 @@ func _process(delta: float) -> void:
 	_fire_timer = maxf(0.0, _fire_timer - delta)
 	_fire_flash = maxf(0.0, _fire_flash - delta)
 	_install_timer = maxf(0.0, _install_timer - delta)
+	_lid_timer = maxf(0.0, _lid_timer - delta)
 	if manned:
 		_combat()
 	_steer(delta)
 	_separation(delta)
+	_try_enter()
 	_update_layer(delta)
 	_damage_fx(delta)
+	_crane_repair_tick(delta)
 	ring.queue_redraw()
 
 
@@ -263,6 +354,11 @@ func _sync_wheels() -> void:
 
 
 func _combat() -> void:
+	if attack_move and move_target != Vector2.ZERO and manned:
+		var probe := _find_target()
+		if probe != null:
+			velocity = Vector2.ZERO
+			_target = probe
 	if speed > 0.0 and velocity.length_squared() > 4.0:
 		_last_dir = _angle_to_dir(velocity.angle())
 		return
@@ -304,24 +400,37 @@ func _combat() -> void:
 			_fire_timer = cooldown
 			_turret_fire = 0.25
 			_fire_flash = 0.3
+			_lid_timer = 1.2  # hatch open: snipers take note
 			Fx.gunfire(String(ContentDB.def_for(kind, unit_name).get("sound", "")))
 			Fx.play("muzzle", global_position + to_target.normalized() * 12.0)
+			var def: Dictionary = ContentDB.def_for(kind, unit_name)
 			var amount := int(round(damage * GameState.vehicle_damage_mult(team)))
-			var projectile: Dictionary = ContentDB.def_for(kind, unit_name).get("projectile", {})
+			var projectile: Dictionary = def.get("projectile", {})
+			var hit_chance := float(def.get("hit", 1.0))
 			var target := _target
 			if projectile.is_empty():
-				# hitscan weapon: instant damage, tracer visual
-				Fx.bullet(global_position + to_target.normalized() * 10.0, target.global_position)
-				target.take_damage(amount)
+				# hitscan weapon: per-shot chance, instant damage, tracer
+				if randf() <= hit_chance:
+					Fx.bullet(global_position + to_target.normalized() * 10.0, target.global_position)
+					target.take_damage(amount)
+				else:
+					Fx.bullet(global_position + to_target.normalized() * 10.0,
+						target.global_position + Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0)))
 			else:
-				# shell: damage lands when the shot arrives
+				# shell: damage lands when the shot arrives; explosive
+				# weapons splash around the impact
 				var tid := target.get_instance_id()
+				var radius := float(def.get("radius", 0.0))
+				var impact: Vector2 = target.global_position
 				Fx.shell(global_position + to_target.normalized() * 12.0,
-					target.global_position, projectile,
+					impact, projectile,
 					func():
 						var hit: Node2D = instance_from_id(tid) as Node2D
-						if hit and hit.alive:
-							hit.take_damage(amount))
+						if hit_chance >= 1.0 or randf() <= hit_chance:
+							if hit and hit.alive:
+								hit.take_damage(amount)
+						if radius > 0.0:
+							Fx.area_damage(impact, radius, int(amount * 0.5), team))
 
 
 ## Below half HP the hull switches to its damaged art and leaks: smoke
@@ -420,9 +529,43 @@ func _on_layer_finished() -> void:
 		_layer.visible = false
 
 
+## Crew hatch: opens for a moment whenever the gun fires — the window
+## where a sniper can pick the driver off (original lid logic).
+var lid_open: bool:
+	get:
+		return _lid_timer > 0.0
+
+
+## A sniper killed the crew: the hardware goes neutral again and a
+## wounded survivor bails out (original: DoDriverHitEffect + eject).
+func eject_driver() -> void:
+	if not manned or alive == false:
+		return
+	Fx.play("spark", global_position)
+	if driver_type != "":
+		var survivor: Unit2D = load("res://scenes/unit.tscn").instantiate()
+		survivor.unit_name = driver_type
+		survivor.team = team
+		survivor.position = global_position + Vector2(0, 18)
+		var map := get_parent()
+		if map is Node2D:
+			map.add_child(survivor)
+			survivor.hp = maxi(1, survivor.max_hp / 3)
+	manned = false
+	team = 0
+	driver_type = ""
+	hp = maxi(hp, max_hp / 2)
+	_damaged = hp < max_hp * 0.5
+	if is_apc():
+		unload()
+	_build_frames()
+	_play_body()
+	if _layer:
+		_layer.visible = false
 func enter(robot: Unit2D) -> void:
 	manned = true
 	team = robot.team
+	driver_type = robot.unit_name
 	hp = maxi(hp, max_hp)  # fresh crew repairs
 	_damaged = false
 	_install_timer = 1.1  # gunner climbs aboard (place animation)

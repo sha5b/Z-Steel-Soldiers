@@ -1,84 +1,92 @@
 class_name FortBuilding
 extends Building2D
-## Fort — the win/lose objective. Also produces robots like the original
-## (select your fort to open the production panel). All damage/objective
-## behaviour lives in Building2D.
+## The fort: fixed team (the map owner), the win objective, a full
+## producer (robots/vehicles/cannons per its level) — and a garrison:
+## robots ordered inside man the fort's own missile launcher (original:
+## ENTER_FORT_WP + fort turret missiles), just like the original game's
+## screaming fort defenses.
 
 const PRODUCE_SECONDS := 8.0
+const GARRISON_MISSILE_RANGE := 180.0
+const GARRISON_MISSILE_COOLDOWN := 3.0
+const GARRISON_CAP := 5
 
-var queue := ProductionQueue.new()
+var garrison: Array[Node] = []
+var _missile_timer := 0.0
+var _missile_target: Node2D = null
 
 
 func kind_key() -> String:
-	return "robot_factory"
+	return "fort"
 
 
-func queue_items() -> Array[String]:
-	return queue.items
+func producer_key() -> String:
+	return "fort"
+
+
+func produce_seconds() -> float:
+	return PRODUCE_SECONDS * build_time_mult()
+
+
+## A robot walks in: hide it, it fights (and hides) from inside.
+func garrison_robot(robot: Unit2D) -> bool:
+	if team == 0 or team != robot.team or garrison.size() >= GARRISON_CAP:
+		return false
+	garrison.append(robot)
+	robot.carried = true
+	robot.set_selected(false)
+	robot.visible = false
+	robot.velocity = Vector2.ZERO
+	robot.move_target = Vector2.ZERO
+	robot.waypoints = PackedVector2Array()
+	robot.remove_from_group("selectable")
+	robot.remove_from_group("units")
+	SelectionManager.drop_from_selection(robot)
+	return true
 
 
 func _process(delta: float) -> void:
-	# production tick (forts keep their fixed team — no zone following)
-	if team == 0 or GameState.over:
+	tick_production(delta)
+	if team != 0 and not garrison.is_empty():
+		_garrison_fire(delta)
+
+
+## The fort's own missile battery: fires while crewed (garrisoned) at
+## the nearest enemy in reach.
+func _garrison_fire(delta: float) -> void:
+	_missile_timer = maxf(0.0, _missile_timer - delta)
+	if _missile_timer > 0.0:
 		return
-	var done := queue.tick(delta, PRODUCE_SECONDS)
-	if done != "":
-		_spawn(done)
-
-
-## 0..1 progress of the item currently building.
-func progress() -> float:
-	if team == 0:
-		return 0.0
-	return queue.progress(PRODUCE_SECONDS)
-
-
-func queue_unit(type_name: String, silent := false) -> bool:
-	if not ContentDB.has_unit("robot", type_name):
-		return false
-	var stats: Dictionary = ContentDB.def_for("robot", type_name)
-	if not _pop_allows(stats, silent):
-		return false
-	if not GameState.spend(team, int(stats.cost)):
-		return false
-	if not queue.enqueue(type_name):
-		GameState.money[team] += int(stats.cost)  # queue full: refund
-		GameState.money_changed.emit(team, GameState.money[team])
-		return false
-	return true
-
-
-func cancel_at(index: int) -> void:
-	var type_name := queue.cancel_at(index)
-	if type_name == "" or team == 0:
+	var best: Node2D = null
+	var best_d := GARRISON_MISSILE_RANGE * GARRISON_MISSILE_RANGE
+	for u in get_tree().get_nodes_in_group("units"):
+		if u is Node2D and u is Unit2D and u.alive and not u.carried \
+				and u.team != 0 and u.team != team \
+				and visual_center().distance_squared_to(u.global_position) < best_d:
+			best_d = visual_center().distance_squared_to(u.global_position)
+			best = u
+	if best == null:
 		return
-	var stats: Dictionary = ContentDB.def_for("robot", type_name)
-	GameState.money[team] += int(stats.cost)
-	GameState.money_changed.emit(team, GameState.money[team])
+	_missile_timer = GARRISON_MISSILE_COOLDOWN
+	_missile_target = best
+	Fx.gunfire("MOBIMIS")
+	var from := visual_center() + Vector2(0, -10)
+	var tid := best.get_instance_id()
+	var impact: Vector2 = best.global_position
+	Fx.shell(from, impact,
+		{"speed": 180.0, "impact": "explosion_big",
+			"texture": "res://assets/z/vehicles_missile_launcher/bullet.png"},
+		func():
+			var hit: Node2D = instance_from_id(tid) as Node2D
+			if hit and hit.alive:
+				hit.take_damage(20)
+			Fx.area_damage(impact, 40.0, 10, team))
 
 
-## Cap gate: alive + queued + this unit must fit under the team cap.
-## `silent` suppresses the denial beep for CPU-initiated production.
-func _pop_allows(stats: Dictionary, silent := false) -> bool:
-	var team_id := team if team != 0 else owner_team
-	var queued := 0
-	for item in queue.items:
-		queued += int(ContentDB.def_for("robot", item).get("pop", 1))
-	var cost := int(stats.get("pop", 1))
-	if GameState.unit_pop(team_id) + queued + cost > GameState.unit_cap(team_id):
-		if not silent:
-			Fx.cap_denied()
-		return false
-	return true
-
-
-func _spawn(type_name: String) -> void:
-	var unit: Unit2D = load("res://scenes/unit.tscn").instantiate()
-	unit.unit_name = type_name
-	unit.team = team
-	unit.position = position + Vector2(48, 64)
-	var map := get_parent()
-	if map is Node2D:
-		map.add_child(unit)
-	if rally_point != Vector2.INF:
-		unit.move_to(rally_point)
+## The fort falling kills everyone inside.
+func kill_garrison() -> void:
+	for robot in garrison:
+		if is_instance_valid(robot):
+			robot.carried = false
+			robot.die()
+	garrison.clear()

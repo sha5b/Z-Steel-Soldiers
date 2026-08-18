@@ -48,6 +48,10 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 		if String(o.type) == "building" and ContentDB.building_def(int(o.id)).get("fort", false) \
 				and int(o.owner) != 0:
 			ai_teams[int(o.owner)] = true
+	# every fort team gets a ledger entry (income + spend work for all)
+	for t in ai_teams:
+		if not GameState.money.has(t):
+			GameState.money[t] = 200
 	for t in ai_teams:
 		if t != GameState.player_team:
 			var ai := CpuAi.new(t)
@@ -118,6 +122,7 @@ static func _build_rocks(parent: Node, data: Dictionary, planet: String, grid: A
 		rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		rock.position = Vector2(cell) * TILE + Vector2(8, 8)
 		parent.add_child(rock)
+		rock.add_to_group("rocks")
 		grid.set_point_solid(cell, true)
 
 
@@ -200,7 +205,7 @@ static func _spawn_building(parent: Node, o: Dictionary, pos: Vector2, planet: S
 	if def.is_empty():
 		return
 	var node: Building2D = def.script.new()
-	node.setup(id, int(o.owner), planet)
+	node.setup(id, int(o.owner), planet, int(o.get("level", 0)))
 	node.position = pos
 	node.name = "Building_T%d_%d" % [int(o.owner), id]
 	parent.add_child(node)
@@ -214,6 +219,7 @@ static func _spawn_building(parent: Node, o: Dictionary, pos: Vector2, planet: S
 					grid.set_point_solid(cell, false)
 				if vgrid.region.has_point(cell):
 					vgrid.set_point_solid(cell, false)
+				node.bridge_cells.append(cell)  # remembered for blow-up/repair
 	elif def.get("solid", false):
 		# solid buildings block movement on both grids — vehicles otherwise
 		# drive straight over fort/factory sprites
@@ -317,6 +323,10 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 						vgrid.set_point_solid(cell, true)
 			if def.get("fort", false) and child.team != 0:
 				ai_teams[child.team] = true
+	# every fort team gets a ledger entry (income + spend work for all)
+	for t in ai_teams:
+		if not GameState.money.has(t):
+			GameState.money[t] = 200
 	for t in ai_teams:
 		if t != GameState.player_team:
 			var ai := CpuAi.new(t)
@@ -342,6 +352,7 @@ static func _clear_bridge(bridge: Building2D, def: Dictionary,
 				grid.set_point_solid(cell, false)
 			if vgrid.region.has_point(cell):
 				vgrid.set_point_solid(cell, false)
+			bridge.bridge_cells.append(cell)
 
 
 static func _tileinfo(planet: String) -> Dictionary:

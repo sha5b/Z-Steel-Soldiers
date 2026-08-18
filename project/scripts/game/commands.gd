@@ -15,14 +15,23 @@ static func dispatch(world_position: Vector2) -> void:
 		return
 	var empty_vehicle := _find_empty_vehicle(world_position)
 	var apc := _find_apc(world_position)
+	var target_building := _find_interactable_building(world_position)
+	var own_fort := _find_own_fort(world_position)
 	var movers: Array[Node] = []
 	for u in SelectionManager.selected:
 		if is_instance_valid(u) and u is Unit2D and u.alive:
 			movers.append(u)
+	# A + click: AGRO (attack-move) — halt and engage anything en route
+	var agro := Input.is_key_pressed(KEY_A)
 	# deterministic order (instance ids) so formations don't reshuffle
 	movers.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())
 	for i in movers.size():
 		var u: Node2D = movers[i]
+		if u.kind == "robot" and own_fort and is_instance_valid(own_fort) \
+				and own_fort.team == u.team and own_fort.alive:
+			u.move_to(own_fort.visual_center())
+			u.enter_target = own_fort  # garrison: man the fort missiles
+			continue
 		if u.kind == "robot":
 			if empty_vehicle and is_instance_valid(empty_vehicle):
 				u.move_to(empty_vehicle.global_position)
@@ -32,8 +41,16 @@ static func dispatch(world_position: Vector2) -> void:
 				u.move_to(apc.global_position)
 				u.enter_target = apc
 				continue
+		elif target_building and is_instance_valid(target_building) \
+				and _wants_building_order(u, target_building):
+			# vehicles act on buildings: damaged hardware drives into the
+			# repair shop, cranes set up on wrecked buildings/bridges
+			u.move_to(target_building.world_footprint().get_center())
+			u.enter_target = target_building
+			continue
 		var ring := maxi(int(sqrt(float(movers.size()))), 1)
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0
+		u.attack_move = agro
 		u.move_to(world_position + offset)
 
 
@@ -51,3 +68,33 @@ static func _find_empty_vehicle(world_position: Vector2) -> Node2D:
 				and v.global_position.distance_to(world_position) < 24.0:
 			return v
 	return null
+
+
+## Buildings units can be ordered onto: own repair shop (damaged
+## vehicles heal there) and own damaged buildings/bridges (crane work).
+static func _find_interactable_building(world_position: Vector2) -> Building2D:
+	for group in ["buildings", "facilities"]:
+		for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(group):
+			if b is Building2D and b.alive \
+					and b.world_footprint().has_point(world_position):
+				return b
+	return null
+
+
+## A fort under the click point belonging to the selected robots' team.
+static func _find_own_fort(world_position: Vector2) -> FortBuilding:
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("buildings"):
+		if b is FortBuilding and b.alive and b.team != 0 \
+				and b.world_footprint().has_point(world_position):
+			return b
+	return null
+
+
+static func _wants_building_order(u: Node2D, b: Building2D) -> bool:
+	if not (u is Vehicle2D) or u.kind != "vehicle" or u.speed <= 0.0:
+		return false
+	if b.is_repair_shop() and b.owner_team == u.team and u.hp < u.max_hp:
+		return true
+	if u.unit_name == "crane" and b.team == u.team and b.hp < b.max_hp:
+		return true
+	return false

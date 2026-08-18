@@ -29,6 +29,10 @@ func _process(_delta: float) -> void:
 				and u.global_position.distance_to(global_position) < 12.0:
 			if u is Unit2D:
 				u.play_gesture("pickup-up")
+				# grenade crates arm the collector with throwables
+				# (original: SetGrenadeAmount on the robot)
+				if pickup_type == "grenades" and u.kind == "robot":
+					u.grenades += 4
 			_collect(u.team)
 			break
 
@@ -37,12 +41,5 @@ func _collect(team: int) -> void:
 	_taken = true
 	var info: Dictionary = ContentDB.pickup_def(pickup_type)
 	GameState.grant_upgrade(team, String(info.get("grants", pickup_type)))
-	var sound := String(info.get("sound", ""))
-	if sound != "" and ResourceLoader.exists(sound):
-		var player := AudioStreamPlayer.new()
-		player.stream = load(sound)
-		add_child(player)
-		player.play()
-		player.finished.connect(player.queue_free)
-		await player.finished
+	Fx._play_set("pickup")
 	queue_free()

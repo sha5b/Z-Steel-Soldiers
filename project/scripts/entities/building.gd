@@ -11,6 +11,7 @@ const TEAM_NAMES := {0: "null", 1: "red", 2: "blue", 3: "green", 4: "yellow"}
 @export var building_id := 2
 @export var team := 0
 @export var planet := "desert"
+@export var level := 0  # 0..5: unlocks the build list roster, speeds builds
 var is_fort := false
 var selected := false
 
@@ -19,6 +20,7 @@ var max_hp := 500
 var alive := true
 var owner_team := 0  # factories: follows zone owner
 var rally_point := Vector2.INF  # produced units gather here when set
+var queue := ProductionQueue.new()  # production queue ("kind:name" items)
 
 var _sprite: Sprite2D
 var _rally_flag: Sprite2D
@@ -27,12 +29,138 @@ var _hp_bar: ColorRect
 var _hp_bar_max_w := 64.0
 
 
-func setup(id: int, owner_team_value: int, planet_name: String) -> void:
+func setup(id: int, owner_team_value: int, planet_name: String, building_level := 0) -> void:
 	building_id = id
 	team = owner_team_value
 	owner_team = owner_team_value
 	planet = planet_name
+	level = clampi(building_level, 0, 5)
 	is_fort = id == 0 or id == 1
+	if id == 6 or id == 7:
+		max_hp = BRIDGE_HP
+		hp = BRIDGE_HP
+
+
+# ----------------------- shared production -----------------------
+# Every producer (fort, robot factory, vehicle factory) builds from
+# BuildingDefs.BUILD_LISTS[producer_key()][level] — items are
+# "kind:name". Robots spawn crewed; vehicles and cannons spawn empty
+# beside the building for a robot to man (Z-style).
+
+func producer_key() -> String:
+	return ""  # not a producer
+
+
+func produce_seconds() -> float:
+	return 8.0 * build_time_mult()
+
+
+func build_time_mult() -> float:
+	return maxf(1.0 - 0.08 * level, 0.6)
+
+
+func build_options() -> Array:
+	var lists: Dictionary = BuildingDefs.BUILD_LISTS.get(producer_key(), {})
+	return lists.get(level, [])
+
+
+func queue_items() -> Array[String]:
+	return queue.items
+
+
+func progress() -> float:
+	if owner_team == 0 or queue.items.is_empty():
+		return 0.0
+	return queue.progress(produce_seconds())
+
+
+func queue_unit(item: String, silent := false) -> bool:
+	var parts := item.split(":")
+	if parts.size() != 2:
+		return false
+	var kind := parts[0]
+	var type_name := parts[1]
+	if not ContentDB.has_unit(kind, type_name):
+		return false
+	if kind != "robot" and not ContentDB.has_sprites(kind, type_name):
+		return false
+	var stats: Dictionary = ContentDB.def_for(kind, type_name)
+	if not _pop_allows(kind, stats, silent):
+		return false
+	if not GameState.spend(owner_team, int(stats.cost)):
+		return false
+	if not queue.enqueue(item):
+		GameState.money[owner_team] += int(stats.cost)  # queue full: refund
+		GameState.money_changed.emit(owner_team, GameState.money[owner_team])
+		return false
+	return true
+
+
+func cancel_at(index: int) -> void:
+	var item := queue.cancel_at(index)
+	if item == "" or owner_team == 0:
+		return
+	var stats: Dictionary = ContentDB.def_for(item.split(":")[0], item.split(":")[1])
+	GameState.money[owner_team] += int(stats.cost)
+	GameState.money_changed.emit(owner_team, GameState.money[owner_team])
+
+
+## Cap gate: alive + queued + this unit must fit under the team cap.
+## `silent` suppresses the denial beep for CPU-initiated production.
+func _pop_allows(kind: String, stats: Dictionary, silent := false) -> bool:
+	var team_id := team if team != 0 else owner_team
+	var queued := 0
+	for item in queue.items:
+		var parts: PackedStringArray = item.split(":")
+		queued += int(ContentDB.def_for(parts[0], parts[1]).get("pop", 1))
+	var cost := int(stats.get("pop", 1))
+	if GameState.unit_pop(team_id) + queued + cost > GameState.unit_cap(team_id):
+		if not silent:
+			Fx.cap_denied()
+		return false
+	return true
+
+
+func tick_production(delta: float) -> void:
+	if owner_team == 0:
+		return
+	var done := queue.tick(delta, produce_seconds())
+	if done != "":
+		spawn_produced(done)
+
+
+func spawn_produced(item: String) -> void:
+	var parts := item.split(":")
+	var kind := parts[0]
+	var type_name := parts[1]
+	if owner_team == GameState.player_team:
+		Fx.announce("robot_manufactured" if kind == "robot"
+			else "vehicle_manufactured" if kind == "vehicle"
+			else "gun_manufactured")
+	match kind:
+		"robot":
+			var unit: Unit2D = load("res://scenes/unit.tscn").instantiate()
+			unit.unit_name = type_name
+			unit.team = owner_team
+			unit.position = global_position + Vector2(48, 40)
+			_add_to_map(unit)
+			if rally_point != Vector2.INF:
+				unit.move_to(rally_point)
+		"vehicle", "cannon":
+			if not ContentDB.has_sprites(kind, type_name):
+				return
+			var vehicle: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
+			vehicle.setup_vehicle(kind, type_name, 0)  # spawns unmanned
+			vehicle.position = global_position + Vector2(48, 40)
+			_add_to_map(vehicle)
+			if rally_point != Vector2.INF:
+				vehicle.move_to(rally_point)
+
+
+func _add_to_map(node: Node2D) -> void:
+	var map := get_parent()
+	if map is Node2D:
+		map.add_child(node)
 
 
 func _ready() -> void:
@@ -190,13 +318,13 @@ func update_flag(for_team: int) -> void:
 		_flag.play("wave")
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
+		return
+	if is_fort:
 		return
 	# non-fort buildings (radar, repair) follow their zone's owner so the
 	# flag recolors on capture; factories override with their own loop
-	if is_fort:
-		return
 	var center := world_footprint().get_center()
 	for z in GameState.zones:
 		if z.world_rect().has_point(center):
@@ -205,12 +333,76 @@ func _process(_delta: float) -> void:
 				team = owner_team
 				update_flag(owner_team)
 			break
+	_repair_tick(delta)
+
+
+func is_bridge() -> bool:
+	return building_id == 6 or building_id == 7
+
+
+func is_repair_shop() -> bool:
+	return building_id == 3
+
+
+# ----------------------- repair shop -----------------------
+# One damaged vehicle at a time drives in, heals under the smoke stack
+# and rolls out again (original: UnitEnterRepairBuilding + repair anim).
+
+var repair_unit: Node2D = null
+var _repair_time := 0.0
+const REPAIR_SECONDS := 4.0
+
+
+func try_start_repair(unit: Node2D) -> bool:
+	if not is_repair_shop() or owner_team == 0 or repair_unit != null:
+		return false
+	if unit.team != owner_team or not (unit is Vehicle2D) or unit.kind != "vehicle":
+		return false
+	if unit.hp >= unit.max_hp:
+		return false
+	repair_unit = unit
+	_repair_time = 0.0
+	unit.visible = false
+	unit.velocity = Vector2.ZERO
+	unit.move_target = Vector2.ZERO
+	unit.waypoints = PackedVector2Array()
+	unit.remove_from_group("selectable")
+	unit.remove_from_group("units")
+	SelectionManager.drop_from_selection(unit)
+	return true
+
+
+func _repair_tick(delta: float) -> void:
+	if repair_unit == null:
+		return
+	if not is_instance_valid(repair_unit) or not repair_unit.alive:
+		repair_unit = null
+		return
+	_repair_time += delta
+	repair_unit.hp = mini(repair_unit.max_hp,
+		int(round(repair_unit.hp + repair_unit.max_hp * delta / REPAIR_SECONDS)))
+	if _repair_time >= REPAIR_SECONDS or repair_unit.hp >= repair_unit.max_hp:
+		var done: Node2D = repair_unit
+		repair_unit = null
+		done.hp = done.max_hp
+		done.visible = true
+		done.add_to_group("selectable")
+		done.add_to_group("units")
+		done.global_position = world_footprint().get_center() + Vector2(0, 44)
+		done.move_to(done.global_position + Vector2(0, 34))
 
 
 func take_damage(amount: int) -> void:
-	if not alive or not is_fort:
+	if not alive:
+		return
+	if is_bridge():
+		_bridge_damage(amount)
+		return
+	if not is_fort:
 		return
 	hp -= amount
+	if team == GameState.player_team:
+		Fx.announce("fort_under_attack")
 	if _sprite:
 		_sprite.modulate = Color(3, 3, 3)
 		var tween := create_tween()
@@ -221,6 +413,8 @@ func take_damage(amount: int) -> void:
 		alive = false
 		remove_from_group("buildings")
 		SelectionManager.drop_from_selection(self)
+		if has_method("kill_garrison"):
+			call("kill_garrison")
 		Fx.destroyed(visual_center())
 		_sprite.texture = load(_texture_path(true))
 		for child in get_children():
@@ -229,3 +423,47 @@ func take_damage(amount: int) -> void:
 		_hp_bar.visible = false
 		_flag.visible = false
 		GameState.report_fort_destroyed(team)
+
+
+# ----------------------- bridges -----------------------
+# Bridges can be blown up (they become impassable rubble) and rebuilt
+# by a manned crane (original: CheckDestroyedBridge + crane repair).
+
+const BRIDGE_HP := 400
+var bridge_cells: Array[Vector2i] = []  # filled by the map loader
+
+
+func _bridge_damage(amount: int) -> void:
+	hp -= amount
+	if _sprite:
+		_sprite.modulate = Color(3, 3, 3)
+		var tween := create_tween()
+		tween.tween_property(_sprite, "modulate", Color(0.35, 0.35, 0.35), 0.3)
+	if hp > 0:
+		return
+	hp = 0
+	Fx.destroyed(world_footprint().get_center())
+	for cell in bridge_cells:
+		if GameState.nav_grid:
+			GameState.nav_grid.set_point_solid(cell, true)
+		if GameState.vehicle_grid:
+			GameState.vehicle_grid.set_point_solid(cell, true)
+	_sprite.modulate = Color(0.35, 0.35, 0.35)
+
+
+## Crane repair: restores a destroyed bridge (or patches a damaged one).
+func repair_by(amount: int) -> void:
+	if not is_bridge():
+		hp = mini(hp + amount, max_hp)
+		return
+	if hp >= BRIDGE_HP:
+		return
+	hp = mini(hp + amount, BRIDGE_HP)
+	if hp >= BRIDGE_HP:
+		for cell in bridge_cells:
+			if GameState.nav_grid:
+				GameState.nav_grid.set_point_solid(cell, false)
+			if GameState.vehicle_grid:
+				GameState.vehicle_grid.set_point_solid(cell, false)
+		_sprite.modulate = Color.WHITE
+		Fx.play("spark", world_footprint().get_center())

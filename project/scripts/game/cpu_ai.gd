@@ -27,11 +27,6 @@ const MAN_PRIORITY := {
 	"howitzer": 4, "light": 5, "gun": 6, "gatling": 7, "jeep": 8, "apc": 9,
 	"crane": 10,
 }
-## Robot production mix: [type, weight] — a combat spread, not grunt spam.
-const ROBOT_MIX := [
-	["grunt", 5], ["tough", 3], ["pyro", 2], ["psycho", 2],
-	["sniper", 2], ["laser", 1],
-]
 
 var team := 2
 var _accum := 0.0
@@ -75,42 +70,58 @@ func _think() -> void:
 	_produce()
 	_defend(robots, vehicles)
 	_man_hardware(robots, empty_hardware)
+	_maintenance(vehicles)
 	_capture_zones(robots)
 	_attack(robots, vehicles)
 
 
 # ------------------------- production -------------------------
 
+## Produce from every owned facility using its level-gated build list
+## (robots AND vehicles AND the cannons the roster allows). Robots keep
+## the army growing; vehicles wait for a bank buffer; cannons round out
+## defences when cash is flowing.
 func _produce() -> void:
 	var diff := clampi(GameState.ai_difficulty, 0, 2)
 	var money := int(GameState.money.get(team, 0))
 	for f in get_tree().get_nodes_in_group("facilities"):
 		if not f.alive or f.team == 0 or f.team != team:
 			continue
-		if f is VehicleFactory:
-			if money >= BANK_BEFORE_VEHICLE[diff] and f.queue.items.size() < 2:
-				var pick := _vehicle_pick(money - BANK_BEFORE_VEHICLE[diff])
-				if f.queue_unit(pick, true):
-					money -= int(ContentDB.def_for("vehicle", pick).cost)
-		elif (f is RobotFactory or f.is_fort) and f.queue.items.size() < 3:
-			var pick2 := _robot_pick()
-			var cost := int(ContentDB.def_for("robot", pick2).cost)
-			if money >= cost and f.queue_unit(pick2, true):
-				money -= cost
+		if f.queue.items.size() >= 3:
+			continue
+		var options: Array = []
+		for item in f.build_options():
+			var parts: PackedStringArray = String(item).split(":")
+			if parts[0] == "vehicle" \
+					and money - int(ContentDB.def_for("vehicle", parts[1]).cost) \
+					< BANK_BEFORE_VEHICLE[diff] - 150:
+				continue  # keep a reserve before committing to vehicles
+			options.append(item)
+		if options.is_empty():
+			continue
+		var pick := String(_weighted_pick(options, diff))
+		var parts: PackedStringArray = pick.split(":")
+		var cost := int(ContentDB.def_for(parts[0], parts[1]).cost)
+		if money >= cost and f.queue_unit(pick, true):
+			money -= cost
 
 
-## Weighted pick from the robot mix; the randomness keeps armies from
-## looking identical every match.
-func _robot_pick() -> String:
+## Robots a little more often than hardware; fresh options (vehicles,
+## cannons) get a boost so the AI actually uses its roster.
+func _weighted_pick(options: Array, _diff: int) -> String:
+	var weights: Array = []
+	for item in options:
+		var kind := String(item).split(":")[0]
+		weights.append(5 if kind == "robot" else 3)
 	var total := 0
-	for entry in ROBOT_MIX:
-		total += int(entry[1])
+	for w in weights:
+		total += int(w)
 	var roll := randi() % total
-	for entry in ROBOT_MIX:
-		roll -= int(entry[1])
+	for i in options.size():
+		roll -= int(weights[i])
 		if roll < 0:
-			return String(entry[0])
-	return "grunt"
+			return String(options[i])
+	return String(options[0])
 
 
 ## Bigger tanks when rich, jeeps and lights when scraping by.
@@ -186,6 +197,46 @@ func _man_hardware(robots: Array[Node], empty_hardware: Array[Node]) -> void:
 			empty_hardware.erase(best)
 			r.move_to(best.global_position)
 			r.enter_target = best
+
+
+# ------------------------- maintenance -------------------------
+
+## Damaged vehicles head for the repair shop; cranes set up on the
+## nearest wrecked building or bridge (original: the bot's
+## repair_building_list orders).
+func _maintenance(vehicles: Array[Node]) -> void:
+	var repair_shop: Building2D = null
+	var damaged_buildings: Array[Node] = []
+	for f in get_tree().get_nodes_in_group("facilities"):
+		if f is Building2D and f.alive and f.team == team:
+			if f.is_repair_shop():
+				repair_shop = f
+			elif f.hp < f.max_hp:
+				damaged_buildings.append(f)
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b is Building2D and b.alive and b.team == team \
+				and b.is_bridge() and b.hp < b.max_hp:
+			damaged_buildings.append(b)
+	for v in vehicles:
+		if v.enter_target != null:
+			continue  # already tasked
+		if v.unit_name == "crane" and not damaged_buildings.is_empty():
+			var best_b: Node = null
+			var best_d := INF
+			for b in damaged_buildings:
+				var d: float = v.global_position.distance_squared_to(
+					b.world_footprint().get_center())
+				if d < best_d:
+					best_d = d
+					best_b = b
+			if best_b != null:
+				damaged_buildings.erase(best_b)
+				v.move_to(best_b.world_footprint().get_center())
+				v.enter_target = best_b
+		elif repair_shop != null and v.hp < v.max_hp * 0.5 \
+				and v.kind == "vehicle":
+			v.move_to(repair_shop.world_footprint().get_center())
+			v.enter_target = repair_shop
 
 
 # ------------------------- zone capture -------------------------

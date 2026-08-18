@@ -32,6 +32,11 @@ var _flavoring := false
 var _entering: Node2D = null  # vehicle being boarded (enter_apc gesture)
 var _enter_timer := 0.0
 var carried := false
+var grenades := 0  # throwable grenades from crates (original grenade_item)
+var _grenade_timer := 0.0
+var attack_move := false  # AGRO order: stop and fight en route
+var run_stamina := 1.0  # 0..1, sprinting drains it (original max_run_time)
+var _run_flag := false  # sprint the current order (shift-click)
 
 @onready var sprite: AnimatedSprite2D = $AnimatedSprite2D
 @onready var ring: Node2D = $SelectionRing
@@ -84,6 +89,7 @@ func _process(delta: float) -> void:
 	_separation(delta)
 	_try_enter()
 	if kind == "robot":
+		_auto_enter()
 		_idle(delta)
 	ring.queue_redraw()
 
@@ -100,6 +106,12 @@ func _steer(delta: float) -> void:
 				velocity = Vector2.ZERO
 		else:
 			velocity = offset.normalized() * speed
+			if _run_flag and run_stamina > 0.05:
+				velocity *= 1.6  # double time (original run)
+				run_stamina = maxf(0.0, run_stamina - delta * 0.2)
+	if move_target == Vector2.ZERO:
+		_run_flag = false
+	run_stamina = minf(1.0, run_stamina + delta * 0.08)
 	if velocity.length_squared() > 1.0:
 		_last_dir = _angle_to_dir(velocity.angle())
 		_play("walk", _last_dir)
@@ -200,9 +212,32 @@ func play_gesture(gesture: String) -> void:
 
 
 func _combat() -> void:
+	if attack_move and move_target != Vector2.ZERO:
+		# AGRO order: halt and engage anything in range, resume after
+		var probe := _find_target()
+		if probe != null:
+			velocity = Vector2.ZERO
+			_target = probe
 	if velocity.length_squared() > 4.0:
 		return  # no fire-and-move yet
+	_grenade_timer = maxf(0.0, _grenade_timer - get_process_delta_time())
 	_target = _find_target()
+	# throwable grenades: lobbed automatically at hardware and forts
+	# within reach (original: robots throw grenades at vehicles/guns)
+	if grenades > 0 and _target and _grenade_timer <= 0.0 \
+			and (_target is Vehicle2D or (_target is Building2D and _target.is_fort)) \
+			and global_position.distance_to(_target.global_position) < 80.0:
+		_grenade_timer = 3.0
+		grenades -= 1
+		play_gesture("throw")
+		var g_impact: Vector2 = _target.global_position
+		Fx.gunfire("GRENLOBX")
+		Fx.shell(global_position, g_impact,
+			{"speed": 150.0, "impact": "explosion",
+				"texture": "res://assets/z/effects/grenade/grenade_n00.png"},
+			func():
+				Fx.area_damage(g_impact, 34.0, 26, team))
+		return
 	if _target and _fire_timer <= 0.0:
 		var to_target := _target.global_position - global_position
 		if to_target.length() <= range_px * sprite_scale:
@@ -231,30 +266,61 @@ func _find_target() -> Node2D:
 	return best
 
 
-## Robot weapons: a `projectile` def in the unit table fires a travelling
-## shot (tough rockets, pyro flames); lasers are hitscan with a beam
-## flash; everything else is hitscan with a tracer (Z-style).
+## Robot weapons: per-shot HIT CHANCE (original zsettings), SNIPING —
+## a lucky shot through an open lid kills the driver and re-empties the
+## hardware — and missile weapons splash around the impact. Lasers are
+## hitscan with a beam flash; everything else is a tracer.
 func _shoot(target: Node2D, to_target: Vector2) -> void:
 	_play("fire", _last_dir, true)
-	Fx.gunfire(String(ContentDB.def_for(kind, unit_name).get("sound", "")))
+	var def: Dictionary = ContentDB.def_for(kind, unit_name)
+	Fx.gunfire(String(def.get("sound", "")))
 	var muzzle := global_position + to_target.normalized() * 10.0
-	var projectile: Dictionary = ContentDB.def_for(kind, unit_name).get("projectile", {})
 	var amount := int(round(damage * GameState.robot_damage_mult(team)))
+	var hit_chance := float(def.get("hit", 1.0))
+	var snipe_chance := float(def.get("snipe", 0.0))
+	# the lid over a tank's crew hatch opens while it fires — that is the
+	# window a marksman takes (original: can_be_sniped = lid_open)
+	if snipe_chance > 0.0 and target is Vehicle2D and target.manned \
+			and target.lid_open and randf() < snipe_chance:
+		if unit_name == "laser":
+			Fx.laser(muzzle, target.global_position)
+		else:
+			Fx.bullet(muzzle, target.global_position)
+		Fx.play("muzzle", muzzle)
+		target.eject_driver()
+		return
+	if randf() > hit_chance:
+		# missed: tracer flies past, no damage
+		var past := target.global_position + Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
+		if unit_name == "laser":
+			Fx.laser(muzzle, past)
+		else:
+			Fx.bullet(muzzle, past)
+		return
+	var projectile: Dictionary = def.get("projectile", {})
 	if unit_name == "laser":
 		Fx.laser(muzzle, target.global_position)
-		Fx.play("muzzle", global_position + to_target.normalized() * 12.0)
+		Fx.play("muzzle", muzzle)
 		target.take_damage(amount)
 	elif not projectile.is_empty():
 		var tid := target.get_instance_id()
-		Fx.shell(muzzle, target.global_position, projectile,
+		var radius := float(def.get("radius", 0.0))
+		var impact: Vector2 = target.global_position
+		Fx.shell(muzzle, impact, projectile,
 			func():
 				var hit: Node2D = instance_from_id(tid) as Node2D
 				if hit and hit.alive:
-					hit.take_damage(amount))
+					hit.take_damage(amount)
+				if radius > 0.0:
+					Fx.area_damage(impact, radius, int(amount * 0.5), team))
 	else:
 		Fx.bullet(muzzle, target.global_position)
-		Fx.play("muzzle", global_position + to_target.normalized() * 12.0)
+		Fx.play("muzzle", muzzle)
 		target.take_damage(amount)
+
+
+func _to_point(target: Node2D) -> Vector2:
+	return target.global_position if is_instance_valid(target) else global_position
 
 
 func take_damage(amount: int) -> void:
@@ -269,6 +335,12 @@ func take_damage(amount: int) -> void:
 	tween.tween_property(self, "modulate", Color.WHITE, 0.15)
 	if hp <= 0:
 		die()
+	elif kind == "robot" and amount >= 10 and alive:
+		# near-miss scrambles the robot aside (original: DodgeMissile)
+		play_gesture("dodge")
+		var sidestep := Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0))
+		if _walkable(global_position + sidestep):
+			global_position += sidestep
 
 
 func die() -> void:
@@ -320,6 +392,7 @@ func _on_anim_finished() -> void:
 func move_to(world_pos: Vector2) -> void:
 	enter_target = null  # a fresh order supersedes any pending man/load
 	_entering = null
+	_run_flag = Input.is_key_pressed(KEY_SHIFT)
 	move_target = world_pos
 	waypoints = GameState.request_path(global_position, world_pos, kind)
 	if waypoints.is_empty():
@@ -333,9 +406,14 @@ func move_to(world_pos: Vector2) -> void:
 
 
 ## Man/load the assigned vehicle once actually adjacent to it.
+## Ordered onto a BUILDING: vehicles act on it (repair shop / crane
+## work); robots just walk up and stop.
 func _try_enter() -> void:
 	if enter_target == null or not is_instance_valid(enter_target) or not enter_target.alive:
 		enter_target = null
+		return
+	if enter_target is Building2D:
+		_building_order(enter_target)
 		return
 	if global_position.distance_to(enter_target.global_position) > 16.0:
 		return
@@ -351,6 +429,31 @@ func _try_enter() -> void:
 			play_gesture("enter_apc")  # boards when the anim finishes
 		elif v.is_apc() and v.team == team:
 			v.load_robot(self)
+
+
+## Idle robots automatically hop into empty hardware standing next to
+## them (original: WithinAutoEnterRadius) — a fresh crew for any gun or
+## vehicle left unattended at their feet.
+func _auto_enter() -> void:
+	if move_target != Vector2.ZERO or _entering != null or enter_target != null:
+		return
+	for v in get_tree().get_nodes_in_group("units"):
+		if v is Vehicle2D and not v.manned and v.alive \
+				and global_position.distance_to(v.global_position) < 36.0:
+			enter_target = v
+			return
+
+
+## Robots ordered onto their OWN fort walk in and garrison it
+## (original: ENTER_FORT_WP); other building orders are ignored.
+func _building_order(b: Building2D) -> void:
+	if b is FortBuilding and b.team == team and b.alive \
+			and global_position.distance_to(b.world_footprint().get_center()) < 56.0:
+		if b.garrison_robot(self):
+			queue_free()  # the garrison list remembers the stats we need
+			return
+	enter_target = null
+	move_target = Vector2.ZERO
 
 
 ## Original HUD icon (per type and team) for the selection bar.

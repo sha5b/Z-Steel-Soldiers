@@ -141,6 +141,32 @@ func shell(from: Vector2, to: Vector2, opts: Dictionary, on_hit: Callable) -> vo
 	add_child(shot)
 
 
+## Explosion splash (original: damage_missile with radius): hits every
+## enemy unit and fort/bridge around the impact, and crumbles rocks the
+## blast reaches. Friendly fire is off — the shooter's team is spared.
+func area_damage(world_pos: Vector2, radius: float, amount: int, shooter_team: int) -> void:
+	var r2 := radius * radius
+	for u in get_tree().get_nodes_in_group("units"):
+		if u is Node2D and u is Unit2D and u.alive and not u.carried \
+				and u.team != shooter_team and u.team != 0:
+			if u.global_position.distance_squared_to(world_pos) <= r2:
+				u.take_damage(amount)
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b is Node2D and b is Building2D and b.alive \
+				and (b.is_bridge() or (b.is_fort and b.team != shooter_team and b.team != 0)):
+			if b.world_footprint().get_center().distance_squared_to(world_pos) <= r2:
+				b.take_damage(amount)
+	for rock in get_tree().get_nodes_in_group("rocks"):
+		if rock is Node2D and rock.global_position.distance_squared_to(world_pos) <= r2:
+			var cell := Vector2i(((rock.global_position - Vector2(8, 8)) / 16.0).floor())
+			if GameState.nav_grid and GameState.nav_grid.is_point_solid(cell):
+				GameState.nav_grid.set_point_solid(cell, false)
+			if GameState.vehicle_grid and GameState.vehicle_grid.is_point_solid(cell):
+				GameState.vehicle_grid.set_point_solid(cell, false)
+			play("debris", rock.global_position)
+			rock.queue_free()
+
+
 ## Weapon fire sound from a unit def's `sound` key (GOG RAW conversions).
 func gunfire(sound_name: String) -> void:
 	if sound_name == "":
@@ -155,6 +181,24 @@ func cap_denied() -> void:
 
 func ui_click() -> void:
 	_play_set("click", -6.0)
+
+
+## The commander's voice (original comp_* lines): announcement events
+## for the PLAYER only, throttled so a firefight doesn't spam them.
+const ANNOUNCE_THROTTLE := {"fort_under_attack": 20000, "territory_lost": 15000,
+	"robot_manufactured": 8000, "vehicle_manufactured": 8000,
+	"gun_manufactured": 8000}
+var _announce_gates := {}
+
+
+func announce(event: String) -> void:
+	if event == "":
+		return
+	var until := int(_announce_gates.get(event, 0))
+	if until > Time.get_ticks_msec():
+		return
+	_announce_gates[event] = Time.get_ticks_msec() + int(ANNOUNCE_THROTTLE.get(event, 10000))
+	_play_wav("comp_%s" % event, -2.0)
 
 
 func _play_set(set_name: String, volume_db := 0.0) -> void:

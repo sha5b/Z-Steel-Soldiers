@@ -156,7 +156,9 @@ func _zone_has_building(z: Node) -> bool:
 
 
 func spend(team: int, amount: int) -> bool:
-	if money.get(team, 0) < amount:
+	if not money.has(team):
+		money[team] = 0  # zero-cost items still touch the ledger
+	if money[team] < amount:
 		return false
 	money[team] -= amount
 	money_changed.emit(team, money[team])
