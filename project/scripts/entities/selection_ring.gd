@@ -34,10 +34,18 @@ func _draw() -> void:
 ## rect (robots are 16px art at 2x; vehicles/cannons wider).
 func _draw_brackets(unit: Node) -> void:
 	var col: Color = TEAM_COLORS.get(int(unit.get("team")), Color.WHITE)
-	var wide := _is_wide(unit)
-	var w := 34.0 if wide else 24.0
-	var h := 24.0 if wide else 32.0
-	var r := Rect2(-w * 0.5, -h * 0.5 + 6.0, w, h)  # centred at the feet
+	# the brackets frame the unit's ACTUAL sprite (robots 16x16 art at
+	# 2x, tanks wider) — read the displayed frame's texture size
+	var w := 24.0
+	var h := 32.0
+	var sprite: AnimatedSprite2D = unit.get("sprite")
+	if sprite and sprite.sprite_frames:
+		var tex: Texture2D = sprite.sprite_frames.get_frame_texture(
+			sprite.animation, sprite.frame)
+		if tex != null:
+			w = tex.get_width()
+			h = tex.get_height()
+	var r := Rect2(-w * 0.5, -h * 0.5, w, h)
 	for corner in [r.position, Vector2(r.end.x, r.position.y),
 			Vector2(r.position.x, r.end.y), r.end]:
 		var dx := 1.0 if corner.x >= r.get_center().x else -1.0

@@ -36,16 +36,44 @@ func _ready() -> void:
 	_build_visuals()
 
 
+var _flag_pending := true  # buildings spawn after zones — decide once
+
 func _build_visuals() -> void:
+	_rebuild_marker_cells()
+	queue_redraw()
+
+
+## Flag placement (deferred one tick, when buildings exist): a zone
+## holding a FORT flies no flag of its own — the fort's flag marks the
+## territory; every other zone's flag sits on a free cell near the
+## centre, nudged off buildings and rocks.
+func _place_flag() -> void:
+	_flag_pending = false
+	var r := world_rect()
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b is FortBuilding and is_instance_valid(b) 				and b.art_world_rect().intersection(r).get_area() > 0:
+			return  # the fort flies the territory's flag
 	_flag = AnimatedSprite2D.new()
 	_flag.sprite_frames = AnimLibrary.flag_frames(owner_team)
-	_flag.position = world_rect().get_center()
+	_flag.position = _flag_spot(r)
 	_flag.scale = Vector2(2, 2)
 	add_child(_flag)
 	if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
 		_flag.play("wave")
-	_rebuild_marker_cells()
-	queue_redraw()
+
+
+## Centre cell, nudged to the nearest passable cell inside the zone.
+func _flag_spot(r: Rect2) -> Vector2:
+	var c := Vector2i((r.get_center() / 16.0).floor())
+	for radius in range(0, 12):
+		for dx in range(-radius, radius + 1):
+			for dy in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var cell := c + Vector2i(dx, dy)
+				if r.has_point(Vector2(cell * 16 + Vector2i(8, 8))) 						and NavWorld.nav_grid.region.has_point(cell) 						and not NavWorld.nav_grid.is_point_solid(cell):
+					return Vector2(cell * 16 + Vector2i(8, 8))
+	return r.get_center()
 
 
 ## Which tiles carry a marker: the zone's PERIMETER (zod
@@ -81,6 +109,8 @@ func _rebuild_marker_cells() -> void:
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	if _flag_pending:
+		_place_flag()
 	var occupying := 0
 	var contested := false
 	for u in UnitRegistry.world_units():
@@ -127,13 +157,19 @@ func _draw() -> void:
 	var land := _marker_tex(owner_team, false)
 	var water := _marker_tex(owner_team, true)
 	var t := Time.get_ticks_msec() * 0.001
+	# 2x: the world's units and flags render at 2x — 8x4 stamps at 1x
+	# read as specks that don't fit next to them
+	var dst := Rect2(Vector2(), Vector2(16, 8))
+	var src := Rect2(Vector2(), Vector2(8, 4))
 	if land:
 		for c in _cells:
-			draw_texture(land, Vector2(c) * 16.0 + MARKER_OFFSET)
+			dst.position = Vector2(c) * 16.0 + Vector2(0, 4)
+			draw_texture_rect_region(land, dst, src)
 	if water:
 		for c in _water_cells:
 			var bob := 1.0 if fmod(t * 2.0 + float(_bob_phase.get(c, 0.0)), 2.0) < 1.0 else 0.0
-			draw_texture(water, Vector2(c) * 16.0 + MARKER_OFFSET + Vector2(0, bob))
+			dst.position = Vector2(c) * 16.0 + Vector2(0, 4 + bob)
+			draw_texture_rect_region(water, dst, src)
 
 
 static func _marker_tex(owner: int, water: bool) -> Texture2D:
