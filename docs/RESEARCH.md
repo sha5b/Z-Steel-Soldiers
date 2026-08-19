@@ -137,10 +137,15 @@ window + sniper ejections (survivor bails out), throwable grenades,
 attack-move (A+click) + auto-enter, sprint (shift-click) with stamina,
 dodge sidestep on near-misses, destroyable bridges/rocks, fort
 garrison + fort missiles, the announcer (comp_* lines), per-shot hit
-chance + explosive splash radii + snipe chances (zsettings). Still
-missing: radar building function (needs a fog-of-war concept), ground
-track marks, craters, hut animals/birds, HUD portraits, unit-group
-formations. The list below is kept as the original reference.
+chance + explosive splash radii + snipe chances (zsettings). Also done
+since (2026-08-19): radar gates minimap intel, ground track marks +
+craters + hut animals, fort tower cannon slots (manned, capped),
+contextual animated cursors, R/V/G production roster tabs, native-scale
+world render, map previews with roads + building footprints. Still
+missing (non-blocking): HUD selected-object trio + pop-cap meter
+(unit_amount_bar), robot portraits (SHEADBI), EXIT_C eject cursor,
+ROB voice barks, birds, unit-group formations, missile target-leading.
+The list below is kept as the original reference.
 
 Full function-level sweep of the zod engine source (137 cpp files,
 ~70k lines) against our remake. What we already match: 8-direction

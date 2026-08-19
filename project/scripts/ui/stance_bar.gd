@@ -1,11 +1,12 @@
 class_name StanceBar
 extends HBoxContainer
 ## Order-stance selector beside the minimap: what a right-click order
-## DOES (W move without attacking, A attack-move, D defend-and-hold)
-## plus the smart-idle toggle (grab hand — idle robots auto-man nearby
-## hardware and walk to capturable flags). Original zod cursor art; the
-## active state tints, hotkeys A/D/W mirror the buttons. Compact panel
-## chrome — the full-size button plates would dwarf a 24px icon button.
+## DOES (R move without attacking, Q attack-move, E defend-and-hold)
+## plus the smart-idle toggle (grab hand, T — idle robots auto-man
+## nearby hardware and walk to capturable flags). Original zod cursor
+## art; the active state tints, hotkeys Q/E/R/T mirror the buttons.
+## Compact panel chrome — the full-size button plates would dwarf a
+## 24px icon button.
 
 const CURSOR_DIR := "res://assets/z/ui/cursor"
 const BUTTON := 24.0
@@ -17,9 +18,9 @@ var _toggle: Button = null
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
 	var defs := [
-		["cursor_red_n00", "Move without attacking (W)", MatchState.OrderStance.MOVE],
-		["attack_red_n00", "Attack move (A)", MatchState.OrderStance.ATTACK_MOVE],
-		["place_red_n00", "Defend position (D)", MatchState.OrderStance.DEFEND],
+		["cursor_red_n00", "Move without attacking (R)", MatchState.OrderStance.MOVE],
+		["attack_red_n00", "Attack move (Q)", MatchState.OrderStance.ATTACK_MOVE],
+		["place_red_n00", "Defend position (E)", MatchState.OrderStance.DEFEND],
 	]
 	for d in defs:
 		var btn := _make_button(String(d[0]), String(d[1]))
@@ -29,7 +30,7 @@ func _ready() -> void:
 			Fx.ui_click())
 		_buttons.append(btn)
 		add_child(btn)
-	_toggle = _make_button("grab_red_n00", "Smart idle: robots auto-man\nhardware and capture flags")
+	_toggle = _make_button("grab_red_n00", "Smart idle (T): robots auto-man\nhardware and capture flags")
 	_toggle.toggle_mode = true
 	_toggle.button_pressed = MatchState.auto_idle
 	_toggle.toggled.connect(func(on: bool):

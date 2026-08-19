@@ -21,7 +21,7 @@ static func should_run() -> bool:
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
-			"ui", "teams", "defs", "scenes", "orders", "balance"]:
+			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -379,6 +379,62 @@ static func run(ctx: Node) -> void:
 				problems.append("%s: fire flash must not loop" % cname)
 		print("LAYER: problems=%d %s" % [problems.size(),
 			", ".join(problems) if not problems.is_empty() else "(all layers ok)"])
+	if "--cursor-test" in args:
+		# the contextual cursor: every zod DetermineCursor branch this
+		# remake implements, plus the art families actually shipping
+		var cproblems: Array[String] = []
+		var hud := CanvasLayer.new()
+		ctx.add_child(hud)
+		var gcur := GameCursor.install(hud)
+		# quiet corner, overkill HP: the map's live war must not kill or
+		# walk off with the test fixtures before the checks run
+		var corner := Vector2(2400, 3080)
+		var foe := Spawner.spawn(ctx, "robot", "grunt", 2, corner, true)
+		var free_jeep := Spawner.spawn(ctx, "vehicle", "jeep", 0, corner + Vector2(100, 0), false)
+		var mine3 := Spawner.spawn(ctx, "robot", "grunt", 1, corner + Vector2(200, 0), true)
+		for u3 in [foe, free_jeep, mine3]:
+			if u3:
+				u3.hp = 10000000
+				u3.max_hp = 10000000
+		var crate := Pickup.new()
+		crate.pickup_type = "grenades"
+		crate.position = corner + Vector2(300, 0)
+		ctx.add_child(crate)
+		var pfort: FortBuilding = null
+		for c in ctx.get_children():
+			if c is FortBuilding and c.team == MatchState.player_team:
+				pfort = c
+				break
+		await tree.process_frame
+		SelectionManager.select_single(mine3)
+		# _determine takes VIEWPORT coords — push the world points
+		# through the camera's canvas transform first
+		var xform: Transform2D = tree.root.get_canvas_transform()
+		for spec in [["attack", foe.global_position], ["enter", free_jeep.global_position],
+				["grab", crate.global_position], ["place", corner + Vector2(400, 0)]]:
+			var got: String = gcur._determine(xform * Vector2(spec[1]))
+			if got != String(spec[0]):
+				cproblems.append("%s got %s" % [spec[0], got])
+		if pfort:
+			var got_fort: String = gcur._determine(xform * pfort.visual_center())
+			if got_fort != "place":
+				cproblems.append("garrison got %s" % got_fort)
+		SelectionManager.clear_selection()
+		var got_plain: String = gcur._determine(foe.global_position)
+		if got_plain != "cursor":
+			cproblems.append("plain got %s" % got_plain)
+		for fam in ["cursor", "place", "attack", "grab", "enter", "repair", "nono", "cannon"]:
+			var team := AnimLibrary.team_name(MatchState.player_team)
+			if not ResourceLoader.exists("res://assets/z/ui/cursor/%s_%s_n00.png" % [fam, team]) \
+					and fam != "cursor":
+				cproblems.append("art %s_%s" % [fam, team])
+		print("CURSOR: problems=%d %s" % [cproblems.size(),
+			", ".join(cproblems) if not cproblems.is_empty() else "(all contexts ok)"])
+		hud.queue_free()
+		for u in [foe, free_jeep, mine3]:
+			if is_instance_valid(u):
+				u.queue_free()
+		crate.queue_free()
 	if "--orders-test" in args:
 		# the single order intake: state, targets and flags come out of
 		# the Order, never from field writes
@@ -1311,6 +1367,12 @@ static func run(ctx: Node) -> void:
 			saved, MatchState.money[1], MatchState.zones[0].owner_team,
 			snapshot.get("units", []).size()])
 	if "--campaign-test" in args:
+		# snapshot the player's real progress first — advance() PERSISTS,
+		# and a test run must never leave the campaign stuck on a later
+		# mission (the 'we never start with the first mission' bug)
+		var progress_backup := PackedByteArray()
+		if FileAccess.file_exists(Campaign.PROGRESS_PATH):
+			progress_backup = FileAccess.get_file_as_bytes(Campaign.PROGRESS_PATH)
 		Campaign.start(false)
 		var first: String = Campaign.current_map_path()
 		var advanced: bool = Campaign.advance()
@@ -1318,6 +1380,12 @@ static func run(ctx: Node) -> void:
 		print("CAMPAIGN: missions=%d first=%s advanced=%s resumed_mission=%d" % [
 			Campaign.missions.size(), first.get_file(), advanced, Campaign.mission])
 		Campaign.active = false
+		if not progress_backup.is_empty():
+			var rf := FileAccess.open(Campaign.PROGRESS_PATH, FileAccess.WRITE)
+			if rf:
+				rf.store_buffer(progress_backup)
+		else:
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(Campaign.PROGRESS_PATH))
 	if "--win-test" in args:
 		var wproblems: Array[String] = []
 		GameState.game_over.connect(func(winner): print("WINNER: %d" % winner))

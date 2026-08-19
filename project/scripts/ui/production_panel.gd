@@ -21,6 +21,8 @@ var _queue_row: HBoxContainer
 var _progress: ProgressBar
 var _built_for := ""
 var _queue_cache: Array = []
+var _page := "robot"  # active R/V/G roster page
+var _tabs := {}       # kind token -> tab Button
 
 
 func _ready() -> void:
@@ -42,6 +44,32 @@ func _ready() -> void:
 	_title.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
 	_title.custom_minimum_size = Vector2(0, 20)
 	col.add_child(_title)
+	# the ORIGINAL's R/V/G roster pages: a level-5 fort carries 18 items
+	# — one unfiltered grid overflows the 384x256 panel. Tabs filter the
+	# roster to robots / vehicles / guns (empty tabs hide, and the page
+	# auto-falls back when the roster drops its kind)
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 4)
+	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_child(tabs)
+	for spec in [["R", "robot", "Robots"], ["V", "vehicle", "Vehicles"],
+			["G", "cannon", "Guns"]]:
+		var tab := Button.new()
+		tab.text = String(spec[0])
+		tab.tooltip_text = String(spec[2])
+		tab.toggle_mode = true
+		tab.custom_minimum_size = Vector2(24, 24)
+		var kind_token: String = String(spec[1])
+		tab.toggled.connect(func(on):
+			tab.modulate = Color(1.0, 0.85, 0.45) if on else Color.WHITE
+			if on:
+				_page = kind_token
+				for k in _tabs:
+					_tabs[k].button_pressed = _tabs[k] == tab
+				if _wired:
+					_build_buttons(_wired))
+		_tabs[String(spec[1])] = tab
+		tabs.add_child(tab)
 	_box = GridContainer.new()
 	(_box as GridContainer).columns = 4
 	_box.add_theme_constant_override("h_separation", 4)
@@ -84,7 +112,8 @@ func _on_selection_changed(_units: Array) -> void:
 ## Button row rebuild: on selection change and whenever the producer's
 ## queue or level may have moved the roster.
 func _check_roster() -> void:
-	if _wired and _built_for != "%s:%d" % [_wired.kind_key(), _wired.level]:
+	if _wired and _built_for != "%s:%d:%s" % [
+			_wired.kind_key(), _wired.level, _page]:
 		_build_buttons(_wired)
 		if _wired:
 			_update_queue(_wired)
@@ -137,14 +166,31 @@ func _selected_factory() -> Node:
 
 
 func _build_buttons(factory: Node) -> void:
-	_built_for = "%s:%d" % [factory.kind_key(), factory.level]
+	_built_for = "%s:%d:%s" % [factory.kind_key(), factory.level, _page]
 	var label_path: String = LABELS.get(factory.kind_key(), "")
 	_title.texture = load(label_path) if ResourceLoader.exists(label_path) else null
+	# tab availability from the FULL roster (tabs hide when this level
+	# carries none of that kind); switch pages when ours emptied out
+	var full: Array = factory.build_options()
+	for kind_token in _tabs:
+		var tab: Button = _tabs[kind_token]
+		tab.visible = full.any(func(i): return String(i).begins_with(kind_token + ":"))
+		if tab.visible and _page == kind_token:
+			tab.button_pressed = true
+			tab.modulate = Color(1.0, 0.85, 0.45)
+	if not _tabs.get(_page, null) or not _tabs[_page].visible:
+		for kind_token in ["robot", "vehicle", "cannon"]:
+			if _tabs[kind_token].visible:
+				_page = kind_token
+				_tabs[kind_token].button_pressed = true
+				break
 	for c in _box.get_children():
 		c.queue_free()
 	# the level-gated roster from the original build lists — mixed
 	# kinds: "robot:grunt", "vehicle:jeep", "cannon:gatling"...
-	for item in factory.build_options():
+	for item in full:
+		if not String(item).begins_with(_page + ":"):
+			continue
 		var parts: PackedStringArray = String(item).split(":")
 		var kind := parts[0]
 		var type_name := parts[1]

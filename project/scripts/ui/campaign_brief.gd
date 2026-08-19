@@ -7,6 +7,7 @@ const TERRAIN_TO_PLANET := {"arctic": "artic", "volcanic": "volcan"}
 
 @onready var label: Label = %BriefLabel
 @onready var planet: TextureRect = %Planet
+@onready var map_view: TextureRect = %MapView
 
 
 func _ready() -> void:
@@ -16,6 +17,12 @@ func _ready() -> void:
 	var path := "%s/%s.png" % [PLANETS, _terrain()]
 	if ResourceLoader.exists(path):
 		planet.texture = load(path)
+	# the ACTUAL mission map thumbnail (terrain + roads + buildings), not
+	# just planet flavour art
+	var map_name := Campaign.current_map_path().get_file().get_basename()
+	var preview := MapPreview.texture(map_name)
+	if preview:
+		map_view.texture = preview
 	await SelfTests.maybe_screenshot(self, "screenshot_brief.png")
 
 

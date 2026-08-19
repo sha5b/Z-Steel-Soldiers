@@ -21,7 +21,7 @@ static func dispatch(world_position: Vector2) -> void:
 	for u in SelectionManager.selected:
 		if is_instance_valid(u) and u is Unit2D and u.alive:
 			movers.append(u)
-	# the stance (A/D/W hotkeys or the stance bar) decides what a move
+	# the stance (Q/E/R hotkeys or the stance bar) decides what a move
 	# order does; shift sprints the order (the entity never reads Input
 	# itself)
 	var stance: MatchState.OrderStance = MatchState.order_stance

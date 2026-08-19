@@ -40,8 +40,9 @@ per-level `build_lists` rosters as `"kind:name"` entries) + a scene in
 **New effect/VFX**: drop a folder under `assets/z/effects/<name>/` with
 `<name>_n00.png...` frames — auto-registered, playable via
 `Fx.play("<name>")`. Tune fps/scale/grounding in a
-`content/effects/<name>.tres` (scale is relative to the 2x unit
-baseline; `art` plays another folder's frames).
+`content/effects/<name>.tres` (scale multiplies the art's native size —
+the whole world renders 1:1 with the original art, like zod; `art` plays
+another folder's frames).
 
 **New item/crate**: `.tres` in `content/pickups/` — the effect is data
 (`upgrade_key` grants a team upgrade, `grenades` arms the collector).

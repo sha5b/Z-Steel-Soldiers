@@ -31,6 +31,21 @@ mouse_filter = 2
 expand_mode = 1
 stretch_mode = 5
 
+[node name="MapView" type="TextureRect" parent="."]
+unique_name_in_owner = true
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -170.0
+offset_top = 14.0
+offset_right = -14.0
+offset_bottom = 170.0
+grow_horizontal = 0
+mouse_filter = 2
+texture_filter = 1
+expand_mode = 1
+stretch_mode = 5
+
 [node name="BriefLabel" type="Label" parent="."]
 unique_name_in_owner = true
 anchors_preset = 8

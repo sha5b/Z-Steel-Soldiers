@@ -9,7 +9,7 @@ signal zone_captured(team: int)
 const INCOME_PER_ZONE := 1.0
 var fast_build := false  # self-test lever: 2s builds regardless of defs
 
-## What a right-click order DOES (set by the A/D/W hotkeys and the
+## What a right-click order DOES (set by the Q/E/R hotkeys and the
 ## stance bar next to the minimap): MOVE ignores enemies en route,
 ## ATTACK_MOVE halts and engages, DEFEND walks there and holds the post.
 enum OrderStance { MOVE, ATTACK_MOVE, DEFEND }

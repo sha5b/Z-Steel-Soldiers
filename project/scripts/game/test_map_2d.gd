@@ -13,10 +13,12 @@ var _map_index := 0
 
 func _ready() -> void:
 	Engine.time_scale = GameSettings.game_speed()  # options-screen speed
-	var cursor_path := "res://assets/z/ui/cursor/cursor_blue_n00.png"
-	if ResourceLoader.exists(cursor_path):
-		Input.set_custom_mouse_cursor(load(cursor_path), Input.CURSOR_ARROW,
-			Vector2(6, 3))  # original in-game pointer
+	# the ORIGINAL's animated, context-swapping team cursor, drawn in the
+	# stretched canvas so it scales with the window (a 16px OS cursor
+	# reads as a speck on a maximized window); the OS pointer hides for
+	# the match and comes back when the scene exits
+	GameCursor.install($CanvasLayer)
+	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
 	UiTheme.apply($CanvasLayer/HUD)
 	SelectionManager.order_issued.connect(_on_order)
 	var chosen: String = GameState.next_map if GameState.next_map != "" else map_json
@@ -174,24 +176,33 @@ func _on_game_over(winning_team: int) -> void:
 	overlay.show_for(winning_team)
 
 
+func _exit_tree() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_M:
 		_cycle_map()
 		return
-	# stance hotkeys: A attack-move, D defend, W plain move — reflected
-	# by the stance bar next to the minimap
+	# stance hotkeys: Q attack-move, E defend, R plain move, T toggles
+	# smart idle (auto-man) — reflected by the stance bar next to the
+	# minimap
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_A:
+			KEY_Q:
 				MatchState.order_stance = MatchState.OrderStance.ATTACK_MOVE
 				Fx.ui_click()
 				return
-			KEY_D:
+			KEY_E:
 				MatchState.order_stance = MatchState.OrderStance.DEFEND
 				Fx.ui_click()
 				return
-			KEY_W:
+			KEY_R:
 				MatchState.order_stance = MatchState.OrderStance.MOVE
+				Fx.ui_click()
+				return
+			KEY_T:
+				MatchState.auto_idle = not MatchState.auto_idle
 				Fx.ui_click()
 				return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
