@@ -62,8 +62,9 @@ const CRANE_TABLES := {
 ## to the neutral "null" art; neutral-only anims (`empty_*`, plain
 ## `wasted.png`) never carry the token and stay team-free.
 static func team_name(team: int) -> String:
-	var name := Teams.display_name(team)
-	return name if Teams.exists(team) else "null"
+	# Teams.palette cycles 8-team maps through the four shipped colour
+	# sets — never "null" for a real team
+	return Teams.display_name(team)
 
 
 ## Territory flag wave: the owning team's own frames — the neutral grey

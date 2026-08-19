@@ -51,32 +51,86 @@ static func run(ctx: Node) -> void:
 	var tree := ctx.get_tree()
 
 	if "--ui-test" in args:
-		# the original-art UI kit: gold menu font, GOG button plates, planets
-		var fails: PackedStringArray = []
-		var menu_font := UiTheme.font()
-		if menu_font == null:
-			fails.append("menu font missing")
-		else:
-			for c in "ContinueCampaignQuickStart0123456789:-!VICTORY":
-				if not menu_font.has_char(c.unicode_at(0)):
-					fails.append("font char %s" % c)
-		var plate := UiTheme.button("normal")
-		if plate == null or plate.texture == null \
-				or plate.texture.get_size() != Vector2(32, 32):
-			fails.append("button plate")
-		for kind in ["normal", "hover", "pressed"]:
-			if UiTheme.button(kind) == UiTheme.button("normal") and kind != "normal":
-				fails.append("plate state %s not distinct" % kind)
-		for planet in ["artic", "city", "desert", "jungle", "volcan"]:
-			if not ResourceLoader.exists(
-					"res://assets/z/ui/planets/%s.png" % planet):
-				fails.append("planet %s" % planet)
-		for art in ["res://assets/z/ui/Buttons.png",
-				"res://assets/z/ui/PMHSprites.png",
-				"res://assets/z/ui/plaques/options.png"]:
-			if not ResourceLoader.exists(art):
-				fails.append(art)
-		print("UI: %s" % (",".join(fails) if fails.size() > 0 else "all original-art kit present"))
+			# the original-art UI kit: gold menu font, GOG button plates, planets
+			var fails: PackedStringArray = []
+			var menu_font := UiTheme.font()
+			if menu_font == null:
+				fails.append("menu font missing")
+			else:
+				for c in "ContinueCampaignSkirmishSettings0123456789:-!%VICTORY":
+					if not menu_font.has_char(c.unicode_at(0)):
+						fails.append("font char %s" % c)
+			var plate := UiTheme.button("normal")
+			if plate == null or plate.texture == null \
+					or plate.texture.get_size() != Vector2(32, 32):
+				fails.append("button plate")
+			for kind in ["normal", "hover", "pressed"]:
+				if UiTheme.button(kind) == UiTheme.button("normal") and kind != "normal":
+					fails.append("plate state %s not distinct" % kind)
+			for planet in ["artic", "city", "desert", "jungle", "volcan"]:
+				if not ResourceLoader.exists(
+						"res://assets/z/ui/planets/%s.png" % planet):
+					fails.append("planet %s" % planet)
+			for art in ["res://assets/z/ui/Buttons.png",
+					"res://assets/z/ui/PMHSprites.png",
+					"res://assets/z/ui/plaques/options.png",
+					"res://assets/z/ui/plaques/audio.png"]:
+				if not ResourceLoader.exists(art):
+					fails.append(art)
+			# skirmish plumbing: real player counts (the JSON player_count
+			# field lies — always 2), previews rendered from each map's own
+			# terrain art, and the GameSettings round-trip
+			for spec in [["p02_bb_orig01", 2], ["p03_bb_p03m01", 3],
+					["p04_bb_p04m01", 4], ["p08_bb_p08m01", 8]]:
+				if not MapCatalog.entries().any(
+						func(e): return String(e.name) == String(spec[0])):
+					continue  # map not shipped in this build
+				var pm: Dictionary = MapCatalog.meta(String(spec[0]))
+				if pm.players != spec[1]:
+					fails.append("%s players %d want %d" % [spec[0], pm.players, spec[1]])
+			var terrains_seen := {}
+			for e in MapCatalog.entries():
+				var m2: Dictionary = MapCatalog.meta(String(e.name))
+				if terrains_seen.has(m2.terrain) or e.sandbox:
+					continue
+				terrains_seen[m2.terrain] = true
+				var tex := MapPreview.texture(String(e.name))
+				if tex == null or tex.get_width() != m2.width or tex.get_height() != m2.height:
+					fails.append("preview %s" % String(e.name))
+			if terrains_seen.size() < 5:
+				fails.append("previews covered %d/5 terrains" % terrains_seen.size())
+			var g_diff := GameSettings.difficulty
+			var g_speed := GameSettings.speed_index
+			var g_idle := GameSettings.auto_idle
+			var g_music := GameSettings.music_volume
+			var g_sfx := GameSettings.sfx_volume
+			GameSettings.difficulty = 2
+			GameSettings.speed_index = 0
+			GameSettings.auto_idle = false
+			GameSettings.music_volume = 0.25
+			GameSettings.sfx_volume = 0.5
+			GameSettings.save()
+			GameSettings.difficulty = 0
+			GameSettings.speed_index = 4
+			GameSettings.auto_idle = true
+			GameSettings.music_volume = 1.0
+			GameSettings.sfx_volume = 1.0
+			GameSettings.read()
+			if GameSettings.difficulty != 2 or GameSettings.speed_index != 0 \
+					or GameSettings.auto_idle != false \
+					or absf(GameSettings.music_volume - 0.25) > 0.001 \
+					or absf(GameSettings.sfx_volume - 0.5) > 0.001:
+				fails.append("settings round-trip")
+			if absf(GameSettings.game_speed() - 0.5) > 0.001:
+				fails.append("game_speed lookup")
+			GameSettings.difficulty = g_diff
+			GameSettings.speed_index = g_speed
+			GameSettings.auto_idle = g_idle
+			GameSettings.music_volume = g_music
+			GameSettings.sfx_volume = g_sfx
+			GameSettings.apply()
+			GameSettings.save()
+			print("UI: %s" % (",".join(fails) if fails.size() > 0 else "all original-art kit present"))
 	if "--capture-test" in args:
 		var u: Unit2D = null
 		for unit in tree.get_nodes_in_group("units"):
@@ -1375,8 +1429,9 @@ static func run(ctx: Node) -> void:
 		# loaded frames, full art parity and neutral art must all hold
 		var fails: PackedStringArray = []
 		# 1. team token mapping (teams 1-4 their variant, 0/unknown null)
+		# 8-team maps cycle through the four shipped palettes
 		var mapping := {1: "red", 2: "blue", 3: "green", 4: "yellow",
-			0: "null", 9: "null"}
+			0: "null", 5: "red", 6: "blue", 8: "yellow", 9: "red"}
 		for team in mapping:
 			if AnimLibrary.team_name(team) != mapping[team]:
 				fails.append("team_name %d -> %s" % [team, AnimLibrary.team_name(team)])
