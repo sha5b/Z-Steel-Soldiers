@@ -82,7 +82,7 @@ static func _find_interactable_building(world_position: Vector2) -> Building2D:
 	for group in ["buildings", "facilities"]:
 		for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(group):
 			if b is Building2D and b.alive \
-					and b.world_footprint().has_point(world_position):
+					and b.art_world_rect().has_point(world_position):
 				return b
 	return null
 
@@ -91,7 +91,7 @@ static func _find_interactable_building(world_position: Vector2) -> Building2D:
 static func _find_own_fort(world_position: Vector2) -> FortBuilding:
 	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("buildings"):
 		if b is FortBuilding and b.alive and b.team != 0 \
-				and b.world_footprint().has_point(world_position):
+				and b.art_world_rect().has_point(world_position):
 			return b
 	return null
 

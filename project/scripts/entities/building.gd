@@ -26,7 +26,7 @@ var _sprite: Sprite2D
 var _rally_flag: Sprite2D
 var _flag: AnimatedSprite2D
 var _flag_team := -1  # team the flag currently shows
-var _hp_bar: ColorRect
+var _hp_bar: Sprite2D
 var _hp_bar_max_w := 64.0
 var _art_size := Vector2.ZERO  # FULL art size (never the cropped/rotated view)
 
@@ -227,24 +227,35 @@ func _build_sprite() -> void:
 		position.y += lift
 		_sprite.position.y -= lift
 
-	_flag = AnimatedSprite2D.new()
-	if building_id == 6 or building_id == 7:
-		_flag.visible = false  # bridges carry no flag
-	_flag.position = Vector2(0, -ts.y * 0.5 - 4)
-	_flag.scale = Vector2(2, 2)
-	add_child(_flag)
-	set_flag_team(team)
+	# ONE flag per ZONE marks territory; the only building that flies
+	# its own is the FORT (radar/repair/factories show ownership through
+	# their zone's flag — the original never gave every building one)
+	if is_fort and not is_bridge():
+		_flag = AnimatedSprite2D.new()
+		# x: the fort art's horizontal centre (the node sits at the map
+		# cell, the art extends right from -8)
+		_flag.position = Vector2(-8.0 + ts.x * 0.5, -ts.y * 0.5 - 4.0)
+		_flag.scale = Vector2(2, 2)
+		add_child(_flag)
+		set_flag_team(team)
 
 	_build_overlays()
 
 	if is_fort:
-		_hp_bar = ColorRect.new()
-		_hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_hp_bar.color = Color(0.2, 1.0, 0.2)
-		var bar_w := ts.x * 0.5  # match the building footprint width
+		# the ORIGINAL team-coloured bar art, cropped right-to-left as
+		# health depletes (never recoloured, never stretched)
+		_hp_bar = Sprite2D.new()
+		_hp_bar.centered = false
+		_hp_bar.texture = _bar_texture(team)
+		# tight to the building: full ART width, left edge on the art's
+		# left (the node is the art's vertical middle, not its centre)
+		var bar_w := ts.x
+		_hp_bar.scale = Vector2(bar_w / 62.0, 6.0 / 16.0)
+		_hp_bar.region_enabled = true
+		_hp_bar.region_rect = Rect2(0, 0, 62, 16)
 		_hp_bar_max_w = bar_w
-		_hp_bar.size = Vector2(bar_w, 5)
-		_hp_bar.position = Vector2(-bar_w * 0.5, -ts.y * 0.5 - 12)
+		_hp_bar.position = Vector2(-8.0, -ts.y * 0.5 - 10)
+		_hp_bar.visible = false  # shown while selected or damaged
 		add_child(_hp_bar)
 
 
@@ -309,6 +320,17 @@ func set_flag_team(for_team: int) -> void:
 	_flag.sprite_frames = AnimLibrary.flag_frames(for_team)
 	if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
 		_flag.play("wave")
+
+
+static var _bar_cache := {}
+
+
+## Team-coloured health bar art (shared with the unit selection ring).
+static func _bar_texture(team: int) -> Texture2D:
+	if not _bar_cache.has(team):
+		var path := "res://assets/z/ui/hud/unit_amount_bar_%s.png" 			% AnimLibrary.team_name(team)
+		_bar_cache[team] = load(path) if ResourceLoader.exists(path) else null
+	return _bar_cache[team]
 
 
 ## Texture location comes from the building def's `tex` key — new building
@@ -433,8 +455,31 @@ func set_selected(value: bool) -> void:
 	selected = value
 	if _rally_flag:
 		_rally_flag.visible = value and rally_point != Vector2.INF
-	if _sprite:
-		_sprite.modulate = Color(1.3, 1.3, 0.9) if value else Color.WHITE
+	if _hp_bar:
+		_hp_bar.visible = selected or hp < max_hp
+	queue_redraw()  # corner brackets (the original selection look)
+
+
+## Selection indicator (zod draw_selection_box): four corner brackets
+## in the owner's team colour around the art rect — the same treatment
+## the original gave every selected object, buildings included.
+func _draw() -> void:
+	if Engine.is_editor_hint() or not selected or _art_size == Vector2.ZERO:
+		return
+	var col: Color = {
+		0: Color("737373"), 1: Color("df0000"), 2: Color("1337fb"),
+		3: Color("178f13"), 4: Color("cb632f"),
+	}.get(owner_team if team == 0 else team, Color.WHITE)
+	var r := Rect2(Vector2(-8.0, -_art_size.y * 0.5), _art_size)
+	var arm := 6.0
+	var pad := 4.0
+	for corner in [r.position, Vector2(r.end.x, r.position.y),
+			Vector2(r.position.x, r.end.y), r.end]:
+		var dx := 1.0 if corner.x >= r.get_center().x else -1.0
+		var dy := 1.0 if corner.y >= r.get_center().y else -1.0
+		var base: Vector2 = corner + Vector2(pad * dx, pad * dy)
+		draw_line(base, base + Vector2(arm * dx, 0), col, 1.5)
+		draw_line(base, base + Vector2(0, arm * dy), col, 1.5)
 
 
 func update_flag(for_team: int) -> void:
@@ -539,7 +584,9 @@ func take_damage(amount: int) -> void:
 		var tween := create_tween()
 		tween.tween_property(_sprite, "modulate", Color.WHITE, 0.15)
 	if _hp_bar:
-		_hp_bar.size.x = maxf(4.0, _hp_bar_max_w * clampf(float(hp) / float(max_hp), 0.0, 1.0))
+		_hp_bar.region_rect.size.x = maxf(6.0,
+			62.0 * clampf(float(hp) / float(max_hp), 0.0, 1.0))
+		_hp_bar.visible = true
 	if is_fort and team == MatchState.player_team and hp > 0 \
 			and float(hp) / float(max_hp) < 0.35:
 		Fx.announce("youre_losing")

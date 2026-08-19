@@ -222,11 +222,11 @@ func _pick_select(screen_pos: Vector2) -> void:
 	# player factories and fort first (selecting opens the production panel)
 	for c in get_children():
 		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == MatchState.player_team \
-				and c.world_footprint().has_point(world):
+				and c.art_world_rect().has_point(world):
 			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
 		if c is FortBuilding and c.team == MatchState.player_team \
-				and c.world_footprint().has_point(world):
+				and c.art_world_rect().has_point(world):
 			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
 	var best: Node2D = null
