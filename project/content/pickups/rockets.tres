@@ -8,3 +8,4 @@ script = ExtResource("1_u027b")
 id = "rockets"
 texture = ExtResource("2_00j4w")
 upgrade_key = "rockets"
+sound_set = "pickup"

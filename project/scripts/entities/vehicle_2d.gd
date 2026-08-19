@@ -290,7 +290,7 @@ func _steer(delta: float) -> void:
 	if move_target != Vector2.ZERO:
 		var next: Vector2 = waypoints[0] if not waypoints.is_empty() else move_target
 		var offset := next - global_position
-		if offset.length() <= (6.0 if not waypoints.is_empty() else 4.0):
+		if offset.length() <= (6.0 if not waypoints.is_empty() else 8.0):
 			if not waypoints.is_empty():
 				waypoints.remove_at(0)
 			else:
@@ -310,9 +310,18 @@ func _steer(delta: float) -> void:
 			_track_distance = 0.0
 			Decals.track(_last_dir, global_position, unit_name == "jeep")
 		# consume waypoints leapfrogged by a large step (see Unit2D._steer)
-		if not waypoints.is_empty() \
-				and global_position.distance_to(waypoints[0]) > dist_before:
-			waypoints.remove_at(0)
+		var final_before: float = global_position.distance_to(move_target) \
+				if move_target != Vector2.ZERO else INF
+		if not waypoints.is_empty():
+			if global_position.distance_to(waypoints[0]) > dist_before:
+				waypoints.remove_at(0)
+		elif move_target != Vector2.ZERO \
+				and global_position.distance_to(move_target) > final_before:
+			# the FINAL leg can be leapfrogged too — without this a fast
+			# unit ping-pongs around the 4px arrival radius forever
+			move_target = Vector2.ZERO
+			velocity = Vector2.ZERO
+			_on_arrived()
 		global_position = global_position.clamp(
 			NavWorld.map_rect.position, NavWorld.map_rect.end)
 	else:

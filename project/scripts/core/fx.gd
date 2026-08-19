@@ -14,9 +14,9 @@ const SOUNDS := {
 	"explosion": ["EXP1", "EXP2"],
 	"destroyed": ["OBJDEST3", "EXP2"],
 	"impact": ["RICOCH1"],
-	# GRENADE.wav was never converted from the GOG dump — fall back to
-	# the grenade-launcher shot so pickups aren't silent
-	"pickup": ["GRENADE", "GRENLOBX"],
+	# GRENADE.wav was never converted from the GOG dump — the
+	# grenade-launcher shot stands in so pickups aren't silent
+	"pickup": ["GRENLOBX"],
 	"click": ["CLICK1L", "CLICK5L", "CLICK6L"],
 }
 const GUNSHOT_VOLUME_DB := -10.0

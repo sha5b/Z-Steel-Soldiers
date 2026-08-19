@@ -19,14 +19,20 @@ func track(unit: Unit2D) -> void:
 
 
 ## Called from Unit2D.die — also compacts freed entries (units can be
-## freed without dying, e.g. the save-restore roster swap).
+## freed without dying, e.g. the save-restore roster swap). Every death
+## re-checks the original's no-units rule: a team whose last robot,
+## vehicle or cannon fell loses its forts.
 func untrack(unit: Unit2D) -> void:
 	_all.erase(unit)
 	_all = _all.filter(func(u): return is_instance_valid(u))
 	unit_died.emit(unit)
+	GameState.check_no_units(unit.team)
 
 
 func all_units() -> Array[Unit2D]:
+	# lazily drop dangling refs (units freed without die()) — callers
+	# must never see a freed instance ('is' on one is a hard error)
+	_all = _all.filter(func(u): return is_instance_valid(u))
 	return _all
 
 

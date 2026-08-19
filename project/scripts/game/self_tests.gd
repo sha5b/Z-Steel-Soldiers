@@ -280,6 +280,11 @@ static func run(ctx: Node) -> void:
 		if bot == null:
 			oproblems.append("spawn failed")
 		else:
+			bot.hp = 100000  # walks across a live 8-team battlefield
+			# the map's own 8-team war rages during this test — its
+			# elimination cascade would die() our bot mid-order; over=
+			# true blocks report_fort_destroyed for the test's duration
+			GameState.over = true
 			bot.issue_order(Order.move(Vector2(700, 600)))
 			if bot.state != Unit2D.State.MOVING or bot.attack_move \
 					or bot.enter_target != null:
@@ -303,6 +308,33 @@ static func run(ctx: Node) -> void:
 			bot._order_done()
 			if not bot.is_idle() or bot.state != Unit2D.State.IDLE:
 				oproblems.append("order_done")
+			if bot.attack_move:
+				oproblems.append("order_done kept attack_move")
+			# a robot ordered onto a NON-garrisonable building walks up
+			# first, then must land IDLE (used to stick in ENTERING
+			# forever — invisible to the AI's idle scan)
+			var radar: Building2D = ContentDB.building_def(2).behaviour.new()
+			radar.setup(2, 1, "desert")
+			radar.position = Vector2(660, 620)
+			ctx.add_child(radar)
+			bot.issue_order(Order.for_target(radar))
+			for i in 300:
+				await Engine.get_main_loop().process_frame
+				if bot.is_idle():
+					break
+			if not bot.is_idle():
+				oproblems.append("radar order stuck in ENTERING")
+			# MAN target destroyed mid-walk: back to idle, retaskable
+			var jeep5: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 0,
+				Vector2(900, 700))
+			bot.issue_order(Order.for_target(jeep5))
+			jeep5.queue_free()
+			for i in 10:
+				await Engine.get_main_loop().process_frame
+			if not bot.is_idle():
+				oproblems.append("freed MAN target stuck")
+			radar.queue_free()
+			GameState.over = false
 			bot.die()
 			if bot.state != Unit2D.State.DEAD:
 				oproblems.append("DEAD state")
@@ -568,6 +600,10 @@ static func run(ctx: Node) -> void:
 		shop.setup(3, MatchState.player_team, "desert", 0)
 		shop.position = Vector2(600, 600)
 		ctx.add_child(shop)
+		for z in MatchState.zones:
+			if z.world_rect().has_point(Vector2(632, 624)) \
+					or z.world_rect().has_point(Vector2(732, 624)):
+				z.set_owner_team(MatchState.player_team)
 		var wrecked_jeep: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 		wrecked_jeep.setup_vehicle("vehicle", "jeep", MatchState.player_team)
 		wrecked_jeep.position = Vector2(630, 640)
@@ -986,14 +1022,57 @@ static func run(ctx: Node) -> void:
 			Campaign.missions.size(), first.get_file(), advanced, Campaign.mission])
 		Campaign.active = false
 	if "--win-test" in args:
+		var wproblems: Array[String] = []
+		GameState.game_over.connect(func(winner): print("WINNER: %d" % winner))
+		# ONE fallen half eliminates the whole team (original
+		# CheckDestroyedFort): sibling buildings, every unit, every zone
+		# (this map carries 8 single-half teams, so the match continues)
 		var fort: FortBuilding = null
 		for c in ctx.get_children():
 			if c is FortBuilding and c.team == 2:
 				fort = c
-		if fort:
-			GameState.game_over.connect(func(winner): print("WINNER: %d" % winner))
+		if fort == null:
+			wproblems.append("no team-2 fort on map")
+		else:
 			fort.take_damage(fort.hp)
-			print("WIN: fort_alive=%s game_over=%s" % [fort.alive, GameState.over])
+			if fort.alive:
+				wproblems.append("half-kill left the fort alive")
+			for b2 in ctx.get_tree().get_nodes_in_group("all_buildings"):
+				if b2 is Building2D and b2.owner_team == 2 and b2.alive:
+					wproblems.append("cascade left a team-2 building")
+					break
+			if not UnitRegistry.of_team(2).is_empty():
+				wproblems.append("cascade left team-2 units alive")
+			for z in MatchState.zones:
+				if z.owner_team == 2:
+					wproblems.append("cascade left a team-2 zone")
+					break
+			if GameState.over:
+				wproblems.append("match ended with 6 enemy teams alive")
+			# no-units rule (original CheckNoUnitsDestroyFort), via the
+			# real death hook: team 3's LAST unit falling must take its
+			# still-standing fort down with it
+			var fort3: FortBuilding = null
+			for c in ctx.get_children():
+				if c is FortBuilding and c.alive and c.team == 3:
+					fort3 = c
+			if fort3 == null:
+				wproblems.append("no team-3 fort")
+			else:
+				for u in UnitRegistry.of_team(3).duplicate():
+					u.die()
+				if fort3.alive:
+					wproblems.append("no-units rule did not destroy team 3's fort")
+			# eliminating every remaining enemy team ends the match in a
+			# player win — symmetric for all teams
+			for c in ctx.get_children().duplicate():
+				if c is FortBuilding and c.alive \
+						and c.team not in [0, MatchState.player_team]:
+					c.take_damage(c.hp)
+			if not GameState.over:
+				wproblems.append("all enemies eliminated but no game over")
+		print("WIN: %s" % (", ".join(wproblems) if not wproblems.is_empty()
+			else "symmetric elimination + cascade + no-units OK"))
 	if "--mount-test" in args:
 		# every spawnable vehicle/cannon must have a visible manned look
 		# (base art, equiped art, or the fire cycle aliased in), neutral

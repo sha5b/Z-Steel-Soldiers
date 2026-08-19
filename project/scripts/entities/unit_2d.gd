@@ -111,15 +111,11 @@ func _steer(delta: float) -> void:
 	if move_target != Vector2.ZERO:
 		var next: Vector2 = waypoints[0] if not waypoints.is_empty() else move_target
 		var offset := next - global_position
-		if offset.length() <= (6.0 if not waypoints.is_empty() else 4.0):
+		if offset.length() <= (6.0 if not waypoints.is_empty() else 8.0):
 			if not waypoints.is_empty():
 				waypoints.remove_at(0)
 			else:
-				move_target = Vector2.ZERO
-				velocity = Vector2.ZERO
-				if enter_target == null:
-					state = State.IDLE
-					order = null
+				_arrive_at_target()
 		else:
 			velocity = offset.normalized() * speed
 			if _run_flag and run_stamina > 0.05:
@@ -132,17 +128,37 @@ func _steer(delta: float) -> void:
 		_last_dir = _angle_to_dir(velocity.angle())
 		_play("walk", _last_dir)
 		var dist_before := offset_to_next_waypoint()
+		# the final leg has no waypoint — offset_to_next_waypoint is INF
+		# there, so capture it separately
+		var final_before: float = global_position.distance_to(move_target) \
+				if move_target != Vector2.ZERO else INF
 		global_position += velocity * delta
 		# a large step can leapfrog the waypoint (the arrival check
 		# above only looks before moving): if we are now farther away
 		# than before the step, we passed it — consume it
-		if not waypoints.is_empty() \
-				and global_position.distance_to(waypoints[0]) > dist_before:
-			waypoints.remove_at(0)
+		if not waypoints.is_empty():
+			if global_position.distance_to(waypoints[0]) > dist_before:
+				waypoints.remove_at(0)
+		elif move_target != Vector2.ZERO \
+				and global_position.distance_to(move_target) > final_before:
+			# same for the FINAL leg: without this a fast unit ping-pongs
+			# around the 4px arrival radius forever (exposed by building
+			# orders that resolve on arrival)
+			_arrive_at_target()
 		global_position = global_position.clamp(
 			NavWorld.map_rect.position, NavWorld.map_rect.end)
 	else:
 		_play("fire" if _target else "stand", _last_dir)
+
+
+## Final destination reached (or leapfrogged): clear the move state; an
+## order with a target (ENTERING) keeps waiting on _try_enter to act.
+func _arrive_at_target() -> void:
+	move_target = Vector2.ZERO
+	velocity = Vector2.ZERO
+	if enter_target == null:
+		state = State.IDLE
+		order = null
 
 
 func offset_to_next_waypoint() -> float:
@@ -444,23 +460,37 @@ func _begin_move(world_pos: Vector2) -> void:
 
 
 ## Order finished or superseded — one clear point instead of scattered
-## field resets.
+## field resets. Every failure path funnels here so the unit always
+## lands back in a retaskable IDLE (a robot ordered onto something it
+## can't use used to stick in ENTERING forever, invisible to the AI).
 func _order_done() -> void:
 	enter_target = null
 	move_target = Vector2.ZERO
 	order = null
 	state = State.IDLE
+	attack_move = false
 
 
 ## Man/load the assigned vehicle once actually adjacent to it.
 ## Ordered onto a BUILDING: vehicles act on it (repair shop / crane
-## work); robots just walk up and stop.
+## work); robots garrison their OWN fort, and any other building order
+## resolves on ARRIVAL — the robot walks up first, then goes idle.
 func _try_enter() -> void:
-	if enter_target == null or not is_instance_valid(enter_target) or not enter_target.alive:
+	# GODOT TRAP: a FREED instance compares == null, so this one guard
+	# covers null, freed and dead targets — an ENTERING order whose
+	# target is gone resolves back to retaskable idle (robots used to
+	# stick in ENTERING forever when their target died mid-walk)
+	if enter_target == null or not is_instance_valid(enter_target) \
+			or not enter_target.alive:
 		enter_target = null
+		if state == State.ENTERING:
+			_order_done()
 		return
 	if enter_target is Building2D:
-		_building_order(enter_target)
+		# _steer clears move_target on arrival while enter_target keeps
+		# the ENTERING state alive — that is the arrival signal here
+		if move_target == Vector2.ZERO:
+			_building_order(enter_target)
 		return
 	if global_position.distance_to(enter_target.global_position) > 16.0:
 		return
@@ -492,15 +522,15 @@ func _auto_enter() -> void:
 
 
 ## Robots ordered onto their OWN fort walk in and garrison it
-## (original: ENTER_FORT_WP); other building orders are ignored.
+## (original: ENTER_FORT_WP); any other building order resolves as a
+## walk-up-and-stop — through _order_done so the robot is idle again.
 func _building_order(b: Building2D) -> void:
 	if b is FortBuilding and b.team == team and b.alive \
 			and global_position.distance_to(b.world_footprint().get_center()) < 56.0:
 		if b.garrison_robot(self):
 			queue_free()  # the garrison list remembers the stats we need
 			return
-	enter_target = null
-	move_target = Vector2.ZERO
+	_order_done()
 
 
 func portrait_path() -> String:

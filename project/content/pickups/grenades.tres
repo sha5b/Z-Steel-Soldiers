@@ -6,6 +6,6 @@
 [resource]
 script = ExtResource("1_xxy0o")
 texture = ExtResource("2_e03tj")
-sound_set = "res://assets/z/sounds/GRENADE.wav"
+sound_set = "pickup"
 upgrade_key = "grenades"
 grenades = 4

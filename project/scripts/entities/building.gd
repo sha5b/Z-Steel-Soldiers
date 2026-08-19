@@ -171,6 +171,9 @@ func _ready() -> void:
 	_build_sprite()
 	if Engine.is_editor_hint():
 		return
+	# every building registers here: the elimination cascade and the
+	# no-units rule need forts AND factories/radar/repair alike
+	add_to_group("all_buildings")
 	if is_fort:
 		add_to_group("buildings")
 	# producers register for the facility quick bar
@@ -529,19 +532,40 @@ func take_damage(amount: int) -> void:
 		Fx.announce("youre_losing")
 	if hp <= 0:
 		alive = false
-		died.emit()
-		remove_from_group("buildings")
-		SelectionManager.drop_from_selection(self)
-		if has_method("kill_garrison"):
-			call("kill_garrison")
-		Fx.destroyed(visual_center())
+		_death_visuals()
+		GameState.report_fort_destroyed(team)
+
+
+## Ruin look + bookkeeping shared by battle death and the elimination
+## cascade: destroyed texture, overlays/flag/HP bar away, deselect.
+func _death_visuals() -> void:
+	died.emit()
+	remove_from_group("buildings")
+	remove_from_group("facilities")
+	SelectionManager.drop_from_selection(self)
+	if has_method("kill_garrison"):
+		call("kill_garrison")
+	Fx.destroyed(visual_center())
+	if _sprite:
 		_sprite.texture = load(_texture_path(true))
 		for child in get_children():
 			if child.name.begins_with("Overlay_"):
 				child.visible = false
+	if _hp_bar:
 		_hp_bar.visible = false
+	if _flag:
 		_flag.visible = false
-		GameState.report_fort_destroyed(team)
+
+
+## Team-elimination cascade (original CheckDestroyedFort destroys every
+## object of the falling team): same ruin visuals as battle death, but
+## never re-reports — the cascade owns the elimination.
+func kill() -> void:
+	if not alive:
+		return
+	alive = false
+	hp = 0
+	_death_visuals()
 
 
 # ----------------------- bridges -----------------------
