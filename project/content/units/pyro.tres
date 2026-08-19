@@ -23,3 +23,4 @@ speed = 56.0
 cost = 70
 hit_chance = 0.7
 projectile = SubResource("Resource_5ugi6")
+build_time = 161.0

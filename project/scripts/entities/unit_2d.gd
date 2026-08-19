@@ -44,6 +44,7 @@ var carried := false
 var grenades := 0  # throwable grenades from crates (original grenade_item)
 var _grenade_timer := 0.0
 var attack_move := false  # AGRO order: stop and fight en route
+var defend_post := Vector2.INF  # DEFEND order: hold this spot
 var run_stamina := 1.0  # 0..1, sprinting drains it (original max_run_time)
 var _run_flag := false  # sprint the current order (shift-click)
 
@@ -102,7 +103,9 @@ func _process(delta: float) -> void:
 	_separation(delta)
 	_try_enter()
 	if kind == "robot":
-		_auto_enter()
+		if MatchState.auto_idle and defend_post == Vector2.INF:
+			_smart_idle()
+		_return_to_post()
 		_idle(delta)
 	ring.queue_redraw()
 
@@ -157,6 +160,8 @@ func _arrive_at_target() -> void:
 	move_target = Vector2.ZERO
 	velocity = Vector2.ZERO
 	if enter_target == null:
+		if order != null and order.type == Order.Type.DEFEND:
+			defend_post = global_position  # hold this spot
 		state = State.IDLE
 		order = null
 
@@ -400,7 +405,8 @@ func issue_order(new_order: Order) -> void:
 	_flavoring = false
 	_idle_time = 0.0
 	_entering = null
-	if order.type == Order.Type.MOVE or order.type == Order.Type.MOVE_ATTACK:
+	defend_post = Vector2.INF
+	if order.type == Order.Type.MOVE or order.type == Order.Type.MOVE_ATTACK 			or order.type == Order.Type.DEFEND:
 		attack_move = order.type == Order.Type.MOVE_ATTACK
 		enter_target = null
 		_begin_move(order.position)
@@ -508,17 +514,39 @@ func _try_enter() -> void:
 			v.load_robot(self)
 
 
-## Idle robots automatically hop into empty hardware standing next to
-## them (original: WithinAutoEnterRadius) — a fresh crew for any gun or
-## vehicle left unattended at their feet.
-func _auto_enter() -> void:
+## Smart idle (MatchState.auto_idle, the grab-hand toggle): idle robots
+## within the original's auto_grab radius man empty hardware or walk to
+## a capturable flag — presence does the rest. Throttled: it scans.
+const AUTO_RADIUS := 220.0  # original auto_grab_vehicle/flag_distance
+var _auto_timer := 0.0
+
+func _smart_idle() -> void:
+	_auto_timer -= get_process_delta_time()
+	if _auto_timer > 0.0:
+		return
+	_auto_timer = 0.4
 	if move_target != Vector2.ZERO or _entering != null or enter_target != null:
 		return
 	for v in UnitRegistry.world_units():
 		if v is Vehicle2D and not v.manned and v.alive \
-				and global_position.distance_to(v.global_position) < 36.0:
-			enter_target = v
+				and global_position.distance_to(v.global_position) < AUTO_RADIUS:
+			issue_order(Order.for_target(v))  # a real order walks there
 			return
+	for z: Zone in MatchState.zones:
+		if z.owner_team == team:
+			continue
+		var center := z.world_rect().get_center()
+		if global_position.distance_to(center) < AUTO_RADIUS:
+			move_to(center)
+			return
+
+
+## DEFEND stance: a unit pushed off its post walks back and re-holds it.
+func _return_to_post() -> void:
+	if defend_post == Vector2.INF or not is_idle():
+		return
+	if global_position.distance_to(defend_post) > 36.0:
+		issue_order(Order.move_defend(defend_post))
 
 
 ## Robots ordered onto their OWN fort walk in and garrison it

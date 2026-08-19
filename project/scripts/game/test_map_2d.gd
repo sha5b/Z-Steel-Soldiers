@@ -177,6 +177,22 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.keycode == KEY_M:
 		_cycle_map()
 		return
+	# stance hotkeys: A attack-move, D defend, W plain move — reflected
+	# by the stance bar next to the minimap
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_A:
+				MatchState.order_stance = MatchState.OrderStance.ATTACK_MOVE
+				Fx.ui_click()
+				return
+			KEY_D:
+				MatchState.order_stance = MatchState.OrderStance.DEFEND
+				Fx.ui_click()
+				return
+			KEY_W:
+				MatchState.order_stance = MatchState.OrderStance.MOVE
+				Fx.ui_click()
+				return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		var pause := get_node_or_null("CanvasLayer/PauseMenu")
 		if pause and not GameState.over:

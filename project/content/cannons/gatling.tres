@@ -16,3 +16,4 @@ speed = 0.0
 cost = 0
 pop = 2
 hit_chance = 0.65
+build_time = 96.0

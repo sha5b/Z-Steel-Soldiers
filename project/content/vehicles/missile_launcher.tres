@@ -25,3 +25,4 @@ cost = 200
 pop = 3
 splash_radius = 42.0
 projectile = SubResource("Resource_d4als")
+build_time = 373.0

@@ -17,6 +17,7 @@ extends Resource
 @export var cooldown := 0.75
 @export var speed := 60.0
 @export var cost := 40
+@export var build_time := 60.0  # seconds (zsettings.cpp SetDefaults)
 @export var pop := 1  # population cap cost
 @export var hit_chance := 1.0  # per-shot chance (original zsettings)
 @export var snipe_chance := 0.0  # driver kill while the target's lid is open

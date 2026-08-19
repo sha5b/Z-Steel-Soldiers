@@ -8,3 +8,4 @@ asset_dir = "res://assets/z/robots_grunt"
 sound = "RIFLE3"
 hit_chance = 0.7
 snipe_chance = 0.3
+build_time = 72.0

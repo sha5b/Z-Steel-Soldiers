@@ -23,3 +23,4 @@ speed = 50.0
 cost = 70
 splash_radius = 30.0
 projectile = SubResource("Resource_lrhkf")
+build_time = 116.0

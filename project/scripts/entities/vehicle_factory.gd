@@ -13,8 +13,6 @@ func producer_key() -> String:
 	return "vehicle_factory"
 
 
-func produce_seconds() -> float:
-	return 10.0 * build_time_mult()
 
 
 func _process(delta: float) -> void:

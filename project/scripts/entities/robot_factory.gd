@@ -14,8 +14,6 @@ func producer_key() -> String:
 	return "robot_factory"
 
 
-func produce_seconds() -> float:
-	return 8.0 * build_time_mult()
 
 
 func _process(delta: float) -> void:

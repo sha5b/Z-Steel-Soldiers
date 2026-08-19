@@ -9,6 +9,7 @@ extends RefCounted
 enum Type {
 	MOVE,           # plain move; fight only when stopped
 	MOVE_ATTACK,    # AGRO: halt and engage anything en route
+	DEFEND,         # move there, then HOLD the post (returns when pushed off)
 	MAN_VEHICLE,    # robot walks up and mans empty hardware
 	BOARD_APC,      # robot loads as a passenger
 	GARRISON,       # robot garrisons its own fort (missile crew)
@@ -33,6 +34,14 @@ static func move(world_pos: Vector2, sprint := false) -> Order:
 static func move_attack(world_pos: Vector2, sprint := false) -> Order:
 	var order := Order.new()
 	order.type = Type.MOVE_ATTACK
+	order.position = world_pos
+	order.run = sprint
+	return order
+
+
+static func move_defend(world_pos: Vector2, sprint := false) -> Order:
+	var order := Order.new()
+	order.type = Type.DEFEND
 	order.position = world_pos
 	order.run = sprint
 	return order

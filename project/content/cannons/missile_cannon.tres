@@ -25,3 +25,4 @@ cost = 0
 pop = 3
 splash_radius = 44.0
 projectile = SubResource("Resource_ci4x2")
+build_time = 182.0

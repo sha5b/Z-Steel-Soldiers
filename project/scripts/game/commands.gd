@@ -21,9 +21,10 @@ static func dispatch(world_position: Vector2) -> void:
 	for u in SelectionManager.selected:
 		if is_instance_valid(u) and u is Unit2D and u.alive:
 			movers.append(u)
-	# A + click: AGRO (attack-move) — halt and engage anything en route;
-	# shift sprints the order (the entity never reads Input itself)
-	var agro := Input.is_key_pressed(KEY_A)
+	# the stance (A/D/W hotkeys or the stance bar) decides what a move
+	# order does; shift sprints the order (the entity never reads Input
+	# itself)
+	var stance: MatchState.OrderStance = MatchState.order_stance
 	var sprint := Input.is_key_pressed(KEY_SHIFT)
 	# deterministic order (instance ids) so formations don't reshuffle
 	movers.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())
@@ -49,8 +50,14 @@ static func dispatch(world_position: Vector2) -> void:
 			continue
 		var ring := maxi(int(sqrt(float(movers.size()))), 1)
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0
-		u.issue_order(Order.move_attack(world_position + offset, sprint)
-			if agro else Order.move(world_position + offset, sprint))
+		var dest := world_position + offset
+		match stance:
+			MatchState.OrderStance.ATTACK_MOVE:
+				u.issue_order(Order.move_attack(dest, sprint))
+			MatchState.OrderStance.DEFEND:
+				u.issue_order(Order.move_defend(dest, sprint))
+			_:
+				u.issue_order(Order.move(dest, sprint))
 
 
 static func _find_apc(world_position: Vector2) -> Vehicle2D:

@@ -49,6 +49,7 @@ static func maybe_screenshot(ctx: Node, out := "screenshot_tmp.png") -> void:
 static func run(ctx: Node) -> void:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	var tree := ctx.get_tree()
+
 	if "--ui-test" in args:
 		# the original-art UI kit: gold menu font, GOG button plates, planets
 		var fails: PackedStringArray = []
@@ -104,6 +105,7 @@ static func run(ctx: Node) -> void:
 			b._process(0.05)
 		print("COMBAT: a_alive=%s b_alive=%s hp_a=%d hp_b=%d" % [a.alive, b.alive, a.hp, b.hp])
 	if "--factory-test" in args:
+		MatchState.fast_build = true  # real build times are 72-373s
 		var f := RobotFactory.new()
 		var z2: Node2D = MatchState.zones[1]
 		f.position = z2.position + z2.world_rect().get_center() - Vector2(24, 24)
@@ -124,6 +126,7 @@ static func run(ctx: Node) -> void:
 			before, tree.get_nodes_in_group("units").size(),
 			money_before, MatchState.player_money(), f.queue.items.size()])
 	if "--ai-test" in args:
+		MatchState.fast_build = true  # real build times are 72-373s
 		var ai := ctx.get_node_or_null("CpuAi_T2")
 		if ai:
 			var moved := 0
@@ -285,6 +288,7 @@ static func run(ctx: Node) -> void:
 			# elimination cascade would die() our bot mid-order; over=
 			# true blocks report_fort_destroyed for the test's duration
 			GameState.over = true
+			MatchState.auto_idle = false  # deterministic order sequence
 			bot.issue_order(Order.move(Vector2(700, 600)))
 			if bot.state != Unit2D.State.MOVING or bot.attack_move \
 					or bot.enter_target != null:
@@ -333,14 +337,52 @@ static func run(ctx: Node) -> void:
 				await Engine.get_main_loop().process_frame
 			if not bot.is_idle():
 				oproblems.append("freed MAN target stuck")
+			# DEFEND stance: arrival arms the post, displacement re-holds it
+			bot.issue_order(Order.move_defend(Vector2(700, 620)))
+			for i in 240:
+				await Engine.get_main_loop().process_frame
+				if bot.is_idle():
+					break
+			if bot.defend_post == Vector2.INF:
+				oproblems.append("defend post not armed")
+			else:
+				bot.global_position += Vector2(80, 0)  # shoved off the post
+				for i in 240:
+					await Engine.get_main_loop().process_frame
+					if bot.is_idle() \
+							and bot.global_position.distance_to(bot.defend_post) < 40.0:
+						break
+				if bot.global_position.distance_to(bot.defend_post) > 40.0:
+					oproblems.append("defend post not re-held")
+			# smart idle: empty hardware within the auto-grab radius (220)
+			# gets a crew without any order — a FRESH robot (defenders hold
+			# their post and never auto-grab by design)
+			MatchState.auto_idle = true  # ...and back on for the grab test
+			var idle_bot: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+				Vector2(560, 520))
+			idle_bot.hp = 100000
+			var grab_jeep: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 0,
+				Vector2(560 + 160, 520))
+			# success = the robot boarded SOMETHING (the nearest empty
+			# hardware wins, not necessarily our planted jeep)
+			var manned := false
+			for i in 300:
+				await Engine.get_main_loop().process_frame
+				if not is_instance_valid(idle_bot) or grab_jeep.manned \
+						or idle_bot.state == Unit2D.State.ENTERING:
+					manned = true
+					break
+			if not manned:
+				oproblems.append("smart idle did not man nearby vehicle")
 			radar.queue_free()
 			GameState.over = false
-			bot.die()
-			if bot.state != Unit2D.State.DEAD:
-				oproblems.append("DEAD state")
-			bot.issue_order(Order.move(Vector2(0, 0)))
-			if bot.state != Unit2D.State.DEAD:
-				oproblems.append("dead units take no orders")
+			if is_instance_valid(bot):
+				bot.die()
+				if bot.state != Unit2D.State.DEAD:
+					oproblems.append("DEAD state")
+				bot.issue_order(Order.move(Vector2(0, 0)))
+				if bot.state != Unit2D.State.DEAD:
+					oproblems.append("dead units take no orders")
 			jeep4.queue_free()
 			fort2.queue_free()
 		print("ORDERS: problems=%d %s" % [oproblems.size(),
@@ -529,6 +571,7 @@ static func run(ctx: Node) -> void:
 		print("POSESUM: lines=%d missing_layers=%d %s" % [lines.size(),
 			pose_missing, "OK" if pose_missing == 0 else "FAIL"])
 	if "--level-test" in args:
+		MatchState.fast_build = true  # real build times are 72-373s
 		# building levels gate the build roster (original zbuildlist) and
 		# speed up production; forts build robots AND vehicles AND cannons
 		var lproblems: Array[String] = []
@@ -767,6 +810,7 @@ static func run(ctx: Node) -> void:
 		print("COMBAT2: problems=%d %s" % [cproblems.size(),
 			", ".join(cproblems) if not cproblems.is_empty() else "OK"])
 	if "--tactics-test" in args:
+		MatchState.fast_build = true  # real build times are 72-373s
 		# the tactical AI, end to end: with funds and hardware on the
 		# map it must produce units, man empty vehicles/cannons and
 		# take zones — not just charge the enemy fort
@@ -880,6 +924,7 @@ static func run(ctx: Node) -> void:
 			MatchState.has_upgrade(1, "grenades"), mult_before,
 			MatchState.robot_damage_mult(1)])
 	if "--prod-test" in args:
+		MatchState.fast_build = true  # real build times are 72-373s
 		var f2: RobotFactory = null
 		for c in ctx.get_children():
 			if c is RobotFactory:
@@ -907,6 +952,7 @@ static func run(ctx: Node) -> void:
 					ok, count_before, tree.get_nodes_in_group("units").size(),
 					psychos, f2.queue.items.size()])
 	if "--fortprod-test" in args:
+		MatchState.fast_build = true  # real build times are 72-373s
 		var fort2: FortBuilding = null
 		for c in ctx.get_children():
 			if c is FortBuilding and c.team == MatchState.player_team:
@@ -1111,6 +1157,7 @@ static func run(ctx: Node) -> void:
 		print("MOUNT: types_without_manned_art=%s team_colored_empty=%s turret_issues=%s" % [
 			no_manned, team_colored, no_turret])
 	if "--cap-test" in args:
+		MatchState.fast_build = true  # real build times are 72-373s
 		# unit cap: base 25 + zone bonuses; production refuses beyond it
 		var fort: FortBuilding = null
 		for c in ctx.get_children():

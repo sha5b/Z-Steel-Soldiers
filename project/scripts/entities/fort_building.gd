@@ -26,8 +26,6 @@ func producer_key() -> String:
 	return "fort"
 
 
-func produce_seconds() -> float:
-	return PRODUCE_SECONDS * build_time_mult()
 
 
 ## A robot walks in: hide it, it fights (and hides) from inside.

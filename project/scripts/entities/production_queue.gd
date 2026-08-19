@@ -40,8 +40,13 @@ func clear() -> void:
 
 ## Advances the timer; returns the finished type name (and pops it) or "".
 func tick(delta: float, seconds: float) -> String:
+	# an IDLE queue must not accumulate time — the first item after any
+	# idle period used to complete on its very first tick
+	if items.is_empty():
+		elapsed = 0.0
+		return ""
 	elapsed += delta
-	if elapsed < seconds or items.is_empty():
+	if elapsed < seconds:
 		return ""
 	elapsed = 0.0
 	var done: String = items.pop_front()

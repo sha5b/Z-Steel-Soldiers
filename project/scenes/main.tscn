@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/test_map_2d.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/game/rts_camera2d.gd" id="2"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://scripts/ui/minimap.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/ui/top_bar.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/ui/selection_bar.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/ui/stance_bar.gd" id="9"]
 [ext_resource type="PackedScene" path="res://scenes/pause_menu.tscn" id="8"]
 
 [node name="Main" type="Node2D"]
@@ -55,6 +56,18 @@ offset_right = 104.0
 offset_bottom = -8.0
 grow_vertical = 0
 script = ExtResource("5")
+
+[node name="StanceBar" type="HBoxContainer" parent="CanvasLayer/HUD"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = -140.0
+offset_right = 156.0
+offset_bottom = -108.0
+grow_vertical = 0
+theme_override_constants/separation = 4
+script = ExtResource("9")
 
 [node name="SelectionBar" type="HBoxContainer" parent="CanvasLayer/HUD"]
 script = ExtResource("7")

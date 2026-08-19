@@ -6,7 +6,17 @@ extends Node
 signal money_changed(team: int, amount: int)
 signal zone_captured(team: int)
 
-const INCOME_PER_ZONE := 5.0   # money per owned zone per tick
+const INCOME_PER_ZONE := 1.0
+var fast_build := false  # self-test lever: 2s builds regardless of defs
+
+## What a right-click order DOES (set by the A/D/W hotkeys and the
+## stance bar next to the minimap): MOVE ignores enemies en route,
+## ATTACK_MOVE halts and engages, DEFEND walks there and holds the post.
+enum OrderStance { MOVE, ATTACK_MOVE, DEFEND }
+var order_stance: OrderStance = OrderStance.MOVE
+## Smart idle (grab-hand toggle): idle robots auto-man nearby empty
+## hardware and auto-walk to capturable flags (original auto_grab radii).
+var auto_idle := true   # money per owned zone per tick
 const TICK_SECONDS := 1.0
 
 var map_root: Node2D = null  # where units and decals live (set at load)

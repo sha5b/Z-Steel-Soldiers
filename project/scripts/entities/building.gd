@@ -53,7 +53,20 @@ func producer_key() -> String:
 	return ""  # not a producer
 
 
-func produce_seconds() -> float:
+## Build time for a "kind:name" queue item: the unit def's ORIGINAL
+## build time (zsettings.cpp SetDefaults — the original's economy is
+## time, not money), trimmed by the producer's level. fast_build is the
+## self-test lever.
+func produce_seconds(item := "") -> float:
+	if MatchState.fast_build:
+		return 2.0
+	if item == "" and not queue.items.is_empty():
+		item = queue.items[0]
+	if item == "":
+		return 8.0 * build_time_mult()
+	var parts: PackedStringArray = item.split(":")
+	if parts.size() == 2 and ContentDB.has_unit(parts[0], parts[1]):
+		return ContentDB.def_for(parts[0], parts[1]).build_time * build_time_mult()
 	return 8.0 * build_time_mult()
 
 
@@ -75,7 +88,7 @@ func queue_items() -> Array[String]:
 func progress() -> float:
 	if owner_team == 0 or queue.items.is_empty():
 		return 0.0
-	return queue.progress(produce_seconds())
+	return queue.progress(produce_seconds(queue.items[0] if not queue.items.is_empty() else ""))
 
 
 func queue_unit(item: String, silent := false) -> bool:
@@ -132,7 +145,7 @@ func _pop_allows(kind: String, stats: UnitDef, silent := false) -> bool:
 func tick_production(delta: float) -> void:
 	if owner_team == 0:
 		return
-	var done := queue.tick(delta, produce_seconds())
+	var done := queue.tick(delta, produce_seconds(queue.items[0] if not queue.items.is_empty() else ""))
 	if done != "":
 		spawn_produced(done)
 

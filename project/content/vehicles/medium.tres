@@ -25,3 +25,4 @@ cost = 150
 pop = 3
 splash_radius = 34.0
 projectile = SubResource("Resource_305gl")
+build_time = 225.0
