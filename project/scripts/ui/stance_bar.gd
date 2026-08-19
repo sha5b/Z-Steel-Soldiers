@@ -4,10 +4,11 @@ extends HBoxContainer
 ## DOES (W move without attacking, A attack-move, D defend-and-hold)
 ## plus the smart-idle toggle (grab hand — idle robots auto-man nearby
 ## hardware and walk to capturable flags). Original zod cursor art; the
-## active state tints, hotkeys A/D/W mirror the buttons.
+## active state tints, hotkeys A/D/W mirror the buttons. Compact panel
+## chrome — the full-size button plates would dwarf a 24px icon button.
 
 const CURSOR_DIR := "res://assets/z/ui/cursor"
-const BUTTON := 30.0
+const BUTTON := 24.0
 
 var _buttons: Array[Button] = []
 var _toggle: Button = null
@@ -54,9 +55,38 @@ func _make_button(icon: String, tooltip: String) -> Button:
 	btn.focus_mode = Control.FOCUS_NONE
 	var path := "%s/%s.png" % [CURSOR_DIR, icon]
 	if ResourceLoader.exists(path):
-		btn.icon = load(path)
+		var tex: Texture2D = load(path)
+		if icon == "cursor_red_n00":
+			tex = _centred(tex)  # the arrow's hotspot is top-left — nudge it
+		btn.icon = tex
 		btn.expand_icon = true
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+	for state in ["normal", "hover", "pressed", "disabled"]:
+		btn.add_theme_stylebox_override(state, _chrome(state))
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	return btn
+
+
+## Mini panel-style chrome matching the minimap frame next to the bar.
+func _chrome(state: String) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0.05, 0.06, 0.05, 0.9)
+	box.border_color = Color(0.35, 0.38, 0.3)
+	box.set_border_width_all(1)
+	box.set_corner_radius_all(2)
+	if state == "hover":
+		box.bg_color = Color(0.12, 0.13, 0.1, 0.95)
+	elif state == "pressed":
+		box.bg_color = Color(0.02, 0.03, 0.02, 0.95)
+	return box
+
+
+## The plain cursor art draws its arrow around the (0,0) hotspot, so a
+## centred button face shows it off-centre — copy the canvas shifted so
+## the CONTENT sits mid-frame.
+static func _centred(tex: Texture2D) -> Texture2D:
+	var img: Image = tex.get_image().duplicate()
+	var moved := Image.create(img.get_width(), img.get_height(), false, Image.FORMAT_RGBA8)
+	moved.blit_rect(img, Rect2i(Vector2i.ZERO, img.get_size()), Vector2i(2, 2))
+	return ImageTexture.create_from_image(moved)

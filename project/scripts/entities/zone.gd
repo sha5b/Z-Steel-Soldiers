@@ -159,16 +159,16 @@ func _draw() -> void:
 	var t := Time.get_ticks_msec() * 0.001
 	# 2x: the world's units and flags render at 2x — 8x4 stamps at 1x
 	# read as specks that don't fit next to them
-	var dst := Rect2(Vector2(), Vector2(16, 8))
+	var dst := Rect2(Vector2(), Vector2(12, 6))
 	var src := Rect2(Vector2(), Vector2(8, 4))
 	if land:
 		for c in _cells:
-			dst.position = Vector2(c) * 16.0 + Vector2(0, 4)
+			dst.position = Vector2(c) * 16.0 + Vector2(2, 5)
 			draw_texture_rect_region(land, dst, src)
 	if water:
 		for c in _water_cells:
 			var bob := 1.0 if fmod(t * 2.0 + float(_bob_phase.get(c, 0.0)), 2.0) < 1.0 else 0.0
-			dst.position = Vector2(c) * 16.0 + Vector2(0, 4 + bob)
+			dst.position = Vector2(c) * 16.0 + Vector2(2, 5 + bob)
 			draw_texture_rect_region(water, dst, src)
 
 

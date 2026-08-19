@@ -64,11 +64,11 @@ static func _spawn(map: Node2D, tex: Texture2D, pos: Vector2,
 	var decal := Sprite2D.new()
 	decal.texture = tex
 	decal.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	decal.scale = Vector2(2, 2)
 	decal.centered = false
-	# top-left placement: the decal's sort point is its top edge, so
-	# units standing on/near it draw over the flat art
-	decal.position = pos - Vector2(tex.get_size().x, tex.get_size().y * 2.0) * 0.5
+	# GROUND art renders at tile scale (like terrain) — 2x made the
+	# marks giant smears; top-left placement keeps the sort point at the
+	# top edge so units standing on/near them draw over them
+	decal.position = pos - tex.get_size() * 0.5
 	decal.add_to_group(group)
 	map.add_child(decal)
 	if fade_after > 0.0:
