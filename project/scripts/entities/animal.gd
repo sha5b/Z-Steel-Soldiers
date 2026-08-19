@@ -41,7 +41,7 @@ func _ready() -> void:
 	add_to_group("animals")
 	_sprite = AnimatedSprite2D.new()
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_sprite.scale = Vector2(2, 2)
+	_sprite.scale = Vector2.ONE  # native art scale
 	add_child(_sprite)
 	_play("look", 0, false)
 	_timer = randf_range(1.5, 5.0)

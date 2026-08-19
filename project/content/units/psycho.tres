@@ -1,17 +1,20 @@
 [gd_resource type="Resource" script_class="UnitDef" format=3]
 
-[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1_nln64"]
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1"]
 
 [resource]
-script = ExtResource("1_nln64")
+script = ExtResource("1")
 id = "psycho"
+kind = "robot"
 asset_dir = "res://assets/z/robots_psycho"
 sound = "MACHGUN2"
-hp = 46
-damage = 3
-cooldown = 0.4
-speed = 62.0
+hp = 141
+damage = 2
+range_px = 60.0
+cooldown = 0.100
+speed = 51.0
 cost = 60
+build_time = 98.0
+pop = 1
 hit_chance = 0.65
 snipe_chance = 0.3
-build_time = 98.0

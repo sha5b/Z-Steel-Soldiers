@@ -8,7 +8,7 @@ extends CharacterBody2D
 
 @export var unit_name := "grunt"
 @export var team := 1
-@export var sprite_scale := 2.0
+@export var sprite_scale := 1.0  # ORIGINAL SCALE: everything renders at native art px (a robot = one 16px tile, like the buildings' 1:1 art)
 @export var kind := "robot"  # robot | vehicle | cannon
 
 const GRENADE: ProjectileDef = preload("res://content/projectiles/grenade.tres")
@@ -274,7 +274,7 @@ func _combat() -> void:
 		Fx.gunfire("GRENLOBX")
 		Fx.shell(global_position, g_impact, GRENADE,
 			func():
-				Combat.area_damage(g_impact, 34.0, 26, team, true))
+				Combat.area_damage(g_impact, 30.0, 13, team, true))  # grenade_damage 40/240 r30, x0.08
 		return
 	if _target and _fire_timer <= 0.0:
 		var to_target := _target.global_position - global_position
@@ -515,9 +515,11 @@ func _try_enter() -> void:
 
 
 ## Smart idle (MatchState.auto_idle, the grab-hand toggle): idle robots
-## within the original's auto_grab radius man empty hardware or walk to
-## a capturable flag — presence does the rest. Throttled: it scans.
-const AUTO_RADIUS := 220.0  # original auto_grab_vehicle/flag_distance
+## within the auto_grab radius man empty hardware or walk to a
+## capturable flag — presence does the rest. Throttled: it scans.
+## Halved from the original 220 (zsettings auto_grab_*_distance) as a
+## playtest call — units no longer wander off half a screen.
+const AUTO_RADIUS := 110.0
 var _auto_timer := 0.0
 
 func _smart_idle() -> void:
@@ -589,6 +591,7 @@ func _play_voice(prefix: String) -> void:
 	for path in paths:
 		if ResourceLoader.exists(path):
 			var player := AudioStreamPlayer.new()
+			player.bus = GameSettings.SFX_BUS  # volume slider lives on the bus
 			player.stream = load(path)
 			add_child(player)
 			player.finished.connect(player.queue_free)

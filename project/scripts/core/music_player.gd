@@ -27,7 +27,7 @@ func _exit_tree() -> void:
 
 func _ready() -> void:
 	_player = AudioStreamPlayer.new()
-	_player.bus = "Master"
+	_player.bus = GameSettings.MUSIC_BUS  # volume slider lives on the bus
 	_player.volume_db = -8.0
 	add_child(_player)
 

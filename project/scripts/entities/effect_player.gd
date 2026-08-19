@@ -3,7 +3,7 @@ extends Node2D
 ## One-shot visual effect driven by an EffectDef resource. Plays sprite
 ## frames from the def's art folder when they exist, otherwise a native
 ## CPUParticles2D burst. Frees itself when finished. Spawn via Fx.play().
-## Scale is relative to the 2x unit baseline; `grounded` effects are
+## Scale multiplies the native art size; `grounded` effects are
 ## bottom-anchored so explosions rise from the spawn point (the original
 ## frames are tight-cropped to varying heights — centering them wobbles).
 
@@ -26,7 +26,7 @@ func _ready() -> void:
 	if frames != null and frames.has_animation("fx"):
 		var sprite := AnimatedSprite2D.new()
 		sprite.sprite_frames = frames
-		sprite.scale = Vector2(2.0, 2.0) * scale_factor
+		sprite.scale = Vector2.ONE * scale_factor  # native art scale
 		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		add_child(sprite)
 		if _def.grounded:

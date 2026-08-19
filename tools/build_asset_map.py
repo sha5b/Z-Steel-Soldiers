@@ -111,7 +111,7 @@ MAP = [
      "2x3 grid of 32x32 faces; UiTheme atlas-regions + margins, tint/offset per state"),
     ("GOG Box* menu chrome", "gog/PNG/Box*.png", "menu panel 3-slice", "WIRED (GOG)",
      "OriginalPanel; BoxInfo/BoxDivide + IP* 2x + TTAch copied, spare"),
-    ("GOG planet thumbs", "gog/PNG/{ARTIC,CITY,DESERT,JUNGLE,VOLCAN}*.png", "campaign brief + map select icons", "WIRED (GOG)",
+    ("GOG planet thumbs", "gog/PNG/{ARTIC,CITY,DESERT,JUNGLE,VOLCAN}*.png", "campaign brief world art", "WIRED (GOG)",
      "320x200, base + alt lighting pass"),
     ("GOG menu plaques", "gog/PNG/{options,audio,credits,Exit}.png", "-", "COPIED (GOG), NOT WIRED",
      "64x128 section headers + 64x64 exit icon"),

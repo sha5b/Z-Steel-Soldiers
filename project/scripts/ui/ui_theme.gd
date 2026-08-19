@@ -19,6 +19,7 @@ const FACE_MARGIN := 8  # rounded-corner + bevel inset of one face
 
 static var _cache := {}  # key -> StyleBoxTexture
 static var _font: FontFile
+static var _trimmed := {}  # path -> Texture2D (art cropped to its opaque region)
 
 
 ## Give a screen the original look. Safe to call repeatedly.
@@ -51,6 +52,7 @@ static func apply(root: Control) -> void:
 	theme.set_color("font_color", "Label", Color(1.0, 0.95, 0.8))
 	theme.set_color("font_color", "LineEdit", Color.WHITE)
 	theme.set_stylebox("panel", "PanelContainer", StyleBoxEmpty.new())
+	_theme_slider(theme)
 	root.theme = theme
 
 
@@ -61,6 +63,63 @@ static func font() -> FontFile:
 		if _font != null and _font.fallbacks.is_empty():
 			_font.fallbacks = [ThemeDB.fallback_font]
 	return _font
+
+
+## Several zod menu art files are 512x512 canvases with the actual art
+## in a smaller opaque region (Background/splash: 480x320) — the padding
+## would render as window-clear-colour bands. This crops to the art.
+static func trimmed(path: String) -> Texture2D:
+	if _trimmed.has(path):
+		return _trimmed[path]
+	var out: Texture2D = null
+	if ResourceLoader.exists(path):
+		var base := load(path) as Texture2D
+		var used: Rect2i = base.get_image().get_used_rect()
+		if used.size.x > 0 and used.size.y > 0 \
+				and used.size != base.get_image().get_size():
+			var crop := AtlasTexture.new()
+			crop.atlas = base
+			crop.region = Rect2(used)
+			out = crop
+		else:
+			out = base
+	_trimmed[path] = out
+	return out
+
+
+## Sliders from the GOG plate art: dark track, metal knob cut from the
+## plate face so volume rows match the button chrome.
+static func _theme_slider(theme: Theme) -> void:
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(0.05, 0.06, 0.05, 0.85)
+	track.set_corner_radius_all(2)
+	track.content_margin_top = 3.0
+	track.content_margin_bottom = 3.0
+	var filled := StyleBoxFlat.new()
+	filled.bg_color = Color(0.45, 0.38, 0.18)
+	filled.set_corner_radius_all(2)
+	filled.content_margin_top = 3.0
+	filled.content_margin_bottom = 3.0
+	theme.set_stylebox("slider", "HSlider", track)
+	theme.set_stylebox("grabber_area", "HSlider", filled)
+	var knob := _knob()
+	if knob != null:
+		theme.set_icon("grabber_icon", "HSlider", knob)
+		theme.set_icon("grabber_highlight_icon", "HSlider", knob)
+
+
+static func _knob() -> AtlasTexture:
+	if _cache.has("knob"):
+		return _cache["knob"]
+	var faces := load("%s/Buttons.png" % UI_DIR) as Texture2D
+	if faces == null:
+		return null
+	# a 14x14 metal square out of the resting plate face
+	var knob := AtlasTexture.new()
+	knob.atlas = faces
+	knob.region = Rect2i(Vector2i(9, 9), Vector2i(14, 14))
+	_cache["knob"] = knob
+	return knob
 
 
 ## One button stylebox per state from the GOG plate art. Falls back to the

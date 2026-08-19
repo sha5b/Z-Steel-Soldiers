@@ -248,7 +248,7 @@ func _crane_repair_tick(delta: float) -> void:
 	_repair_tick_time += delta
 	if _repair_tick_time >= 0.4:
 		_repair_tick_time = 0.0
-		b.repair_by(40)
+		b.repair_by(700)  # x0.08 HP scale (bridge 6667, fort 33333)
 		if _hook and _hook.sprite_frames and _hook.sprite_frames.has_animation("hook"):
 			_hook.frame = 0  # yank the hook
 	if b.hp >= b.max_hp:
@@ -464,7 +464,7 @@ func _add_oil_stain() -> void:
 	stain.name = "OilStain"
 	stain.sprite_frames = frames
 	stain.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	stain.scale = Vector2(2, 2)  # the unit baseline — was rendering 1x
+	stain.scale = Vector2.ONE  # native art scale (ground-plane rule)
 	stain.frame = randi() % frames.get_frame_count("fx")
 	stain.position = Vector2(0, 4)
 	add_child(stain)
@@ -658,7 +658,7 @@ func _add_wreck_fx() -> void:
 	fx.name = "WreckFx"
 	fx.sprite_frames = frames
 	fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	fx.scale = Vector2(2, 2)  # the unit baseline — was rendering 1x
+	fx.scale = Vector2.ONE  # native art scale
 	fx.position = Vector2(0, -6)
 	add_child(fx)
 	fx.play("fx")

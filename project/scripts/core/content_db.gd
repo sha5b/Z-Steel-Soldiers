@@ -15,14 +15,15 @@ extends Node
 const ASSET_ROOT := "res://assets/z"
 const CONTENT_ROOT := "res://content"
 
-## Defaults for auto-discovered sprite folders (no .tres needed).
+## Defaults for auto-discovered sprite folders (no .tres needed) —
+## swept to the original zsettings ratios (see content/*.tres).
 const UNIT_DEFAULTS := {
-	"robot": {"hp": 42, "damage": 4, "range": 58.0, "cooldown": 0.75,
+	"robot": {"hp": 86, "damage": 1, "range": 60.0, "cooldown": 0.5,
 		"speed": 60.0, "cost": 40, "pop": 1},
-	"vehicle": {"hp": 90, "damage": 8, "range": 78.0, "cooldown": 1.00,
-		"speed": 70.0, "cost": 100, "pop": 2},
-	"cannon": {"hp": 70, "damage": 8, "range": 110.0, "cooldown": 1.00,
-		"speed": 0.0, "cost": 0, "pop": 2},
+	"vehicle": {"hp": 141, "damage": 2, "range": 60.0, "cooldown": 0.1,
+		"speed": 60.0, "cost": 100, "pop": 2},
+	"cannon": {"hp": 141, "damage": 3, "range": 60.0, "cooldown": 0.1,
+		"speed": 0.0, "cost": 60, "pop": 2},
 }
 
 var _units := {"robot": {}, "vehicle": {}, "cannon": {}}  # name -> UnitDef

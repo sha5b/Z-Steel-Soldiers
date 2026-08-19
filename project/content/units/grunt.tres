@@ -1,11 +1,20 @@
 [gd_resource type="Resource" script_class="UnitDef" format=3]
 
-[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1_tvflf"]
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1"]
 
 [resource]
-script = ExtResource("1_tvflf")
+script = ExtResource("1")
+id = "grunt"
+kind = "robot"
 asset_dir = "res://assets/z/robots_grunt"
 sound = "RIFLE3"
-hit_chance = 0.7
-snipe_chance = 0.3
+hp = 86
+damage = 1
+range_px = 60.0
+cooldown = 0.500
+speed = 60.0
+cost = 40
 build_time = 72.0
+pop = 1
+hit_chance = 0.70
+snipe_chance = 0.3

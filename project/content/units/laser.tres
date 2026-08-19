@@ -1,19 +1,21 @@
 [gd_resource type="Resource" script_class="UnitDef" format=3]
 
-[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1_k0rqq"]
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1"]
 
 [resource]
-weapon = "laser"
-script = ExtResource("1_k0rqq")
+script = ExtResource("1")
 id = "laser"
+kind = "robot"
 asset_dir = "res://assets/z/robots_laser"
 sound = "LASERGUN"
-hp = 44
-damage = 10
-range_px = 85.0
-cooldown = 1.3
-speed = 56.0
+weapon = "laser"
+hp = 162
+damage = 14
+range_px = 68.0
+cooldown = 0.400
+speed = 60.0
 cost = 90
-hit_chance = 0.7
-snipe_chance = 0.6
 build_time = 179.0
+pop = 1
+hit_chance = 0.70
+snipe_chance = 0.6

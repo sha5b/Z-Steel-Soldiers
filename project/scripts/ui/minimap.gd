@@ -1,15 +1,14 @@
 class_name MiniMap
 extends Control
 ## Radar minimap, fully generated from the map data: one Image with a
-## pixel per tile (ground/water/zone-tint colours baked in), redrawn only
-## when a zone changes owner. Blips and the camera box are drawn on top
-## each frame. Left-click/drag moves the camera, right-click issues a
-## move order (see test_map_2d wiring).
+## pixel per tile in the planet sheet's own terrain colours (shared with
+## the menu previews — see MapPreview), zone-tint ownership baked in,
+## redrawn only when a zone changes owner. Blips and the camera box are
+## drawn on top each frame. Left-click/drag moves the camera, right-click
+## issues a move order (see test_map_2d wiring).
 
 signal move_order(world_position: Vector2)
 
-const GROUND := Color(0.16, 0.20, 0.13)
-const WATER := Color(0.05, 0.10, 0.22)
 const PANEL_BG := Color(0.05, 0.06, 0.05, 0.9)
 const PANEL_EDGE := Color(0.35, 0.38, 0.3)
 const ZONE_TINT_WEIGHT := 0.4
@@ -20,7 +19,7 @@ var map_size := Vector2i(64, 86)
 
 var _texture: ImageTexture
 var _image: Image
-var _water: PackedByteArray
+var _base: Image               # terrain colours straight from the sheet
 var _map_rect := Rect2()      # panel-space rect the map texture draws into
 var _owners: Array = []       # last-baked zone owners (change detection)
 var _sync_accum := 0.0
@@ -28,24 +27,10 @@ var _sync_accum := 0.0
 
 func build(data: Dictionary, _tileset: Texture2D) -> void:
 	map_size = Vector2i(int(data.width), int(data.height))
-	_water = _water_mask(data)
+	_base = MapPreview.base_image(data)
 	_owners = []
 	_rebuild_image()
 	_recompute_map_rect()
-
-
-func _water_mask(data: Dictionary) -> PackedByteArray:
-	var out := PackedByteArray()
-	out.resize(map_size.x * map_size.y)
-	if not data.has("tiles"):
-		return out
-	var parsed = JSON.parse_string(FileAccess.get_file_as_string(
-		"res://assets/tilesets/tileinfo_%s.json" % String(data.get("terrain", "desert"))))
-	var info: Dictionary = parsed if parsed is Dictionary else {}
-	for i in map_size.x * map_size.y:
-		var entry: Array = info.get(str(data.tiles[i]), [false, true])
-		out[i] = 1 if bool(entry[0]) else 0
-	return out
 
 
 ## Zone ownership tint, baked into the texture pixels.
@@ -73,10 +58,7 @@ func _refresh_owners() -> void:
 
 
 func _rebuild_image() -> void:
-	_image = Image.create(map_size.x, map_size.y, false, Image.FORMAT_RGBA8)
-	for y in map_size.y:
-		for x in map_size.x:
-			_image.set_pixel(x, y, WATER if _water[y * map_size.x + x] else GROUND)
+	_image = _base.duplicate()
 	_bake_zone_tints()
 	if _texture:
 		_texture.update(_image)

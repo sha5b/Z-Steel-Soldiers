@@ -17,7 +17,7 @@ func _ready() -> void:
 	if _def.texture != null:
 		sprite.texture = _def.texture
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	sprite.scale = Vector2(2, 2)
+	sprite.scale = Vector2.ONE  # native art scale, matching buildings
 	add_child(sprite)
 
 

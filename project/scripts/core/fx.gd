@@ -193,6 +193,7 @@ func _play_wav(name: String, volume_db: float) -> void:
 		return
 	_enforce_voice_cap()
 	var player := AudioStreamPlayer.new()
+	player.bus = GameSettings.SFX_BUS  # volume slider lives on the bus
 	player.stream = load(path)
 	player.volume_db = volume_db
 	add_child(player)

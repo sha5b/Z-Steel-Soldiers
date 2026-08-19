@@ -5,6 +5,6 @@
 
 [resource]
 script = ExtResource("1_001ql")
-speed = 150.0
+speed = 40.0
 impact = "explosion"
 texture = ExtResource("2_ndo1f")

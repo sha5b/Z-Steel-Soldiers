@@ -12,6 +12,7 @@ var _map_index := 0
 
 
 func _ready() -> void:
+	Engine.time_scale = GameSettings.game_speed()  # options-screen speed
 	var cursor_path := "res://assets/z/ui/cursor/cursor_blue_n00.png"
 	if ResourceLoader.exists(cursor_path):
 		Input.set_custom_mouse_cursor(load(cursor_path), Input.CURSOR_ARROW,

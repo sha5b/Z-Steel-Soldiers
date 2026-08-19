@@ -64,7 +64,7 @@ text = "Play Again"
 unique_name_in_owner = true
 custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
-text = "Map Select"
+text = "Skirmish"
 
 [node name="NextMissionButton" type="Button" parent="Box/Margin/Rows"]
 unique_name_in_owner = true

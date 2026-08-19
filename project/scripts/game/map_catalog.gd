@@ -61,11 +61,11 @@ static func display_title(map_name: String) -> String:
 	return " ".join(map_name.split("_")).to_upper()
 
 
-## Size + terrain, read from the JSON once and cached.
+## Size + terrain + player count, read from the JSON once and cached.
 static func meta(map_name: String) -> Dictionary:
 	if _meta.has(map_name):
 		return _meta[map_name]
-	var out := {"width": 0, "height": 0, "terrain": "desert"}
+	var out := {"width": 0, "height": 0, "terrain": "desert", "players": 0}
 	# every map has a JSON twin (scenes are generated from them) — the
 	# metadata always comes from the JSON
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(
@@ -74,5 +74,19 @@ static func meta(map_name: String) -> Dictionary:
 		out.width = int(parsed.width)
 		out.height = int(parsed.height)
 		out.terrain = String(parsed.get("terrain", "desert"))
+		out.players = _fort_teams(parsed)
 	_meta[map_name] = out
 	return out
+
+
+## The JSON "player_count" field is unreliable (always 2 in the
+## converter, even on 8-fort maps) — the real count is how many distinct
+## teams own a fort half. p02/p03/p04/p08 names match this by design.
+static func _fort_teams(parsed: Dictionary) -> int:
+	var teams := {}
+	for o in parsed.get("objects", []):
+		if String(o.get("type", "")) == "building" \
+				and (int(o.get("id", -1)) == 0 or int(o.get("id", -1)) == 1) \
+				and int(o.get("owner", 0)) != 0:
+			teams[int(o.owner)] = true
+	return teams.size()

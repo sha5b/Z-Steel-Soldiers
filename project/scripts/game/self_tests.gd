@@ -21,7 +21,7 @@ static func should_run() -> bool:
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
-			"ui", "teams", "defs", "scenes", "orders"]:
+			"ui", "teams", "defs", "scenes", "orders", "balance"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -49,6 +49,14 @@ static func maybe_screenshot(ctx: Node, out := "screenshot_tmp.png") -> void:
 static func run(ctx: Node) -> void:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	var tree := ctx.get_tree()
+
+	# isolate the micro-tests from the live CPU brain: the AI now really
+	# expands and fights, and its roaming units used to intercept test
+	# walkers spawned at fixed coordinates. ai-test re-enables its brain
+	# for the sustained simulation; tactics-test drives _think() by hand.
+	for c in ctx.get_children():
+		if c is CpuAi:
+			c.set_process(false)
 
 	if "--ui-test" in args:
 			# the original-art UI kit: gold menu font, GOG button plates, planets
@@ -184,15 +192,58 @@ static func run(ctx: Node) -> void:
 		var ai := ctx.get_node_or_null("CpuAi_T2")
 		if ai:
 			var moved := 0
+			var roster := {"robots": 0, "idle": 0, "vehicles": 0, "facilities": 0}
 			for u2 in tree.get_nodes_in_group("units"):
 				if u2 is Node2D and u2.team == 2 and u2.move_target != Vector2.ZERO:
 					moved += 1
+			for u2 in UnitRegistry.world_units():
+				if u2 is Unit2D and u2.alive and not u2.carried and u2.team == 2:
+					if u2.kind == "robot":
+						roster.robots += 1
+						if u2.is_idle():
+							roster.idle += 1
+					elif u2.kind == "vehicle":
+						roster.vehicles += 1
+			for f in tree.get_nodes_in_group("facilities"):
+				if f.team == 2:
+					roster.facilities += 1
+			print("AI ROSTER: robots=%d idle=%d vehicles=%d facilities=%d money=%d zones_owned=%d" % [
+				roster.robots, roster.idle, roster.vehicles, roster.facilities,
+				int(MatchState.money.get(2, 0)),
+				MatchState.zones.filter(func(z): return z.owner_team == 2).size()])
 			ai._think()
 			var moved_after := 0
 			for u2 in tree.get_nodes_in_group("units"):
 				if u2 is Node2D and u2.team == 2 and u2.move_target != Vector2.ZERO:
 					moved_after += 1
 			print("AI: enemy robots with orders %d -> %d" % [moved, moved_after])
+			# sustained observation: the full loop (income -> production ->
+			# expansion -> push) must all come alive on its own
+			ai.set_process(true)  # back to live thinking (isolated above)
+			for step in 6:
+				await ctx.get_tree().create_timer(20.0).timeout
+				var r2 := 0
+				var v2 := 0
+				var q2 := 0
+				var unmanned2 := 0
+				for u3 in UnitRegistry.world_units():
+					if u3 is Unit2D and u3.alive and u3.team == 2:
+						if u3.kind == "robot":
+							r2 += 1
+						elif u3 is Vehicle2D and u3.manned:
+							v2 += 1
+						elif u3 is Vehicle2D:
+							unmanned2 += 1
+				var f2 := 0
+				for b2 in tree.get_nodes_in_group("facilities"):
+					if b2 is Building2D and b2.alive and b2.team == 2:
+						f2 += 1
+						q2 += b2.queue.items.size()
+				print("AI SIM t+%ds: robots=%d vehicles=%d unmanned=%d zones=%d money=%d facilities=%d queued=%d attacking=%s" % [
+					(step + 1) * 20, r2, v2, unmanned2,
+					MatchState.zones.filter(func(z): return z.owner_team == 2).size(),
+					int(MatchState.money.get(2, 0)), f2, q2, ai._attack_mode])
+			ctx.get_tree().quit()
 	if "--path-test" in args:
 		var grid: AStarGrid2D = NavWorld.nav_grid
 		if grid == null:
@@ -499,6 +550,31 @@ static func run(ctx: Node) -> void:
 			else:
 				sproblems.append("%s wrong root" % bdef.bname)
 			binst.free()
+		# scenery draws at NATIVE art size, bottom edge on its object tile
+		# (zod OMapObject::DoRender) — 2x turned clutter into giant smears;
+		# zone marker stamps are texture-sized (team 8x4, neutral 4x4) and
+		# the draw must stay texture-driven or the neutral one smears
+		var map_root := MatchState.map_root
+		if map_root != null:
+			for sc in map_root.get_children():
+				if not String(sc.name).begins_with("Scenery_"):
+					continue
+				var parts := String(sc.name).split("_")
+				var tex: Texture2D = sc.get("texture")
+				if tex == null:
+					continue
+				if sc.scale != Vector2.ONE:
+					sproblems.append("scenery %s scaled" % sc.name)
+				var want := Vector2(int(parts[1]) * 16 + 8, int(parts[2]) * 16 + 8) \
+					+ Vector2(tex.get_size().x - 16, 16 - tex.get_size().y) * 0.5
+				if (Vector2(sc.position) - want).length() > 0.5:
+					sproblems.append("scenery %s anchor" % sc.name)
+		for team in ["null", "red", "blue", "green", "yellow"]:
+			var mtex: Texture2D = load(
+				"res://assets/z/planets/zone_marker_%s.png" % team)
+			var want_size := Vector2(4, 4) if team == "null" else Vector2(8, 4)
+			if mtex == null or mtex.get_size() != want_size:
+				sproblems.append("marker art %s" % team)
 		print("SCENES: problems=%d %s" % [sproblems.size(),
 			", ".join(sproblems) if not sproblems.is_empty() else "(all scenes ok)"])
 	if "--defs-test" in args:
@@ -534,6 +610,96 @@ static func run(ctx: Node) -> void:
 				dproblems.append("pickup %s" % pk)
 		print("DEFS: problems=%d %s" % [dproblems.size(),
 			", ".join(dproblems) if not dproblems.is_empty() else "(all defs ok)"])
+	if "--balance-test" in args:
+		# BALANCE SWEEP vs the ORIGINAL game, transcribed from zod engine
+		# sources: build lists from zbuildlist.cpp LoadDefaults, unit stats
+		# from zsettings.cpp SetDefaults at the project's x0.08 integer
+		# scale (see content/*.tres). Any drift fails here.
+		var bproblems: Array[String] = []
+		var want_lists := {
+			"fort": {
+				0: ["robot:grunt", "vehicle:jeep", "vehicle:crane", "cannon:gatling"],
+				1: ["robot:grunt", "robot:psycho", "vehicle:jeep", "vehicle:light", "vehicle:crane", "cannon:gatling", "cannon:gun"],
+				2: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:crane", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+				3: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:apc", "vehicle:crane", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+				4: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "robot:laser", "vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy", "vehicle:apc", "vehicle:crane", "cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"],
+				5: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "robot:laser", "vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy", "vehicle:apc", "vehicle:missile_launcher", "vehicle:crane", "cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"],
+			},
+			"robot_factory": {
+				0: ["robot:grunt", "cannon:gatling"],
+				1: ["robot:grunt", "robot:psycho", "cannon:gatling"],
+				2: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "cannon:gatling", "cannon:gun"],
+				3: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+				4: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "robot:laser", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+				5: ["robot:grunt", "robot:psycho", "robot:sniper", "robot:tough", "robot:pyro", "robot:laser", "cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"],
+			},
+			"vehicle_factory": {
+				0: ["vehicle:jeep", "cannon:gatling"],
+				1: ["vehicle:jeep", "vehicle:light", "cannon:gatling", "cannon:gun"],
+				2: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "cannon:gatling", "cannon:gun"],
+				3: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:apc", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+				4: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy", "vehicle:apc", "cannon:gatling", "cannon:gun", "cannon:howitzer"],
+				5: ["vehicle:jeep", "vehicle:light", "vehicle:medium", "vehicle:heavy", "vehicle:apc", "vehicle:missile_launcher", "cannon:gatling", "cannon:gun", "cannon:howitzer", "cannon:missile_cannon"],
+			},
+		}
+		for producer in want_lists:
+			var pdef := ContentDB.producer_def(producer)
+			if pdef == null:
+				bproblems.append("producer %s missing" % producer)
+				continue
+			for level in range(6):
+				var want: Array = want_lists[producer][level]
+				var got: Array = pdef.build_lists.get(level, [])
+				if got != want:
+					bproblems.append("%s L%d roster drift" % [producer, level])
+		# zsettings.cpp stats at x0.08 (hp/damage/cooldown/range/speed/
+		# hit chance/splash/build seconds/cost). cost is our money overlay.
+		var want_stats := {
+			"robot:grunt": [86, 1, 0.5, 60.0, 60.0, 0.7, 0.0, 72.0],
+			"robot:psycho": [141, 2, 0.1, 60.0, 51.0, 0.65, 0.0, 98.0],
+			"robot:sniper": [141, 6, 0.4, 72.0, 60.0, 0.8, 0.0, 148.0],
+			"robot:tough": [270, 133, 1.442, 60.0, 51.0, 1.0, 40.0, 116.0],
+			"robot:pyro": [216, 8, 0.1, 60.0, 51.0, 0.7, 0.0, 161.0],
+			"robot:laser": [162, 14, 0.4, 68.0, 60.0, 0.7, 0.0, 179.0],
+			"vehicle:jeep": [141, 2, 0.1, 60.0, 73.0, 0.65, 0.0, 81.0],
+			"vehicle:light": [270, 167, 1.128, 60.0, 60.0, 1.0, 40.0, 137.0],
+			"vehicle:medium": [541, 267, 2.336, 64.0, 51.0, 1.0, 45.0, 225.0],
+			"vehicle:heavy": [670, 400, 4.088, 72.0, 39.0, 1.0, 50.0, 309.0],
+			"vehicle:apc": [541, 0, 9.9, 0.0, 60.0, 0.0, 0.0, 118.0],
+			"vehicle:missile_launcher": [541, 670, 4.454, 80.0, 26.0, 1.0, 80.0, 373.0],
+			"vehicle:crane": [800, 0, 9.9, 0.0, 60.0, 0.0, 0.0, 97.0],
+			"cannon:gatling": [141, 3, 0.1, 60.0, 0.0, 0.65, 0.0, 96.0],
+			"cannon:gun": [270, 250, 2.254, 64.0, 0.0, 1.0, 40.0, 125.0],
+			"cannon:howitzer": [270, 333, 4.86, 100.0, 0.0, 1.0, 40.0, 179.0],
+			"cannon:missile_cannon": [270, 667, 1.124, 72.0, 0.0, 1.0, 50.0, 182.0],
+		}
+		for key in want_stats:
+			var parts: PackedStringArray = String(key).split(":")
+			var d := ContentDB.def_for(parts[0], parts[1])
+			var w: Array = want_stats[key]
+			if [d.hp, d.damage, snappedf(d.cooldown, 0.001), d.range_px, d.speed,
+					d.hit_chance, d.splash_radius, d.build_time] != [w[0], w[1], snappedf(w[2], 0.001), w[3], w[4], w[5], w[6], w[7]]:
+				bproblems.append("%s stat drift (hp %d dmg %d cd %.3f rng %.0f spd %.0f hit %.2f splash %.0f build %.0f)"
+					% [key, d.hp, d.damage, d.cooldown, d.range_px, d.speed, d.hit_chance, d.splash_radius, d.build_time])
+		# no free producers: everything buildable costs money
+		for kind in ["robot", "vehicle", "cannon"]:
+			for name in ContentDB.buildable(kind):
+				if ContentDB.def_for(kind, String(name)).cost <= 0:
+					bproblems.append("%s:%s costs nothing" % [kind, name])
+		# InitZones: every fort claims its home zone — nobody starts broke
+		var fort_teams := {}
+		for b in tree.get_nodes_in_group("buildings"):
+			if b is FortBuilding and b.alive and b.team != 0:
+				fort_teams[b.team] = true
+		for t in fort_teams:
+			var owned := 0
+			for z in MatchState.zones:
+				if z.owner_team == t:
+					owned += 1
+			if owned < 1:
+				bproblems.append("team %d starts with no home zone" % t)
+		print("BALANCE: problems=%d %s" % [bproblems.size(),
+			", ".join(bproblems) if not bproblems.is_empty() else "(original balance holds)"])
 	if "--vfx-test" in args:
 		# damage smoke (per-direction track_dust), oil stains, wreck
 		# smoke variants and the grenade projectile sprite resolve
@@ -649,7 +815,17 @@ static func run(ctx: Node) -> void:
 		rf.level = 0
 		if rf.build_options() != ["robot:grunt", "cannon:gatling"]:
 			lproblems.append("robot factory L0 roster wrong")
-		if not is_equal_approx(fort_l0.build_time_mult(), 1.0 - 0.08 * 4):
+		# original BuildTimeModified: -50% at full zone control, +125% at
+		# near-death, LEVEL never speeds builds up
+		fort_l0.team = MatchState.player_team
+		fort_l0.owner_team = fort_l0.team
+		fort_l0.hp = fort_l0.max_hp
+		var zones_owned_l := 0
+		for z6 in MatchState.zones:
+			if z6.owner_team == fort_l0.team:
+				zones_owned_l += 1
+		var want_mult := 1.0 - 0.5 * float(zones_owned_l) / float(maxi(MatchState.zones.size(), 1))
+		if not is_equal_approx(fort_l0.build_time_mult(), want_mult):
 			lproblems.append("build time mult wrong")
 		fort_l0.queue_free()
 		vf.queue_free()
@@ -1029,6 +1205,27 @@ static func run(ctx: Node) -> void:
 					psychos2 += 1
 			print("FORTPROD: queued=%s units %d -> %d psychos=%d" % [
 				ok2, count0, tree.get_nodes_in_group("units").size(), psychos2])
+			# fort cannon SLOTS: guns mount on the tower points, capped by
+			# the slot count (no unlimited turret spam)
+			var accepted := 0
+			for i in 6:
+				if fort2.queue_unit("cannon:gatling", true):
+					accepted += 1
+			for i in 40:
+				fort2._process(0.5)
+			var mounted_guns := 0
+			var on_slot := 0
+			var fort_slots: Array = fort2.cannon_slots()
+			for u6 in tree.get_nodes_in_group("units"):
+				if u6 is Vehicle2D and u6.kind == "cannon" and u6.team == 1:
+					mounted_guns += 1
+					for s in fort_slots:
+						if u6.global_position.distance_to(s) < 4.0:
+							on_slot += 1
+							break
+			print("FORTSLOT: accepted=%d/4 mounted=%d on_slot=%d/%d free_after=%d" % [
+				accepted, mounted_guns, on_slot, mounted_guns,
+				fort2.free_cannon_slots()])
 	if "--cancel-test" in args:
 		var fort3: FortBuilding = null
 		for c in ctx.get_children():
@@ -1475,7 +1672,7 @@ static func run(ctx: Node) -> void:
 		# yellow siblings — a missing variant would silently drop that
 		# anim for the whole team (invisible unit), so fail loudly here
 		var scan_dirs := ["res://assets/z/robots", "res://assets/z/flags",
-			"res://assets/z/fort", "res://assets/z/ui/hud"]
+			"res://assets/z/buildings/fort", "res://assets/z/ui/hud"]
 		for d in DirAccess.get_directories_at("res://assets/z"):
 			if d.begins_with("robots_") or d.begins_with("vehicles_") \
 					or d.begins_with("cannons_"):

@@ -2163,7 +2163,7 @@
    "zod_source": "gog/PNG/{ARTIC,CITY,DESERT,JUNGLE,VOLCAN}*.png",
    "file_count": 0,
    "prefixes": {},
-   "game_usage": "campaign brief + map select icons",
+   "game_usage": "campaign brief world art",
    "status": "WIRED (GOG)",
    "notes": "320x200, base + alt lighting pass",
    "parity_diff_vs_working_set": null,

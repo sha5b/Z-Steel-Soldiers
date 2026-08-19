@@ -1,18 +1,20 @@
 [gd_resource type="Resource" script_class="UnitDef" format=3]
 
-[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1_0ybom"]
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1"]
 
 [resource]
-script = ExtResource("1_0ybom")
+script = ExtResource("1")
 id = "sniper"
+kind = "robot"
 asset_dir = "res://assets/z/robots_sniper"
 sound = "RIFLE3"
-hp = 34
-damage = 15
-range_px = 110.0
-cooldown = 1.8
-speed = 58.0
+hp = 141
+damage = 6
+range_px = 72.0
+cooldown = 0.400
+speed = 60.0
 cost = 80
-hit_chance = 0.8
-snipe_chance = 0.8
 build_time = 148.0
+pop = 1
+hit_chance = 0.80
+snipe_chance = 0.8

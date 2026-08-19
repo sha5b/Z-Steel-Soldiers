@@ -3,9 +3,9 @@ class_name Building2D
 extends Node2D
 signal died
 ## Original-sprite building (forts, factories, radar, repair). Loads the
-## per-planet texture, shows an ownership flag, and computes a ground
-## footprint (sprite is 2x tile scale -> footprint = texture/2) for
-## clicks, zone ownership and targeting. The flag waves in the owner's
+## per-planet texture, shows an ownership flag, and derives its solid
+## footprint from the content def's tile patterns for clicks, zone
+## ownership and targeting (art renders 1:1, like every world sprite). The flag waves in the owner's
 ## own shipped art variant; the building body itself is neutral.
 
 @export var building_id := 2
@@ -38,6 +38,9 @@ func setup(id: int, owner_team_value: int, planet_name: String, building_level :
 	planet = planet_name
 	level = clampi(building_level, 0, 5)
 	is_fort = id == 0 or id == 1
+	if is_fort:
+		max_hp = FORT_HP  # fort_building_health 10000/240 (zsettings), x0.08
+		hp = FORT_HP
 	if id == 6 or id == 7:
 		max_hp = BRIDGE_HP
 		hp = BRIDGE_HP
@@ -70,8 +73,20 @@ func produce_seconds(item := "") -> float:
 	return 8.0 * build_time_mult()
 
 
+## Original BuildTimeModified (zbuilding.cpp): production speeds up with
+## the share of the map's zones the owner holds (up to -50% at full
+## control) and slows while the building is damaged (up to +125% near
+## death). Building LEVEL only gates the roster, exactly like the
+## original — it never sped builds up.
 func build_time_mult() -> float:
-	return maxf(1.0 - 0.08 * level, 0.6)
+	var owner := team if team != 0 else owner_team
+	var owned := 0
+	for z in MatchState.zones:
+		if z.owner_team == owner:
+			owned += 1
+	var ownage := float(owned) / float(maxi(MatchState.zones.size(), 1))
+	var damage_penalty := 1.0 + 1.25 * (1.0 - float(hp) / float(max_hp))
+	return maxf((1.0 - 0.5 * ownage) * damage_penalty, 0.1)
 
 
 func build_options() -> Array:
@@ -223,21 +238,27 @@ func _build_sprite() -> void:
 		# are behind and get overlaid by the structure. The whole art
 		# (platform included) stays ONE sprite — nothing can shear,
 		# shift or desync again.
-		var lift := ts.y * 0.5 - 8.0
+		# FORTS ARE THE EXCEPTION: zod BFort::DoRender PERM-STAMPS the
+		# fort base into the map's GROUND layer, so in the original
+		# nothing is ever occluded by a fort and tower-mounted guns
+		# draw over the platform — sort a fort at its art's TOP edge
+		# (every unit stands at y >= that line) for the same effect.
+		var lift := -8.0 if is_fort else ts.y * 0.5 - 8.0
 		position.y += lift
 		_sprite.position.y -= lift
 
-	# ONE flag per ZONE marks territory; the only building that flies
-	# its own is the FORT (radar/repair/factories show ownership through
-	# their zone's flag — the original never gave every building one)
-	if is_fort and not is_bridge():
-		_flag = AnimatedSprite2D.new()
-		# x: the fort art's horizontal centre (the node sits at the map
-		# cell, the art extends right from -8)
-		_flag.position = Vector2(-8.0 + ts.x * 0.5, -ts.y * 0.5 - 4.0)
-		_flag.scale = Vector2(2, 2)
-		add_child(_flag)
-		set_flag_team(team)
+		# ONE flag per ZONE marks territory; the only building that flies
+		# its own is the FORT (radar/repair/factories show ownership through
+		# their zone's flag — the original never gave every building one)
+		if is_fort and not is_bridge():
+			_flag = AnimatedSprite2D.new()
+			# x: the fort art's horizontal centre; y: just above the art's
+			# top edge (fort node sits at the art top, others at the middle)
+			_flag.position = Vector2(-8.0 + ts.x * 0.5,
+				-12.0 if is_fort else -ts.y * 0.5 - 4.0)
+			_flag.scale = Vector2.ONE  # native art scale, matching the fort art
+			add_child(_flag)
+			set_flag_team(team)
 
 	_build_overlays()
 
@@ -248,13 +269,14 @@ func _build_sprite() -> void:
 		_hp_bar.centered = false
 		_hp_bar.texture = _bar_texture(team)
 		# tight to the building: full ART width, left edge on the art's
-		# left (the node is the art's vertical middle, not its centre)
+		# left (a fort's node is at the art top, other buildings at the
+		# vertical middle)
 		var bar_w := ts.x
 		_hp_bar.scale = Vector2(bar_w / 62.0, 6.0 / 16.0)
 		_hp_bar.region_enabled = true
 		_hp_bar.region_rect = Rect2(0, 0, 62, 16)
 		_hp_bar_max_w = bar_w
-		_hp_bar.position = Vector2(-8.0, -ts.y * 0.5 - 10)
+		_hp_bar.position = Vector2(-8.0, -18.0 if is_fort else -ts.y * 0.5 - 10)
 		_hp_bar.visible = false  # shown while selected or damaged
 		add_child(_hp_bar)
 
@@ -269,7 +291,10 @@ func art_world_rect() -> Rect2:
 	if building_id == 7:  # rotated horizontal bridge
 		return Rect2(global_position + Vector2(-8, -8),
 			Vector2(_art_size.y, _art_size.x))
-	return Rect2(global_position + Vector2(-8, -_art_size.y * 0.5), _art_size)
+	# forts sort at their art TOP (zod ground-stamp behaviour), every
+	# other building at its vertical middle
+	return Rect2(global_position
+		+ Vector2(-8, -8 if is_fort else -_art_size.y * 0.5), _art_size)
 
 
 ## World tiles this building makes impassable: the def's solid_tiles
@@ -442,7 +467,7 @@ func set_rally(world_position: Vector2) -> void:
 	if _rally_flag == null:
 		_rally_flag = Sprite2D.new()
 		_rally_flag.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_rally_flag.scale = Vector2(2, 2)
+		_rally_flag.scale = Vector2.ONE
 		add_child(_rally_flag)
 	# the flag frame swaps with the owning team (native art variants)
 	_rally_flag.texture = load("res://assets/z/flags/flag_%s_n00.png"
@@ -470,7 +495,8 @@ func _draw() -> void:
 		0: Color("737373"), 1: Color("df0000"), 2: Color("1337fb"),
 		3: Color("178f13"), 4: Color("cb632f"),
 	}.get(owner_team if team == 0 else team, Color.WHITE)
-	var r := Rect2(Vector2(-8.0, -_art_size.y * 0.5), _art_size)
+	var r := Rect2(Vector2(-8.0, -8.0 if is_fort else -_art_size.y * 0.5),
+		_art_size)
 	var arm := 6.0
 	var pad := 4.0
 	for corner in [r.position, Vector2(r.end.x, r.position.y),
@@ -632,7 +658,8 @@ func kill() -> void:
 # Bridges can be blown up (they become impassable rubble) and rebuilt
 # by a manned crane (original: CheckDestroyedBridge + crane repair).
 
-const BRIDGE_HP := 400
+const BRIDGE_HP := 6667  # bridge_building_health 2000/240 (zsettings), x0.08
+const FORT_HP := 33333  # fort_building_health 10000/240 (zsettings), x0.08
 var bridge_cells: Array[Vector2i] = []  # filled by the map loader
 
 

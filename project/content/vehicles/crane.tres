@@ -4,17 +4,16 @@
 
 [resource]
 script = ExtResource("1")
-id = "jeep"
+id = "crane"
 kind = "vehicle"
-asset_dir = "res://assets/z/vehicles_jeep"
-sound = "JEEPMGUN"
-hp = 141
-damage = 2
-range_px = 60.0
-cooldown = 0.100
-speed = 73.0
-cost = 60
-build_time = 81.0
+asset_dir = "res://assets/z/vehicles_crane"
+hp = 800
+damage = 0
+range_px = 0.0
+cooldown = 9.900
+speed = 60.0
+cost = 90
+build_time = 97.0
 pop = 2
-hit_chance = 0.65
-snipe_chance = 0.4
+hit_chance = 0.00
+snipe_chance = 0.0

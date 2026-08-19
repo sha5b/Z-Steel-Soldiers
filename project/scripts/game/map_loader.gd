@@ -49,6 +49,7 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 		if String(o.type) == "building" and fort_def != null and fort_def.is_fort \
 				and int(o.owner) != 0:
 			ai_teams[int(o.owner)] = true
+	_init_zone_owners(parent)
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
 		if not MatchState.money.has(t):
@@ -172,8 +173,11 @@ static func _spawn_map_item(parent: Node, o: Dictionary, pos: Vector2, planet: S
 	sprite.name = "Scenery_%d_%d" % [int(o.x), int(o.y)]
 	sprite.texture = load(String(info.texture))
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	sprite.scale = Vector2(2, 2)
-	sprite.position = pos
+	# zod OMapObject::DoRender: clutter draws at NATIVE art size with its
+	# bottom edge on the object tile — 2x turned barrels into giant smears
+	# over the zone markers
+	sprite.position = pos + Vector2(
+		sprite.texture.get_size().x - 16, 16 - sprite.texture.get_size().y) * 0.5
 	parent.add_child(sprite)
 
 
@@ -309,6 +313,7 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 				child.apply_impassables(grid, vgrid)
 			if def.is_fort and child.team != 0:
 				ai_teams[child.team] = true
+	_init_zone_owners(parent)
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
 		if not MatchState.money.has(t):
@@ -324,6 +329,30 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 		"zones": MatchState.zones.size(),
 		"objects": map.get_child_count(),
 	}
+
+
+## Original ZServer::InitZones: every FORT claims the zone it stands in
+## for its owner, and every other building in that zone follows the
+## fort's team — both sides start with their home territory (income and
+## working home factories) instead of a fully neutral map.
+static func _init_zone_owners(root: Node) -> void:
+	var buildings: Array = []
+	for b in root.get_tree().get_nodes_in_group("all_buildings"):
+		if root.is_ancestor_of(b) and b is Building2D and b.alive:
+			buildings.append(b)
+	for fort in buildings:
+		if not fort.is_fort or fort.team == 0:
+			continue
+		for z in MatchState.zones:
+			if not z.world_rect().has_point(fort.visual_center()):
+				continue
+			z.set_owner_team(fort.team)
+			for b in buildings:
+				if b != fort and not b.is_bridge() \
+						and z.world_rect().has_point(b.visual_center()):
+					b.owner_team = fort.team
+					b.team = fort.team
+			break
 
 
 static func _clear_bridge(bridge: Building2D, def: BuildingDef,

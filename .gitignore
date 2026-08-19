@@ -23,8 +23,8 @@ __pycache__/
 setup_*.exe
 
 # dev screenshot helper output
-project/screenshot_tmp.png
-project/screenshot_tmp.png.import
+project/screenshot_*.png
+project/screenshot_*.png.import
 
 # zcode session data
 .zcode/

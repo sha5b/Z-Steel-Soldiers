@@ -1,26 +1,30 @@
 [gd_resource type="Resource" script_class="UnitDef" format=3]
 
-[ext_resource type="Script" path="res://scripts/content/defs/projectile_def.gd" id="1_8ovu4"]
-[ext_resource type="Texture2D" path="res://assets/z/robots_tough/bullet_n00.png" id="2_it4vh"]
-[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="3_jl6o2"]
+[ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/content/defs/projectile_def.gd" id="2"]
+[ext_resource type="Texture2D" path="res://assets/z/robots_tough/bullet_n00.png" id="3"]
 
-[sub_resource type="Resource" id="Resource_lrhkf"]
-script = ExtResource("1_8ovu4")
-speed = 160.0
+[sub_resource type="Resource" id="Resource_sub"]
+script = ExtResource("2")
+speed = 150.0
 impact = "explosion"
-texture = ExtResource("2_it4vh")
+texture = ExtResource("3")
 
 [resource]
-script = ExtResource("3_jl6o2")
+script = ExtResource("1")
 id = "tough"
+kind = "robot"
 asset_dir = "res://assets/z/robots_tough"
 sound = "GRENLOBX"
-hp = 72
-damage = 8
-range_px = 50.0
-cooldown = 1.1
-speed = 50.0
+hp = 270
+damage = 133
+range_px = 60.0
+cooldown = 1.442
+speed = 51.0
 cost = 70
-splash_radius = 30.0
-projectile = SubResource("Resource_lrhkf")
 build_time = 116.0
+pop = 1
+hit_chance = 1.00
+snipe_chance = 0.0
+splash_radius = 40.0
+projectile = SubResource("Resource_sub")

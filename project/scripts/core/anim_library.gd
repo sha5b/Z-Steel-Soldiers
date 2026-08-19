@@ -473,14 +473,18 @@ static func mirrored_dir(d: int) -> int:
 
 ## Where the hull art for facing `d` really lives: the shipped half
 ## stores {E, NE, N, SE}; W/NW/SW are horizontal flips of their
-## partners and SOUTH is a vertical flip of NORTH. Returns
-## {dir, flip_x, flip_y}.
+## partners and SOUTH is NORTH rotated 180° (flip_x + flip_y — a pure
+## vertical mirror is a reflection: left/right hull detail ends up on
+## the wrong side). The tanks ship no r270 hulls at all (only the
+## turret), so south is always synthesized — see _flipped for the
+## shadow-band restore that keeps the art's bottom-lit convention.
+## Returns {dir, flip_x, flip_y}.
 static func hull_source(d: int) -> Dictionary:
 	match d:
 		4: return {"dir": 0, "flip_x": true, "flip_y": false}
 		3: return {"dir": 1, "flip_x": true, "flip_y": false}
 		5: return {"dir": 7, "flip_x": true, "flip_y": false}
-		6: return {"dir": 2, "flip_x": false, "flip_y": true}
+		6: return {"dir": 2, "flip_x": true, "flip_y": true}
 		_: return {"dir": d, "flip_x": false, "flip_y": false}
 
 
@@ -578,7 +582,53 @@ static func _flipped(path: String, flip_x := true, flip_y := false) -> Texture2D
 		img.flip_x()
 	if flip_y:
 		img.flip_y()
+		_restore_south_lighting(img, path, flip_x)
 	return ImageTexture.create_from_image(img)
+
+
+## Every shipped hull facing is lit "shadow along the canvas bottom"
+## (verified across the heavy's facings and the APC/crane/jeep/ML sets,
+## which DO ship genuine r270 art drawn that way). A flipped south hull
+## puts that dark band on TOP, which reads as an upside-down body.
+## Recolor the bottom rows with the original's shadow band and the top
+## row with its bright rim — but only where BOTH the band pixel and the
+## flipped hull are opaque: recolouring must never change the silhouette
+## (pasting the wide band over a tapered front punched visible notches
+## into the south light tank).
+static func _restore_south_lighting(img: Image, path: String, mirror_x: bool) -> void:
+	var src: Image = (load(path) as Texture2D).get_image()
+	var h := img.get_height()
+	var w := img.get_width()
+	# how many bottom rows of the original are near-flat dark (the band)
+	var band := 0
+	for k in range(1, mini(7, h)):
+		if _row_mean(src, h - k) >= 60.0 / 255.0:
+			break
+		band = k
+	if band == 0:
+		return
+	for k in range(band):
+		for x in w:
+			var sx := w - 1 - x if mirror_x else x
+			var c := src.get_pixel(sx, h - 1 - k)
+			if c.a > 0.23 and img.get_pixel(x, h - 1 - k).a > 0.23:
+				img.set_pixel(x, h - 1 - k, c)
+	for x in w:
+		var sx := w - 1 - x if mirror_x else x
+		var c := src.get_pixel(sx, 0)
+		if c.a > 0.23 and img.get_pixel(x, 0).a > 0.23:
+			img.set_pixel(x, 0, c)
+
+
+static func _row_mean(img: Image, y: int) -> float:
+	var sum := 0.0
+	var n := 0
+	for x in img.get_width():
+		var c := img.get_pixel(x, y)
+		if c.a > 0.23:
+			sum += (c.r + c.g + c.b) / 3.0
+			n += 1
+	return sum / n if n > 0 else 999.0
 
 
 static func _vehicle_anim_path(asset_dir: String, anim: String, tn: String, deg: int, frame: int, damaged := false) -> String:

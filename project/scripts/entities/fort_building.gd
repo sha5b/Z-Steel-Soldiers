@@ -13,9 +13,21 @@ const GARRISON_MISSILE: ProjectileDef = preload(
 const GARRISON_MISSILE_COOLDOWN := 3.0
 const GARRISON_CAP := 5
 
+# Cannon mount slots, in fort-ART pixels from the art's top-left (each
+# variant's two inner towers flanking the gate + the two outer corner
+# towers). Manufactured guns MOUNT here, one per slot — no unlimited
+# turret spam (the original's tower guns; zod stores max 4 built cannons
+# per producer). Slot guns spawn MANNED: tower cells are solid, a robot
+# could never walk up to crew them.
+const SLOTS_FRONT := [Vector2(38, 80), Vector2(122, 80),
+	Vector2(10, 26), Vector2(150, 26)]
+const SLOTS_BACK := [Vector2(40, 64), Vector2(120, 64),
+	Vector2(10, 14), Vector2(150, 14)]
+
 var garrison: Array[Node] = []
 var _missile_timer := 0.0
 var _missile_target: Node2D = null
+var slot_cannons: Array = []  # slot index -> manned cannon (or null)
 
 
 func kind_key() -> String:
@@ -24,6 +36,77 @@ func kind_key() -> String:
 
 func producer_key() -> String:
 	return "fort"
+
+
+## Tower mount points in WORLD px for this fort's art variant.
+func cannon_slots() -> Array:
+	var tex: String = ContentDB.building_def(building_id).tex \
+		if ContentDB.building_def(building_id) != null else "fort_front"
+	var art: Array = SLOTS_BACK if tex == "fort_back" else SLOTS_FRONT
+	var origin: Vector2 = art_world_rect().position
+	var out: Array = []
+	for off in art:
+		out.append(origin + Vector2(off))
+	return out
+
+
+func _ready() -> void:
+	super()
+	slot_cannons.resize(cannon_slots().size())
+
+
+## Free mount slots, counting cannons already mounted and cannons still
+## in the production queue.
+func free_cannon_slots() -> int:
+	var slots := cannon_slots()
+	var free := slots.size()
+	for i in slot_cannons.size():
+		var mounted = slot_cannons[i]
+		if mounted == null:
+			continue
+		if is_instance_valid(mounted) and mounted.alive \
+				and mounted.global_position.distance_to(slots[i]) < 48.0:
+			free -= 1
+		else:
+			slot_cannons[i] = null  # died or moved off: mount is free again
+	for item in queue.items:
+		if String(item).begins_with("cannon:"):
+			free -= 1
+	return maxi(free, 0)
+
+
+func queue_unit(item: String, silent := false) -> bool:
+	if item.begins_with("cannon:") and free_cannon_slots() == 0:
+		if not silent:
+			Fx.cap_denied()  # every tower mount is taken or queued
+		return false
+	return super(item, silent)
+
+
+func spawn_produced(item: String) -> void:
+	var parts := item.split(":")
+	if parts.size() == 2 and parts[0] == "cannon":
+		var slots := cannon_slots()
+		for i in slots.size():
+			var mounted = slot_cannons[i] if i < slot_cannons.size() else null
+			if mounted != null and is_instance_valid(mounted) and mounted.alive:
+				continue
+			slot_cannons[i] = Spawner.spawn(get_parent(), "cannon", parts[1],
+				owner_team, slots[i], true)
+			if owner_team == MatchState.player_team:
+				Fx.announce("gun_manufactured")
+			return
+	super(item)  # no free mount after all: fall back to spawning beside
+
+
+## The fort falling kills its tower guns with it.
+func _death_visuals() -> void:
+	super()
+	for i in slot_cannons.size():
+		var mounted = slot_cannons[i]
+		slot_cannons[i] = null
+		if mounted != null and is_instance_valid(mounted) and mounted.alive:
+			mounted.take_damage(1000000)
 
 
 
@@ -77,8 +160,8 @@ func _garrison_fire(delta: float) -> void:
 		func():
 			var hit: Node2D = instance_from_id(tid) as Node2D
 			if hit and hit.alive:
-				hit.take_damage(20)
-			Combat.area_damage(impact, 40.0, 10, team, true))
+				hit.take_damage(167)  # map_item_turrent_damage 50/240, x0.08
+			Combat.area_damage(impact, 40.0, 80, team, true))
 
 
 ## The fort falling kills everyone inside.

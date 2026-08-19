@@ -39,7 +39,7 @@ asset — see `project/assets_map.json` for the machine-readable form.
 | hud a/b/d/g buttons | 156 | - | **COPIED, NOT WIRED** | original in-game action buttons |
 | GOG Buttons.png | 0 | menu button plates (all states) | **WIRED (GOG)** | 2x3 grid of 32x32 faces; UiTheme atlas-regions + margins, tint/offset per state |
 | GOG Box* menu chrome | 0 | menu panel 3-slice | **WIRED (GOG)** | OriginalPanel; BoxInfo/BoxDivide + IP* 2x + TTAch copied, spare |
-| GOG planet thumbs | 0 | campaign brief + map select icons | **WIRED (GOG)** | 320x200, base + alt lighting pass |
+| GOG planet thumbs | 0 | campaign brief world art | **WIRED (GOG)** | 320x200, base + alt lighting pass |
 | GOG menu plaques | 0 | - | **COPIED (GOG), NOT WIRED** | 64x128 section headers + 64x64 exit icon |
 | GOG PMHSprites | 0 | - | **COPIED (GOG), NOT WIRED** | in-game HUD atlas: panel outline, round buttons, arrows, unit medallions |
 | GOG Font.png + Fonts/*.fnt | 0 | - | **COPIED (GOG), NOT WIRED** | Mac-port AHF bitmap font; superseded by zod per-char sets |

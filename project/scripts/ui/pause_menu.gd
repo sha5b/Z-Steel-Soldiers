@@ -53,10 +53,10 @@ func _on_restart_pressed() -> void:
 	get_tree().reload_current_scene()
 
 
-func _on_maps_pressed() -> void:
+func _on_skirmish_pressed() -> void:
 	get_tree().paused = false
 	GameState.reset_for_new_map()
-	get_tree().change_scene_to_file("res://scenes/map_select.tscn")
+	get_tree().change_scene_to_file("res://scenes/skirmish.tscn")
 
 
 func _on_title_pressed() -> void:

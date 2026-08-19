@@ -48,11 +48,11 @@ baseline; `art` plays another folder's frames).
 Wire new upgrade effects in MatchState.
 
 **New map**: drop the JSON (and/or generated `.tscn`) under
-`assets/maps/` — MapCatalog picks it up everywhere (map select,
+`assets/maps/` — MapCatalog picks it up everywhere (skirmish,
 campaign, cycler); `sandbox*` names are excluded from the campaign.
 
 **New team colour**: one entry in `scripts/core/teams.gd` (id, name,
-UI/minimap colours) **plus the `_<team>` art variants** — the original
+minimap colour) **plus the `_<team>` art variants** — the original
 engine shipped its own recoloured sprite set per team (`stand_blue_r000`,
 `flag_green_n00`, `icon_jeep_yellow`, ... verified pure colour swaps of
 the red set: neutral pixels untouched, identical canvases). Every team
@@ -97,8 +97,8 @@ robots/celebrate_<team>_n<frame>.png           victory celebration
 ```
 
 Add a unit: create `robots_<type>/` with fire frames (or reuse another
-type's), then add an entry to `UnitDefs.ROBOTS`. No entry needed to just
-see it work — auto-discovery registers unknown folders with grunt stats.
+type's). No `.tres` needed to just see it work — auto-discovery registers
+unknown folders with grunt stats; add one in `content/units/` for real stats.
 
 ## Vehicles & cannons
 
@@ -132,9 +132,9 @@ cannons_common/init-place_n<frame>.png  shared install anim prefix
 ```
 
 Building LEVELS (0-5, the map `level` field) gate each producer's
-roster — see `BuildingDefs.BUILD_LISTS` (transcribed from the original
-zbuildlist: the fort builds robots AND vehicles AND cannons). Higher
-levels also build faster.
+roster — the per-level `build_lists` on the building def in
+`content/buildings/` (transcribed from the original zbuildlist: the fort
+builds robots AND vehicles AND cannons). Higher levels also build faster.
 
 Unmanned hardware always resolves neutral art (`empty_null.png` /
 `empty.png`) — never a team colour. Idle turrets scan (one sector per
@@ -154,27 +154,27 @@ effects/<name>/<name>_n00.png ...   frames, played once at fps
 Registered automatically. `Fx.play(name, pos)`, `Fx.explosion(pos[, big])`,
 `Fx.impact(pos)`, `Fx.bullet(from, to)`, `Fx.shell(from, to, opts, on_hit)`.
 Without sprite frames an effect falls back to a native `CPUParticles2D`
-burst tinted from `EffectDefs.BY_NAME[name].color` — so effects work
+burst tinted from the def's `color` (`content/effects/<name>.tres`) — so effects work
 before art exists and upgrade automatically when art appears.
 
 ## Buildings
 
 `base_<planet>.png` (+ `_destroyed`) under `buildings/<tex-key>/`, fort
 variants and bridges have their own patterns (see `Building2D._texture_path`).
-Add `BuildingDefs.BY_ID` entry with size, script class, `tex` key,
-`solid`, optional `fort` / `bridge_span`. The map loader instantiates
-`script`, the flags/HUD come free.
+Add a `.tres` in `content/buildings/` with size, behaviour script,
+`tex` key, `solid`, optional `fort` / `bridge_span`. The map loader
+instantiates the behaviour, the flags/HUD come free.
 
 ## Pickups & scenery
 
-Pickups: art in `map_items/` + a `PickupDefs.TYPES` entry (`grants` names
-the upgrade). Scenery map items (non-rock, non-pickup ids) resolve through
+Pickups: art in `map_items/` + a `.tres` in `content/pickups/`
+(`upgrade_key` names the upgrade). Scenery map items (non-rock, non-pickup ids) resolve through
 `SceneryDefs.for_id(id, planet)` — huts are id 4, ids 5+ index
 `map_object<id-5>.png`.
 
 ## Maps
 
-Two interchangeable formats; the match, map select and the M-key map
+Two interchangeable formats; the match, skirmish screen and the M-key map
 cycle accept both:
 
 - **JSON** from `tools/zod/map_to_json.py` (drop into

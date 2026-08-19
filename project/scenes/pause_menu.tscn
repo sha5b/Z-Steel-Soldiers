@@ -64,10 +64,10 @@ custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
 text = "Save Game"
 
-[node name="Maps" type="Button" parent="Panel/Margin/Menu"]
+[node name="Skirmish" type="Button" parent="Panel/Margin/Menu"]
 custom_minimum_size = Vector2(220, 36)
 layout_mode = 2
-text = "Map Select"
+text = "Skirmish"
 
 [node name="Title" type="Button" parent="Panel/Margin/Menu"]
 custom_minimum_size = Vector2(220, 36)
@@ -77,5 +77,5 @@ text = "Quit to Title"
 [connection signal="pressed" from="Panel/Margin/Menu/Resume" to="." method="_on_resume_pressed"]
 [connection signal="pressed" from="Panel/Margin/Menu/Restart" to="." method="_on_restart_pressed"]
 [connection signal="pressed" from="Panel/Margin/Menu/Save" to="." method="_on_save_pressed"]
-[connection signal="pressed" from="Panel/Margin/Menu/Maps" to="." method="_on_maps_pressed"]
+[connection signal="pressed" from="Panel/Margin/Menu/Skirmish" to="." method="_on_skirmish_pressed"]
 [connection signal="pressed" from="Panel/Margin/Menu/Title" to="." method="_on_title_pressed"]

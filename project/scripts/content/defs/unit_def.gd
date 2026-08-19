@@ -11,10 +11,10 @@ extends Resource
 @export var sound := ""  # GOG wav name for the weapon report
 
 @export_group("Stats")
-@export var hp := 42
-@export var damage := 4
-@export var range_px := 58.0
-@export var cooldown := 0.75
+@export var hp := 86
+@export var damage := 1
+@export var range_px := 60.0
+@export var cooldown := 0.5
 @export var speed := 60.0
 @export var cost := 40
 @export var build_time := 60.0  # seconds (zsettings.cpp SetDefaults)

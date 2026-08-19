@@ -18,7 +18,7 @@ func _ready() -> void:
 		get_tree().change_scene_to_file("res://scenes/main.tscn"))
 	maps.pressed.connect(func():
 		GameState.reset_for_new_map()
-		get_tree().change_scene_to_file("res://scenes/map_select.tscn"))
+		get_tree().change_scene_to_file("res://scenes/skirmish.tscn"))
 	next_mission.pressed.connect(func():
 		GameState.reset_for_new_map()
 		if not Campaign.advance():

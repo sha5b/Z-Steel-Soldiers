@@ -192,7 +192,9 @@ func _scenery_node(id: int, pos: Vector2, planet: String) -> Node2D:
 	sprite.name = "Scenery_%d_%d" % [int(pos.x / TILE), int(pos.y / TILE)]
 	sprite.texture = load(String(info.texture))
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	sprite.scale = Vector2(2, 2)
-	sprite.position = pos
+	# keep in lockstep with MapLoader._spawn_map_item: native art size,
+	# bottom edge on the object tile (zod OMapObject::DoRender)
+	sprite.position = pos + Vector2(
+		sprite.texture.get_size().x - 16, 16 - sprite.texture.get_size().y) * 0.5
 	return sprite
 

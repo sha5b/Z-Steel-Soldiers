@@ -11,7 +11,7 @@ extends Node2D
 signal captured(new_team: int)
 
 const CAPTURE_SECONDS := 2.0
-const MARKER_OFFSET := Vector2(6, 6)  # the 8x4 stamp sits inside its 16px tile
+const MARKER_SCALE := 1.0  # native 8x4 stamps, centred in their 16px tile (zod DoZoneEffects)
 const BOB_SECONDS := 0.45  # water marker redraw cadence
 
 @export var zone_rect := Rect2i()
@@ -56,7 +56,7 @@ func _place_flag() -> void:
 	_flag = AnimatedSprite2D.new()
 	_flag.sprite_frames = AnimLibrary.flag_frames(owner_team)
 	_flag.position = _flag_spot(r)
-	_flag.scale = Vector2(2, 2)
+	_flag.scale = Vector2.ONE  # native art scale, matching buildings
 	add_child(_flag)
 	if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
 		_flag.play("wave")
@@ -157,19 +157,26 @@ func _draw() -> void:
 	var land := _marker_tex(owner_team, false)
 	var water := _marker_tex(owner_team, true)
 	var t := Time.get_ticks_msec() * 0.001
-	# 2x: the world's units and flags render at 2x — 8x4 stamps at 1x
-	# read as specks that don't fit next to them
-	var dst := Rect2(Vector2(), Vector2(12, 6))
-	var src := Rect2(Vector2(), Vector2(8, 4))
+	# stamp sizes come from the TEXTURE: team stamps are 8x4 but the
+	# neutral one is 4x4 — a fixed 8x4 source rect smeared the neutral
+	# art sideways
 	if land:
+		var src := Rect2(Vector2(), land.get_size())
+		var dst_size := land.get_size() * MARKER_SCALE
+		var off := (Vector2(16, 16) - dst_size) * 0.5
+		var dst := Rect2(off, dst_size)
 		for c in _cells:
-			dst.position = Vector2(c) * 16.0 + Vector2(2, 5)
+			dst.position = Vector2(c) * 16.0 + off
 			draw_texture_rect_region(land, dst, src)
 	if water:
+		var wsrc := Rect2(Vector2(), water.get_size())
+		var wdst_size := water.get_size() * MARKER_SCALE
+		var woff := (Vector2(16, 16) - wdst_size) * 0.5
+		var wdst := Rect2(woff, wdst_size)
 		for c in _water_cells:
 			var bob := 1.0 if fmod(t * 2.0 + float(_bob_phase.get(c, 0.0)), 2.0) < 1.0 else 0.0
-			dst.position = Vector2(c) * 16.0 + Vector2(2, 5 + bob)
-			draw_texture_rect_region(water, dst, src)
+			wdst.position = Vector2(c) * 16.0 + woff + Vector2(0, bob)
+			draw_texture_rect_region(water, wdst, wsrc)
 
 
 static func _marker_tex(owner: int, water: bool) -> Texture2D:
