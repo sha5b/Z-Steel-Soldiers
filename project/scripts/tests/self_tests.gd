@@ -25,7 +25,7 @@ static func should_run() -> bool:
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
-			"mp", "rally"]:
+			"mp", "rally", "placement"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -417,6 +417,8 @@ static func run(ctx: Node) -> void:
 			ctx.get_tree().quit()
 	if "--path-test" in args:
 		PathTests.walk_a_pair(ctx, TestRig.start("PATH"))
+	if "--placement-test" in args:
+		await PlacementTests.run(ctx, TestRig.start("PLACEMENT"))
 	if "--rally-test" in args:
 		# unmanned hardware must not take rally orders — the AI rallies
 		# every facility at an enemy fort, and empty vehicles used to
@@ -1833,8 +1835,11 @@ static func run(ctx: Node) -> void:
 				elif absf(gb._sprite.global_position.y - top_before) > 0.5:
 					geo_fails.append("destroyed fort shifted")
 			gb.queue_free()
-		print("BUILDINGGEO: %s" % ("OK" if geo_fails.is_empty()
-			else "FAIL %s" % geo_fails))
+			if geo_fails.is_empty():
+				print("BUILDINGGEO: OK")
+			else:
+				for gf in geo_fails:
+					print("CHECK FAILED: BUILDINGGEO: %s" % gf)
 		# nav solidity: every placed fort blocks its def's cells on BOTH
 		# grids, its open platform cells stay walkable, and a robot path
 		# across the fort must detour around the solid cells
@@ -1882,8 +1887,11 @@ static func run(ctx: Node) -> void:
 							and fort.footprint_cells().has(cell):
 						nav_fails.append("path crosses fort at %s" % cell)
 						break
-		print("NAVSOLID: %s" % ("OK" if nav_fails.is_empty()
-			else "FAIL %s" % nav_fails))
+			if nav_fails.is_empty():
+				print("NAVSOLID: OK")
+			else:
+				for nf in nav_fails:
+					print("CHECK FAILED: NAVSOLID: %s" % nf)
 	if "--parade-test" in args:
 		# line up manned hardware + an empty jeep for visual inspection
 		var camera := ctx.get_node("RtsCamera2D")

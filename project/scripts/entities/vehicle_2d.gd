@@ -86,8 +86,12 @@ func unload() -> void:
 		robot.visible = true
 		robot.add_to_group("selectable")
 		robot.add_to_group("units")
-		robot.global_position = global_position + Vector2(
-			(i - (cargo.size() - 1) * 0.5) * 18.0, 20.0)
+		# validated drop: the fixed offsets once landed squads inside
+		# building walls (an APC dying beside a factory buried its cargo)
+		var spot := NavWorld.find_free_spot(global_position + Vector2(
+			(i - (cargo.size() - 1) * 0.5) * 18.0, 20.0), "robot")
+		if spot != Vector2.INF:
+			robot.global_position = spot
 	cargo.clear()
 	_play_doors()
 
@@ -348,19 +352,24 @@ func _steer(delta: float) -> void:
 		if _track_distance >= Decals.TRACK_SPACING:
 			_track_distance = 0.0
 			Decals.track(_last_dir, global_position, unit_name == "jeep")
-		# consume waypoints leapfrogged by a large step (see Unit2D._steer)
+		# consume waypoints leapfrogged by a large step (see Unit2D._steer
+		# for the wall-slide exception — sliding along a building also
+		# increases the distance and must NOT consume the waypoint)
 		var final_before: float = global_position.distance_to(move_target) \
 				if move_target != Vector2.ZERO else INF
-		if not waypoints.is_empty():
-			if global_position.distance_to(waypoints[0]) > dist_before:
-				waypoints.remove_at(0)
-		elif move_target != Vector2.ZERO \
-				and global_position.distance_to(move_target) > final_before:
-			# the FINAL leg can be leapfrogged too — without this a fast
-			# unit ping-pongs around the 4px arrival radius forever
-			move_target = Vector2.ZERO
-			velocity = Vector2.ZERO
-			_on_arrived()
+		var slid_into_wall := not MatchState.direct_step \
+				and get_last_slide_collision() != null
+		if not slid_into_wall:
+			if not waypoints.is_empty():
+				if global_position.distance_to(waypoints[0]) > dist_before:
+					waypoints.remove_at(0)
+			elif move_target != Vector2.ZERO \
+					and global_position.distance_to(move_target) > final_before:
+				# the FINAL leg can be leapfrogged too — without this a fast
+				# unit ping-pongs around the 4px arrival radius forever
+				move_target = Vector2.ZERO
+				velocity = Vector2.ZERO
+				_on_arrived()
 		global_position = global_position.clamp(
 			NavWorld.map_rect.position, NavWorld.map_rect.end)
 		_progress_watchdog(delta)
@@ -646,10 +655,15 @@ func eject_driver() -> void:
 	if driver_type != "":
 		var map := get_parent()
 		if map is Node2D:
-			var survivor := Spawner.spawn(map, "robot", driver_type, team,
-				global_position + Vector2(0, 18)) as Unit2D
-			if survivor:
-				survivor.hp = maxi(1, int(survivor.max_hp / 3.0))
+			# validated bail-out: +18px straight down once dropped the
+			# survivor straight into the wall the hull was hugging
+			var spot := NavWorld.find_free_spot(
+				global_position + Vector2(0, 18), "robot")
+			if spot != Vector2.INF:
+				var survivor := Spawner.spawn(map, "robot", driver_type, team,
+					spot) as Unit2D
+				if survivor:
+					survivor.hp = maxi(1, int(survivor.max_hp / 3.0))
 	manned = false
 	team = 0
 	driver_type = ""

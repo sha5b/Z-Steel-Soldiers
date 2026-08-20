@@ -187,9 +187,14 @@ func spawn_produced(item: String) -> void:
 		Fx.announce("robot_manufactured" if kind == "robot"
 			else "vehicle_manufactured" if kind == "vehicle"
 			else "gun_manufactured")
-	# spawn just BELOW the solid footprint — never inside it
+	# spawn just BELOW the solid footprint — never inside it (validated
+	# for the product's body box; the +14 nudge alone could still clip a
+	# neighbouring wall or waterline)
 	var fp := world_footprint()
-	var spawn_pos := Vector2(fp.get_center().x, fp.end.y + 14.0)
+	var raw_spawn := Vector2(fp.get_center().x, fp.end.y + 14.0)
+	var spawn_pos := NavWorld.find_free_spot(raw_spawn, kind)
+	if spawn_pos == Vector2.INF:
+		spawn_pos = raw_spawn  # boxed-in apron: better clipped than eaten
 	if kind == "robot":
 		var unit: Unit2D = Spawner.spawn(get_parent(), kind, type_name,
 			owner_team, spawn_pos) as Unit2D
@@ -223,7 +228,7 @@ func _ready() -> void:
 	if (bdef != null and bdef.produces) or is_fort:
 		add_to_group("facilities")
 	if not is_bridge():
-		set_solid_body(true, footprint_cells())
+		apply_footprint()
 
 
 func _build_sprite() -> void:
@@ -385,13 +390,44 @@ func set_solid_body(on: bool, cells: Array[Vector2i] = []) -> void:
 	add_child(_body)
 
 
-## Mark this building's cells solid on both navigation grids — called by
-## the map loader, the ONE place grids are mutated for buildings.
+## Single front door for the static footprint: physics walls AND nav
+## solids, always in agreement. Walls-without-solids (buildings spawned
+## outside the loaders, or a silent def==null skip) is exactly how
+## units ended up wedged inside walls they pathed straight through.
+## _ready() calls this — nav solids paint only when the grids already
+## exist; the map loaders complete the pair via apply_impassables()
+## for buildings whose _ready ran before the grids were built.
+## Idempotent: re-painting the same cells is a no-op.
+func apply_footprint() -> void:
+	if is_bridge():
+		return
+	var def := ContentDB.building_def(building_id)
+	if def == null:
+		assert(false, "building_id %d has no BuildingDef — footprint cannot be derived (add content/buildings def or fix the id)" % building_id)
+		return
+	if not def.solid:
+		set_solid_body(false)
+		return
+	var cells := footprint_cells()
+	set_solid_body(true, cells)
+	for grid in [NavWorld.nav_grid, NavWorld.vehicle_grid]:
+		if grid != null:
+			for cell in cells:
+				if grid.region.has_point(cell):
+					grid.set_point_solid(cell, true)
+
+
+## Loader hook: paint nav solids for buildings whose _ready() ran before
+## the grids existed (scene maps instantiate their children first).
+## Walls are already up from _ready(); this completes the pair.
 func apply_impassables(grid: AStarGrid2D, vgrid: AStarGrid2D) -> void:
 	if is_bridge():
 		return
 	var def := ContentDB.building_def(building_id)
-	if def == null or not def.solid:
+	if def == null:
+		assert(false, "building_id %d has no BuildingDef — nav solids cannot be painted (add content/buildings def or fix the id)" % building_id)
+		return
+	if not def.solid:
 		return
 	for cell in footprint_cells():
 		if grid.region.has_point(cell):
@@ -704,7 +740,12 @@ func _repair_tick(delta: float) -> void:
 		done.carried = false
 		done.add_to_group("selectable")
 		done.add_to_group("units")
-		done.global_position = world_footprint().get_center() + Vector2(0, 44)
+		# validated exit: the fixed +44 nudge half-spawned 16px vehicle
+		# boxes back inside the shop's own wall
+		var exit_spot := NavWorld.find_free_spot(
+			world_footprint().get_center() + Vector2(0, 44), done.kind)
+		if exit_spot != Vector2.INF:
+			done.global_position = exit_spot
 		done.move_to(done.global_position + Vector2(0, 34))
 
 

@@ -179,9 +179,14 @@ func _apply_load() -> void:
 		else:
 			_apply_facility_save(child, facilities)
 	for su in save.get("units", []):
+		# saved coordinates can predate geometry changes (the fort solid
+		# row moved a tile) — validate every restore against today's nav
+		var pos := Vector2(float(su.x), float(su.y))
+		var spot := NavWorld.find_free_spot(pos, String(su.kind))
+		if spot != Vector2.INF:
+			pos = spot
 		var unit := Spawner.spawn(self, String(su.kind), String(su.type),
-			int(su.team), Vector2(float(su.x), float(su.y)),
-			bool(su.get("manned", false)))
+			int(su.team), pos, bool(su.get("manned", false)))
 		if unit:
 			unit.apply_dict(su)
 

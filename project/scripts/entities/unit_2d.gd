@@ -178,18 +178,24 @@ func _steer(delta: float) -> void:
 			global_position += velocity * delta
 		else:
 			move_and_slide()  # real collision — slides along building walls
-		# a large step can leapfrog the waypoint (the arrival check
-		# above only looks before moving): if we are now farther away
-		# than before the step, we passed it — consume it
-		if not waypoints.is_empty():
-			if global_position.distance_to(waypoints[0]) > dist_before:
-				waypoints.remove_at(0)
-		elif move_target != Vector2.ZERO \
-				and global_position.distance_to(move_target) > final_before:
-			# same for the FINAL leg: without this a fast unit ping-pongs
-			# around the 4px arrival radius forever (exposed by building
-			# orders that resolve on arrival)
-			_arrive_at_target()
+			# a large step can leapfrog the waypoint (the arrival check
+			# above only looks before moving): if we are now farther away
+			# than before the step, we passed it — consume it. UNLESS the
+			# step hit a wall: sliding along a building also increases
+			# the distance, and consuming then sent the beeline straight
+			# across the wall corner (units jammed against factories)
+			var slid_into_wall := not MatchState.direct_step \
+					and get_last_slide_collision() != null
+			if not slid_into_wall:
+				if not waypoints.is_empty():
+					if global_position.distance_to(waypoints[0]) > dist_before:
+						waypoints.remove_at(0)
+				elif move_target != Vector2.ZERO \
+						and global_position.distance_to(move_target) > final_before:
+					# same for the FINAL leg: without this a fast unit
+					# ping-pongs around the 4px arrival radius forever
+					# (exposed by building orders that resolve on arrival)
+					_arrive_at_target()
 		global_position = global_position.clamp(
 			NavWorld.map_rect.position, NavWorld.map_rect.end)
 		_progress_watchdog(delta)
@@ -247,17 +253,21 @@ func _separation(delta: float) -> void:
 		NavWorld.map_rect.position, NavWorld.map_rect.end)
 
 
-## True when the body (point + 6px margin) overlaps a nav-solid cell —
-## the building walls ARE those cells. Five grid lookups, no geometry,
-## no allocations: this runs per unit per physics tick and MUST stay
-## cheap (the first version walked every building's footprint and cost
-## the whole frame budget).
+## True when the body box overlaps a nav-solid cell of the kind's OWN
+## grid — the building walls ARE those cells. Probes center, edge
+## midpoints and corners at the per-kind half-extent (6px probes once
+## missed that 16x16 vehicle hulls shave into walls). Nine grid
+## lookups, no geometry, no allocations: this runs per unit per physics
+## tick and MUST stay cheap (the first version walked every building's
+## footprint and cost the whole frame budget).
 func _inside_building(p: Vector2) -> bool:
-	var grid := NavWorld.nav_grid
+	var grid := NavWorld.vehicle_grid if kind != "robot" else NavWorld.nav_grid
 	if grid == null:
 		return false
-	for off in [Vector2.ZERO, Vector2(6, 0), Vector2(-6, 0),
-			Vector2(0, 6), Vector2(0, -6)]:
+	var pad: float = NavWorld.BODY_HALF.get(kind, 7.0)
+	for off in [Vector2.ZERO,
+			Vector2(-pad, 0), Vector2(pad, 0), Vector2(0, -pad), Vector2(0, pad),
+			Vector2(-pad, -pad), Vector2(pad, -pad), Vector2(-pad, pad), Vector2(pad, pad)]:
 		var cell := Vector2i(((p + off) / 16.0).floor())
 		if grid.region.has_point(cell) and grid.is_point_solid(cell):
 			return true
@@ -426,9 +436,12 @@ func take_damage(amount: int) -> void:
 		# ratio-based: raw damage thresholds died with the 10000-scale
 		# rebalance, grunt hits are 1 and laser hits are 14)
 		play_gesture("dodge")
-		var sidestep := Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0))
-		if _walkable(global_position + sidestep):
-			global_position += sidestep
+		# validated scramble: the old center-cell check teleported robots
+		# INTO building walls, where move_and_slide pinned them for good
+		var spot := NavWorld.find_free_spot(global_position
+			+ Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0)), kind)
+		if spot != Vector2.INF:
+			global_position = spot
 
 
 func die() -> void:

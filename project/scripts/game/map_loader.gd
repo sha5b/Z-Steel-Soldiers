@@ -309,6 +309,10 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 		if child is Building2D:
 			var def := ContentDB.building_def(child.building_id)
 			if def == null:
+				# loud, never silent: an undef'd building means walls with
+				# no nav solids — units wedge inside what they path through
+				push_error("map scene building '%s' has unknown building_id %d"
+					% [child.name, child.building_id])
 				continue
 			if def.bridge_span != Vector2i.ZERO:
 				_clear_bridge(child, def, grid, vgrid)
