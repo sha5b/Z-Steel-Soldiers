@@ -1,6 +1,6 @@
 [gd_scene load_steps=11 format=3]
 
-[ext_resource type="Script" path="res://scripts/game/test_map_2d.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/game/match.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/game/rts_camera2d.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/ui/selection_rect.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/ui/production_panel.gd" id="4"]

@@ -5,7 +5,7 @@ extends Control
 ## the menu previews — see MapPreview), zone-tint ownership baked in,
 ## redrawn only when a zone changes owner. Blips and the camera box are
 ## drawn on top each frame. Left-click/drag moves the camera, right-click
-## issues a move order (see test_map_2d wiring).
+## issues a move order (see match.gd wiring).
 
 signal move_order(world_position: Vector2)
 

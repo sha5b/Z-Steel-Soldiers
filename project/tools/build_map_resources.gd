@@ -70,7 +70,7 @@ func _build_scene(data: Dictionary) -> PackedScene:
 	var planet := String(data.terrain)
 	var root := Node2D.new()
 	root.name = String(data.get("name", "map"))
-	root.set_script(load("res://scripts/game/map_scene.gd"))
+	root.set_script(load("res://scripts/game/z_map.gd"))
 	root.set("planet", planet)
 	root.set("map_size", Vector2i(int(data.width), int(data.height)))
 	root.y_sort_enabled = true
