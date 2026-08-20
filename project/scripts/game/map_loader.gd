@@ -56,7 +56,8 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 	for t in ai_teams:
 		MatchState.current.grant_ledger(t)
 	for t in ai_teams:
-		if t != MatchState.current.player_team:
+		# seats held by HUMAN players act over the network — no stand-in
+		if t != MatchState.current.player_team and not Net.human_teams().has(t):
 			var ai := CpuAi.new(t)
 			ai.name = "CpuAi_T%d" % t
 			parent.add_child(ai)
@@ -324,7 +325,8 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 	for t in ai_teams:
 		MatchState.current.grant_ledger(t)
 	for t in ai_teams:
-		if t != MatchState.current.player_team:
+		# seats held by HUMAN players act over the network — no stand-in
+		if t != MatchState.current.player_team and not Net.human_teams().has(t):
 			var ai := CpuAi.new(t)
 			ai.name = "CpuAi_T%d" % t
 			parent.add_child(ai)

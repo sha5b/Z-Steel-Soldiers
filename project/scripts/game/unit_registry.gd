@@ -24,13 +24,25 @@ signal unit_spawned(unit: Unit2D)
 signal unit_died(unit: Unit2D)
 
 var _all: Array[Unit2D] = []
+var _next_net_id := 1  # per-match, spawn order — peers agree by map data
 
 
 ## Called from Unit2D._ready — every spawn path is covered.
 func track(unit: Unit2D) -> void:
 	if not _all.has(unit):
+		unit.net_id = _next_net_id
+		_next_net_id += 1
 		_all.append(unit)
 		unit_spawned.emit(unit)
+
+
+## Stable per-match identity lookup (multiplayer intents address units
+## by net id — instance ids differ across peers).
+func by_net_id(id: int) -> Unit2D:
+	for u in _all:
+		if u.net_id == id:
+			return u
+	return null
 
 
 ## Called from Unit2D.die — also compacts freed entries (units can be

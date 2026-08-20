@@ -94,8 +94,8 @@ func _on_selection_changed(_units: Array) -> void:
 	visible = factory != null
 	if factory != _wired:
 		if _wired:
-			if queue_requested.is_connected(_wired.queue_unit):
-				queue_requested.disconnect(_wired.queue_unit)
+			if queue_requested.is_connected(_on_queue_requested):
+				queue_requested.disconnect(_on_queue_requested)
 			# the queue row follows the producer — unwind the old wire or
 			# captured factories keep invoking _check_roster forever
 			if _wired.queue.changed.is_connected(_check_roster):
@@ -103,7 +103,7 @@ func _on_selection_changed(_units: Array) -> void:
 		_wired = factory
 		_queue_cache.clear()
 		if factory:
-			queue_requested.connect(factory.queue_unit)
+			queue_requested.connect(_on_queue_requested)
 			factory.queue.changed.connect(_check_roster)
 			_check_roster()
 	if factory:
@@ -151,6 +151,14 @@ func _update_queue(factory: Node) -> void:
 					factory.cancel_at(i))
 			_queue_row.add_child(btn)
 
+
+
+## Build request: apply locally AND relay (no-op offline). One seam —
+## the direct factory.queue_unit wire used to bypass the network.
+func _on_queue_requested(item: String) -> void:
+	if _wired != null and is_instance_valid(_wired):
+		_wired.queue_unit(item)
+		Net.relay_queue(_wired, item)
 
 
 func _selected_factory() -> Node:

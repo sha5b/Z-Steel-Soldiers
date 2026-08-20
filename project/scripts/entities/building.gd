@@ -14,6 +14,7 @@ signal died
 @export var level := 0  # 0..5: unlocks the build list roster, speeds builds
 var is_fort := false
 var selected := false
+var net_id := 0  # stable per-match identity for multiplayer intents
 
 var hp := 500
 var max_hp := 500

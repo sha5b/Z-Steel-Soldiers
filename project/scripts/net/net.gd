@@ -189,6 +189,91 @@ func _teardown_peer() -> void:
 # --- wire protocol -------------------------------------------------------
 
 
+# --- in-match intent replication (milestone 2) --------------------------
+# Host-authoritative exactly like the lobby: clients submit intents, the
+# host validates the acting team against the sender's seat, then
+# rebroadcasts; every peer applies through the single intakes
+# (issue_order / queue_unit / set_rally — see MatchRelay). Entities are
+# addressed by per-match NET ID (spawn order). Local sim state is NOT
+# bit-synchronized (float physics) — peers apply the same intents to
+# their own sims; the save contract is the resync/late-join path.
+
+var replaying_intents := false  # applying a received intent never re-relays
+
+
+## Peer -> host: one player intent (clients broadcast — their only
+## peer IS the host; the host validates its own intents directly).
+func _send_intent(intent: Dictionary) -> void:
+	if role == Role.HOST:
+		_validate_intent(match_team, intent)
+	else:
+		_submit_intent.rpc(intent)
+
+
+func relay_order(u: Unit2D, o: Order) -> void:
+	if not in_match or replaying_intents or u == null or o == null:
+		return
+	var target_id := 0
+	if o.target != null and o.target.get("net_id") != null:
+		target_id = int(o.target.net_id)
+	_send_intent({
+		"kind": "order", "team": match_team, "unit": u.net_id,
+		"otype": int(o.type), "x": o.position.x, "y": o.position.y,
+		"run": o.run, "target": target_id,
+	})
+
+
+func relay_queue(facility: Building2D, item: String) -> void:
+	if not in_match or replaying_intents or facility == null:
+		return
+	_send_intent({"kind": "queue", "team": match_team,
+		"fac": facility.net_id, "item": item})
+
+
+func relay_rally(facility: Building2D, world_position: Vector2) -> void:
+	if not in_match or replaying_intents or facility == null:
+		return
+	_send_intent({"kind": "rally", "team": match_team,
+		"fac": facility.net_id, "x": world_position.x, "y": world_position.y})
+
+
+## Teams seated by HUMAN players in the launched match — those get no
+## CpuAi stand-in (the AI only plays open/CPU seats).
+func human_teams() -> Array:
+	if not in_match:
+		return []
+	var teams := []
+	for id in room.players:
+		var t := int(room.players[id].get("team", 0))
+		if t != 0:
+			teams.append(t)
+	return teams
+
+
+@rpc("any_peer", "reliable")
+func _submit_intent(intent: Dictionary) -> void:
+	if role == Role.HOST:
+		var sender := multiplayer.get_remote_sender_id()
+		_validate_intent(int(room.players.get(sender, {}).get("team", 0)), intent)
+
+
+## Host-side validation, split like _handle_request so tests drive it
+## with a fake seat team. The acting team MUST match the sender's seat.
+func _validate_intent(sender_team: int, intent: Dictionary) -> void:
+	if role != Role.HOST:
+		return
+	if int(intent.get("team", 0)) != sender_team:
+		return  # not yours to command
+	_apply_intent.rpc(intent)
+
+
+@rpc("authority", "call_local", "reliable")
+func _apply_intent(intent: Dictionary) -> void:
+	replaying_intents = true
+	MatchRelay.apply(intent)
+	replaying_intents = false
+
+
 @rpc("any_peer", "reliable")
 func _request(cmd: Dictionary) -> void:
 	if role == Role.HOST:

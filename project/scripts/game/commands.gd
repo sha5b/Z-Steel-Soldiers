@@ -11,6 +11,7 @@ static func dispatch(world_position: Vector2) -> void:
 	var selected := SelectionManager.current.selected
 	if selected.size() == 1 and is_instance_valid(selected[0]) 			and selected[0] is Building2D and selected[0].alive 			and (selected[0].is_fort or selected[0] is RobotFactory or selected[0] is VehicleFactory) 			and selected[0].owner_team == MatchState.current.player_team:
 		selected[0].set_rally(world_position)
+		Net.relay_rally(selected[0], world_position)
 		Fx.ui_click()
 		return
 	var empty_vehicle := _find_empty_vehicle(world_position)
@@ -33,31 +34,39 @@ static func dispatch(world_position: Vector2) -> void:
 		if u.kind == "robot" and own_fort and is_instance_valid(own_fort) \
 				and own_fort.team == u.team and own_fort.alive:
 			# garrison: man the fort missiles
-			u.issue_order(Order.for_target(own_fort, sprint))
+			_order(u, Order.for_target(own_fort, sprint))
 			continue
 		if u.kind == "robot":
 			if empty_vehicle and is_instance_valid(empty_vehicle):
-				u.issue_order(Order.for_target(empty_vehicle, sprint))
+				_order(u, Order.for_target(empty_vehicle, sprint))
 				continue
 			if apc and is_instance_valid(apc) and u.team == apc.team:
-				u.issue_order(Order.for_target(apc, sprint))
+				_order(u, Order.for_target(apc, sprint))
 				continue
 		elif target_building and is_instance_valid(target_building) \
 				and _wants_building_order(u, target_building):
 			# vehicles act on buildings: damaged hardware drives into the
 			# repair shop, cranes set up on wrecked buildings/bridges
-			u.issue_order(Order.for_target(target_building, sprint))
+			_order(u, Order.for_target(target_building, sprint))
 			continue
 		var ring := maxi(int(sqrt(float(movers.size()))), 1)
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0
 		var dest := world_position + offset
 		match stance:
 			SelectionManager.OrderStance.ATTACK_MOVE:
-				u.issue_order(Order.move_attack(dest, sprint))
+				_order(u, Order.move_attack(dest, sprint))
 			SelectionManager.OrderStance.DEFEND:
-				u.issue_order(Order.move_defend(dest, sprint))
+				_order(u, Order.move_defend(dest, sprint))
 			_:
-				u.issue_order(Order.move(dest, sprint))
+				_order(u, Order.move(dest, sprint))
+
+
+## Issue + relay: the single place a player order enters the game AND
+## the network (no-op offline — Net guards in_match itself).
+static func _order(u: Node2D, o: Order) -> void:
+	u.issue_order(o)
+	Net.relay_order(u, o)
+
 
 
 static func _find_apc(world_position: Vector2) -> Vehicle2D:

@@ -38,10 +38,15 @@ shipped 2026-08 — see the bottom section.
 
 ## Not done (known gaps for a future task)
 
-- Multiplayer IN-MATCH sync — the lobby/connection layer is done (next
-  section); replicating player orders needs the determinism work
-  (choke points are ready: `Unit2D.issue_order`, `queue_unit`,
-  `set_rally`)
+- Multiplayer IN-MATCH sync — INTENT REPLICATION SHIPPED (2026-08-20):
+  clients relay order/queue/rally intents to the host, the host
+  validates the acting team against the sender's seat and rebroadcasts;
+  every peer applies through the single intakes (MatchRelay, entities
+  addressed by per-match net id). Human seats get no CpuAi stand-in.
+  Peer sims are NOT bit-synchronized (float physics): each peer applies
+  the same intents to its own sim; state resync / late-join reuses the
+  save contract (future). Verified by --mpmatch-test over a real ENet
+  loopback
 - Verified open bugs live in `docs/BUGS.md` (root-caused, with
   file:line evidence) — keep that file current instead of the roadmap
 - Original GUI chrome (production menu art exists, unused), water

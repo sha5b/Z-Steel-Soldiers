@@ -16,6 +16,9 @@ const GRENADE: ProjectileDef = preload("res://content/projectiles/grenade.tres")
 signal died(unit: Node)
 signal damaged(amount: int)
 
+var net_id := 0  # stable per-match identity for multiplayer intents
+				 # (assigned by the registry at track time; spawn order)
+
 enum State { IDLE, MOVING, ENTERING, GESTURE, DEAD }
 
 var state := State.IDLE

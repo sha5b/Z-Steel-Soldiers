@@ -25,7 +25,7 @@ static func should_run() -> bool:
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
-			"mp", "rally", "placement", "fortkill", "parity", "art"]:
+			"mp", "rally", "placement", "fortkill", "parity", "art", "mpmatch"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -280,6 +280,111 @@ static func run(ctx: Node) -> void:
 				Net.leave()
 			print("MP: %s" % (",".join(fails) if fails.size() > 0
 					else "discovery + room + start + host-lost all ok"))
+	if "--mpmatch-test" in args:
+		# multiplayer milestone 2: IN-MATCH intent replication over a real
+		# ENet loopback — a client's order/rally/queue intents reach the
+		# host, get validated against the sender's seat and applied through
+		# the single intakes; an unowned team is dropped.
+		var mm := TestRig.start("MPMATCH")
+		var test_port := 45679
+		if not Net.host_game("INTENT ROOM", test_port, false):
+			mm.check(false, "host_game: %s" % Net.last_error)
+		else:
+			await tree.process_frame  # root is busy during _ready — dummy.add_child needs the tree settled
+			var dummy := Node.new()
+			dummy.name = "MpMatchClient"
+			tree.root.add_child(dummy)
+			var client_api := SceneMultiplayer.new()
+			tree.set_multiplayer(client_api, dummy.get_path())
+			var client: Node = load("res://scripts/net/net.gd").new()
+			client.name = "Net"
+			dummy.add_child(client)
+			mm.check(client.join_game("127.0.0.1", test_port), "client join start")
+			for i in 60:
+				client_api.poll()
+				await tree.process_frame
+				if not client.room.is_empty():
+					break
+			var cid: int = client.my_id()
+			var open_team := 0
+			for slot in client.room.get("slots", []):
+				if str(slot.get("controller", "")) == "open":
+					open_team = int(slot.get("team", 0))
+					break
+			mm.check(open_team != 0, "no open seat")
+			if open_team != 0:
+				client.request_seat(open_team)
+				client.set_ready(true)
+				for i in 40:
+					client_api.poll()
+					await tree.process_frame
+					if int(Net.room.players.get(cid, {}).get("team", 0)) == open_team:
+						break
+				mm.check(Net.host_start(), "host_start blocked: %s" % Net.start_blocker())
+				for i in 40:
+					client_api.poll()
+					await tree.process_frame
+					if client.in_match:
+						break
+				mm.check(client.in_match, "client never received the start")
+				if client.in_match:
+					# ORDER round trip: the client's robot must move
+					var robot: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+						client.match_team, Vector2(600, 480))
+					client.relay_order(robot, Order.move(Vector2(760, 480)))
+					var moved := false
+					for i in 60:
+						client_api.poll()
+						await tree.process_frame
+						if robot.move_target != Vector2.ZERO:
+							moved = true
+							break
+					mm.check(moved, "order intent never applied")
+					# VALIDATION: a team the sender does not own is dropped
+					var other: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+						client.match_team % 8 + 1, Vector2(600, 500))
+					Net._validate_intent(1, {"kind": "order", "team": 999,
+						"unit": other.net_id, "otype": 0, "x": 900.0, "y": 500.0,
+						"run": false, "target": 0})
+					for i in 10:
+						await tree.process_frame
+					mm.check(other.move_target == Vector2.ZERO,
+						"unowned team intent was applied")
+					# RALLY round trip on the client's own fort
+					var fort: FortBuilding = null
+					for b in tree.get_nodes_in_group(Groups.BUILDINGS):
+						if b is FortBuilding and b.team == client.match_team:
+							fort = b
+							break
+					if fort == null:
+						mm.check(false, "no fort for team %d" % client.match_team)
+					else:
+						var rally := fort.visual_center() + Vector2(60, 0)
+						client.relay_rally(fort, rally)
+						var rallied := false
+						for i in 40:
+							client_api.poll()
+							await tree.process_frame
+							if fort.rally_point == rally:
+								rallied = true
+								break
+						mm.check(rallied, "rally intent never applied")
+					# QUEUE round trip (funded)
+					if fort != null:
+						MatchState.current.set_money(client.match_team, 500)
+						fort.queue.cancel_at(0)  # drop anything queued earlier
+						client.relay_queue(fort, "robot:grunt")
+						var queued := false
+						for i in 40:
+							client_api.poll()
+							await tree.process_frame
+							if fort.queue_items().size() >= 1:
+								queued = true
+								break
+						mm.check(queued, "queue intent never applied")
+				Net.leave()
+				client.leave()
+		mm.finish()
 	if "--capture-test" in args:
 		var u: Unit2D = null
 		for unit in tree.get_nodes_in_group(Groups.UNITS):
