@@ -141,7 +141,7 @@ func has_upgrade(team: int, key: String) -> bool:
 
 func unit_pop(team: int) -> int:
 	var used := 0
-	for u in UnitRegistry.of_team(team):
+	for u in UnitRegistry.current.of_team(team):
 		used += ContentDB.def_for(u.kind, u.unit_name).pop
 	return used
 

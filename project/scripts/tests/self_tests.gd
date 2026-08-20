@@ -367,7 +367,7 @@ static func run(ctx: Node) -> void:
 			for u2 in tree.get_nodes_in_group("units"):
 				if u2 is Node2D and u2.team == 2 and u2.move_target != Vector2.ZERO:
 					moved += 1
-			for u2 in UnitRegistry.world_units():
+			for u2 in UnitRegistry.current.world_units():
 				if u2 is Unit2D and u2.alive and not u2.carried and u2.team == 2:
 					if u2.kind == "robot":
 						roster.robots += 1
@@ -397,7 +397,7 @@ static func run(ctx: Node) -> void:
 				var v2 := 0
 				var q2 := 0
 				var unmanned2 := 0
-				for u3 in UnitRegistry.world_units():
+				for u3 in UnitRegistry.current.world_units():
 					if u3 is Unit2D and u3.alive and u3.team == 2:
 						if u3.kind == "robot":
 							r2 += 1
@@ -1714,7 +1714,7 @@ static func run(ctx: Node) -> void:
 				if b2 is Building2D and b2.owner_team == 2 and b2.alive:
 					wproblems.append("cascade left a team-2 building")
 					break
-			if not UnitRegistry.of_team(2).is_empty():
+			if not UnitRegistry.current.of_team(2).is_empty():
 				wproblems.append("cascade left team-2 units alive")
 			for z in MatchState.zones:
 				if z.owner_team == 2:
@@ -1732,7 +1732,7 @@ static func run(ctx: Node) -> void:
 			if fort3 == null:
 				wproblems.append("no team-3 fort")
 			else:
-				for u in UnitRegistry.of_team(3).duplicate():
+				for u in UnitRegistry.current.of_team(3).duplicate():
 					u.die()
 				if fort3.alive:
 					wproblems.append("no-units rule did not destroy team 3's fort")

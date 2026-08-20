@@ -19,6 +19,9 @@ func _ready() -> void:
 	var nav := NavWorld.new()
 	nav.name = "NavWorld"
 	add_child(nav)
+	var registry := UnitRegistry.new()
+	registry.name = "UnitRegistry"
+	add_child(registry)
 	# the ORIGINAL's animated, context-swapping team cursor, drawn in the
 	# stretched canvas so it scales with the window (a 16px OS cursor
 	# reads as a speck on a maximized window); the OS pointer hides for

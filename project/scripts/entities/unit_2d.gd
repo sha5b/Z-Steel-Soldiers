@@ -61,7 +61,7 @@ func _ready() -> void:
 	add_to_group("units")
 	if not Engine.is_editor_hint():
 		SelectionManager.listen(self)
-		UnitRegistry.track(self)
+		UnitRegistry.current.track(self)
 	var stats := ContentDB.stats_for(kind, unit_name)
 	hp = stats.hp
 	max_hp = stats.hp
@@ -225,7 +225,7 @@ func offset_to_next_waypoint() -> float:
 ## every frame (zod robots shoulder each other aside while walking).
 func _separation(delta: float) -> void:
 	var push := Vector2.ZERO
-	for u in UnitRegistry.world_units():
+	for u in UnitRegistry.current.world_units():
 		if u == self or not (u is Unit2D) or not u.alive or u.carried:
 			continue
 		var d: Vector2 = global_position - u.global_position
@@ -375,7 +375,7 @@ func _find_target() -> Node2D:
 ## forts AND the destructible factories/radar/repair (bridges are
 ## neutral and never shot at).
 func _find_target_within(eff_range: float) -> Node2D:
-	var best: Node2D = UnitRegistry.nearest_enemy(
+	var best: Node2D = UnitRegistry.current.nearest_enemy(
 		global_position, eff_range, team)
 	var best_d: float = global_position.distance_to(best.global_position) \
 			if best != null else eff_range
@@ -447,7 +447,7 @@ func take_damage(amount: int) -> void:
 func die() -> void:
 	alive = false
 	state = State.DEAD
-	UnitRegistry.untrack(self)
+	UnitRegistry.current.untrack(self)
 	died.emit(self)
 	velocity = Vector2.ZERO
 	set_selected(false)
@@ -637,7 +637,7 @@ func _smart_idle() -> void:
 	_auto_timer = 0.4
 	if move_target != Vector2.ZERO or _entering != null or enter_target != null:
 		return
-	for v in UnitRegistry.world_units():
+	for v in UnitRegistry.current.world_units():
 		if v is Vehicle2D and not v.manned and v.alive \
 				and global_position.distance_to(v.global_position) < AUTO_RADIUS:
 			issue_order(Order.for_target(v))  # a real order walks there

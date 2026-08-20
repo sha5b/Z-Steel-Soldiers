@@ -1,9 +1,24 @@
+class_name UnitRegistry
 extends Node
-## Autoload (UnitRegistry): the typed "who exists" database. Units
-## register at _ready and remove on death; queries replace the old
-## per-frame group scans (targeting, separation, zone capture, AI,
-## minimap, pop counts). Carried robots (inside an APC) stay registered
-## but are excluded from world queries.
+## The typed "who exists" database. Units register at _ready and remove
+## on death; queries replace the old per-frame group scans (targeting,
+## separation, zone capture, AI, minimap, pop counts). Carried robots
+## (inside an APC) stay registered but are excluded from world queries.
+## A CHILD OF THE MATCH SCENE (not an autoload): each match owns its
+## roster and dies with it — see NavWorld for the locator pattern.
+
+## The active match's roster (set on _ready, cleared on exit).
+static var current: UnitRegistry
+
+
+func _ready() -> void:
+	current = self
+
+
+func _exit_tree() -> void:
+	if current == self:
+		current = null
+
 
 signal unit_spawned(unit: Unit2D)
 signal unit_died(unit: Unit2D)

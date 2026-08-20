@@ -66,7 +66,7 @@ func _think() -> void:
 	var vehicles: Array[Node] = []       # own manned vehicles
 	var empty_hardware: Array[Node] = [] # unmanned vehicles/cannons
 	var enemy_army := 0
-	for u in UnitRegistry.world_units():
+	for u in UnitRegistry.current.world_units():
 		if not (u is Unit2D) or not u.alive or u.carried:
 			continue
 		if u is Vehicle2D:
@@ -157,7 +157,7 @@ func _weighted_pick(options: Array, army_pop: int, _diff: int) -> String:
 func _defend(robots: Array[Node], vehicles: Array[Node]) -> void:
 	var fort := _own_fort()
 	var threats: Array[Node] = []
-	for u in UnitRegistry.world_units():
+	for u in UnitRegistry.current.world_units():
 		if u is Node2D and u.alive and u.team != 0 and u.team != team and not u.carried:
 			if fort and u.global_position.distance_to(fort.visual_center()) < DEFEND_RADIUS:
 				threats.append(u)

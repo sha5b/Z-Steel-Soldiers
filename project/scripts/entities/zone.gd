@@ -127,7 +127,7 @@ func _process(delta: float) -> void:
 		_place_flag()
 	var occupying := 0
 	var contested := false
-	for u in UnitRegistry.world_units():
+	for u in UnitRegistry.current.world_units():
 		# neutral hardware (empty vehicles) does not hold territory
 		if u.team != 0 and world_rect().has_point(u.global_position):
 			if occupying == 0:

@@ -75,7 +75,7 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 		shooter_team: int, crater := false) -> void:
 	if crater:
 		Decals.crater(world_pos, radius > 36.0)
-	for u in UnitRegistry.in_radius(world_pos, radius):
+	for u in UnitRegistry.current.in_radius(world_pos, radius):
 		if u.team != shooter_team and u.team != 0:
 			u.take_damage(_falloff(amount, u.global_position.distance_to(world_pos), radius))
 	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("all_buildings"):

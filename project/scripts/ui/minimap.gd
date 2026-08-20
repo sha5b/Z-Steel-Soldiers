@@ -97,7 +97,7 @@ func _draw() -> void:
 			_blip(b.visual_center(), Teams.minimap_color(b.team), 3.0)
 	# enemy intel needs a radar station (original Z) — own units always show
 	var radar = _player_has_radar()
-	for u in UnitRegistry.world_units():
+	for u in UnitRegistry.current.world_units():
 		if u.team != MatchState.player_team and not radar:
 			continue
 		_blip(u.global_position, Teams.minimap_color(u.team), 2.0)

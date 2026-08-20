@@ -707,7 +707,7 @@ func die() -> void:
 	SelectionManager.drop_from_selection(self)
 	remove_from_group("selectable")
 	remove_from_group("units")
-	UnitRegistry.untrack(self)  # vehicle deaths count for the no-units rule
+	UnitRegistry.current.untrack(self)  # vehicle deaths count for the no-units rule
 	died.emit(self)
 	Fx.destroyed(global_position)
 	var has_wreck := sprite.sprite_frames \

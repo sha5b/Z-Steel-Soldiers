@@ -62,7 +62,7 @@ func report_fort_destroyed(losing_team: int) -> void:
 	# registry entries can dangle (units freed without die(), e.g. the
 	# save-restore roster swap) — validity comes FIRST, `is` on a freed
 	# instance is a hard error
-	for u in UnitRegistry.all_units().duplicate():
+	for u in UnitRegistry.current.all_units().duplicate():
 		if is_instance_valid(u) and u is Unit2D and u.team == losing_team and u.alive:
 			u.die()
 	for b in Engine.get_main_loop().root.get_tree() \
@@ -78,7 +78,7 @@ func report_fort_destroyed(losing_team: int) -> void:
 
 ## Original CheckNoUnitsDestroyFort: a team that has no alive robot,
 ## vehicle or cannon left loses every fort it still holds (and with
-## them, the match). Polled from UnitRegistry.untrack.
+## them, the match). Polled from UnitRegistry.current.untrack.
 func check_no_units(team: int) -> void:
 	if over or team == 0 or team in _eliminated:
 		return
@@ -91,7 +91,7 @@ func check_no_units(team: int) -> void:
 			break
 	# carried units (garrisoned / riding an APC) exist too — a fort with
 	# defenders inside must not self-destruct out from under them
-	if has_fort and UnitRegistry.alive_of_team(team).is_empty():
+	if has_fort and UnitRegistry.current.alive_of_team(team).is_empty():
 		report_fort_destroyed(team)
 
 
