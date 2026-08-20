@@ -13,6 +13,12 @@ var _map_index := 0
 
 func _ready() -> void:
 	Engine.time_scale = GameSettings.game_speed()  # options-screen speed
+	# match-scoped subsystems: the match scene OWNS its navigation (and
+	# registry/economy — same pattern) so state dies with the scene and
+	# two matches can coexist in one tree (in-process MP loopback)
+	var nav := NavWorld.new()
+	nav.name = "NavWorld"
+	add_child(nav)
 	# the ORIGINAL's animated, context-swapping team cursor, drawn in the
 	# stretched canvas so it scales with the window (a 16px OS cursor
 	# reads as a speck on a maximized window); the OS pointer hides for
@@ -134,9 +140,9 @@ func _spawn_ambient_life() -> void:
 		if species == "":
 			return
 		var pos := Vector2(
-			randf_range(32.0, NavWorld.map_rect.size.x - 32.0),
-			randf_range(32.0, NavWorld.map_rect.size.y - 32.0))
-		if NavWorld.walkable(Vector2i(pos / 16.0), false):
+			randf_range(32.0, NavWorld.current.map_rect.size.x - 32.0),
+			randf_range(32.0, NavWorld.current.map_rect.size.y - 32.0))
+		if NavWorld.current.walkable(Vector2i(pos / 16.0), false):
 			var critter := Animal.new()
 			critter.species = species
 			critter.position = pos
@@ -182,7 +188,7 @@ func _apply_load() -> void:
 		# saved coordinates can predate geometry changes (the fort solid
 		# row moved a tile) — validate every restore against today's nav
 		var pos := Vector2(float(su.x), float(su.y))
-		var spot := NavWorld.find_free_spot(pos, String(su.kind))
+		var spot := NavWorld.current.find_free_spot(pos, String(su.kind))
 		if spot != Vector2.INF:
 			pos = spot
 		var unit := Spawner.spawn(self, String(su.kind), String(su.type),

@@ -1,8 +1,25 @@
+class_name NavWorld
 extends Node
-## Autoload (NavWorld): the navigable world — pathing grids for robots
-## and vehicles, the map bounds, path requests with endpoint nudging.
-## MapLoader fills the grids; bridges, repairs and rock-clearing blasts
-## mutate them through here.
+## The navigable world — pathing grids for robots and vehicles, the map
+## bounds, path requests with endpoint nudging, and the body-clearance
+## placement contract. A CHILD OF THE MATCH SCENE (not an autoload):
+## each match owns its grids and dies with them, and two matches can
+## coexist in one tree (the in-process MP loopback needs that).
+## Call sites reach the active instance through `NavWorld.current`.
+
+## The active match's navigation (set on _ready, cleared on exit — the
+## locator that keeps per-instance state behind the familiar name).
+static var current: NavWorld
+
+
+func _ready() -> void:
+	current = self
+
+
+func _exit_tree() -> void:
+	if current == self:
+		current = null
+
 
 var nav_grid: AStarGrid2D          # robots: tileinfo passability + rocks
 var vehicle_grid: AStarGrid2D      # vehicles: additionally no water

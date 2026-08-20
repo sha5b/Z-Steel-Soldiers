@@ -16,7 +16,7 @@ func reset_for_new_map() -> void:
 	over = false
 	_eliminated.clear()
 	MatchState.reset()
-	NavWorld.reset()
+	NavWorld.current.reset()
 	pending_load = {}
 	SelectionManager.clear_selection()  # drop freed units from the old map
 

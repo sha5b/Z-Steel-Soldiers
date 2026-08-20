@@ -64,8 +64,8 @@ func _process(delta: float) -> void:
 	position += offset.normalized() * WALK_SPEED * delta
 	var vertical := absf(offset.y) > absf(offset.x)
 	_play("walk", 90 if vertical else 0, offset.x < 0.0 and not vertical)
-	position = position.clamp(NavWorld.map_rect.position + Vector2(16, 16),
-		NavWorld.map_rect.end - Vector2(16, 16))
+	position = position.clamp(NavWorld.current.map_rect.position + Vector2(16, 16),
+		NavWorld.current.map_rect.end - Vector2(16, 16))
 
 
 func _begin_walk() -> void:

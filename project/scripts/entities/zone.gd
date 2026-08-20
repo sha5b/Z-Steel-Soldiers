@@ -86,7 +86,7 @@ func _flag_spot(r: Rect2) -> Vector2:
 				if maxi(absi(dx), absi(dy)) != radius:
 					continue
 				var cell := c + Vector2i(dx, dy)
-				if r.has_point(Vector2(cell * 16 + Vector2i(8, 8))) 						and NavWorld.nav_grid.region.has_point(cell) 						and not NavWorld.nav_grid.is_point_solid(cell):
+				if r.has_point(Vector2(cell * 16 + Vector2i(8, 8))) 						and NavWorld.current.nav_grid.region.has_point(cell) 						and not NavWorld.current.nav_grid.is_point_solid(cell):
 					return Vector2(cell * 16 + Vector2i(8, 8))
 	return r.get_center()
 
@@ -106,15 +106,15 @@ func _rebuild_marker_cells() -> void:
 		edge.append(zone_rect.position + Vector2i(x, 0))
 		edge.append(zone_rect.position + Vector2i(x, zone_rect.size.y - 1))
 	for c in edge:
-		if NavWorld.nav_grid == null:
+		if NavWorld.current.nav_grid == null:
 			_cells.append(c)
 			continue
-		if not NavWorld.nav_grid.region.has_point(c) \
-				or NavWorld.nav_grid.is_point_solid(c):
+		if not NavWorld.current.nav_grid.region.has_point(c) \
+				or NavWorld.current.nav_grid.is_point_solid(c):
 			continue
-		if NavWorld.vehicle_grid != null \
-				and NavWorld.vehicle_grid.region.has_point(c) \
-				and NavWorld.vehicle_grid.is_point_solid(c):
+		if NavWorld.current.vehicle_grid != null \
+				and NavWorld.current.vehicle_grid.region.has_point(c) \
+				and NavWorld.current.vehicle_grid.is_point_solid(c):
 			_water_cells.append(c)
 		else:
 			_cells.append(c)

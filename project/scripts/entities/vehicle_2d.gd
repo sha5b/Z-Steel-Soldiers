@@ -88,7 +88,7 @@ func unload() -> void:
 		robot.add_to_group("units")
 		# validated drop: the fixed offsets once landed squads inside
 		# building walls (an APC dying beside a factory buried its cargo)
-		var spot := NavWorld.find_free_spot(global_position + Vector2(
+		var spot := NavWorld.current.find_free_spot(global_position + Vector2(
 			(i - (cargo.size() - 1) * 0.5) * 18.0, 20.0), "robot")
 		if spot != Vector2.INF:
 			robot.global_position = spot
@@ -323,7 +323,7 @@ func _progress_watchdog(delta: float) -> void:
 			velocity = Vector2.ZERO
 			move_target = Vector2.ZERO
 		else:
-			waypoints = NavWorld.request_path(
+			waypoints = NavWorld.current.request_path(
 				global_position, move_target, kind)
 
 
@@ -372,7 +372,7 @@ func _steer(delta: float) -> void:
 				velocity = Vector2.ZERO
 				_on_arrived()
 		global_position = global_position.clamp(
-			NavWorld.map_rect.position, NavWorld.map_rect.end)
+			NavWorld.current.map_rect.position, NavWorld.current.map_rect.end)
 		_progress_watchdog(delta)
 	else:
 		_play_body()
@@ -658,7 +658,7 @@ func eject_driver() -> void:
 		if map is Node2D:
 			# validated bail-out: +18px straight down once dropped the
 			# survivor straight into the wall the hull was hugging
-			var spot := NavWorld.find_free_spot(
+			var spot := NavWorld.current.find_free_spot(
 				global_position + Vector2(0, 18), "robot")
 			if spot != Vector2.INF:
 				var survivor := Spawner.spawn(map, "robot", driver_type, team,

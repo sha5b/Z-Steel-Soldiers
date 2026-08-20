@@ -11,8 +11,8 @@ extends Object
 ## All checks share one predicate: the body box of the unit sits on
 ## open cells of its own grid.
 static func _clear(u: Unit2D) -> bool:
-	return NavWorld.body_clear(u.global_position,
-		NavWorld.BODY_HALF.get(u.kind, 7.0), u.kind)
+	return NavWorld.current.body_clear(u.global_position,
+		NavWorld.current.BODY_HALF.get(u.kind, 7.0), u.kind)
 
 
 static func run(ctx: Node, rig: TestRig) -> void:
@@ -31,7 +31,7 @@ static func run(ctx: Node, rig: TestRig) -> void:
 	# 1. dodge beside a wall: a robot taking solid hits next to the
 	# factory must always scramble somewhere its whole box fits
 	var bot: Unit2D = Spawner.spawn(ctx, "robot", "tough", 1,
-		NavWorld.find_free_spot(hug, "robot")) as Unit2D
+		NavWorld.current.find_free_spot(hug, "robot")) as Unit2D
 	bot.hp = 1000000
 	for i in 40:
 		bot.take_damage(600)  # above the ratio-dodge threshold every hit
@@ -74,14 +74,14 @@ static func run(ctx: Node, rig: TestRig) -> void:
 	# brushing a wall at contact distance is legal sliding) and it must
 	# arrive: wedging into a corner pocket forever was the reported bug
 	var walker: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
-		NavWorld.find_free_spot(
+		NavWorld.current.find_free_spot(
 			Vector2(wall.position.x - 30.0, wall.get_center().y), "robot")) as Unit2D
-	walker.move_to(NavWorld.find_free_spot(
+	walker.move_to(NavWorld.current.find_free_spot(
 		Vector2(wall.end.x + 30.0, wall.get_center().y), "robot"))
 	var samples := 0
 	var bad := 0
 	var first_bad := Vector2.ZERO
-	var rgrid := NavWorld.nav_grid
+	var rgrid := NavWorld.current.nav_grid
 	for i in 600:
 		await ctx.get_tree().physics_frame
 		if i % 5 == 0:

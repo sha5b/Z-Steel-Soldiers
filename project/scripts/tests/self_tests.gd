@@ -1228,7 +1228,7 @@ static func run(ctx: Node) -> void:
 			bridge.take_damage(9999)
 			var solid_after := true
 			for cell in bridge.bridge_cells:
-				if NavWorld.nav_grid and not NavWorld.nav_grid.is_point_solid(cell):
+				if NavWorld.current.nav_grid and not NavWorld.current.nav_grid.is_point_solid(cell):
 					solid_after = false
 			if not solid_after:
 				rproblems.append("destroyed bridge still passable")
@@ -1240,7 +1240,7 @@ static func run(ctx: Node) -> void:
 				rproblems.append("bridge not rebuilt: %d/%d" % [bridge.hp, bridge.max_hp])
 			var open_after := true
 			for cell in bridge.bridge_cells:
-				if NavWorld.nav_grid and NavWorld.nav_grid.is_point_solid(cell):
+				if NavWorld.current.nav_grid and NavWorld.current.nav_grid.is_point_solid(cell):
 					open_after = false
 			if not open_after:
 				rproblems.append("repaired bridge still impassable")
@@ -1341,7 +1341,7 @@ static func run(ctx: Node) -> void:
 			Combat.area_damage(rock.global_position, 40.0, 99, 0)
 			await Engine.get_main_loop().process_frame
 			rock_cleared = not is_instance_valid(rock) and \
-				(not NavWorld.nav_grid or not NavWorld.nav_grid.is_point_solid(cell))
+				(not NavWorld.current.nav_grid or not NavWorld.current.nav_grid.is_point_solid(cell))
 			if not rock_cleared:
 				cproblems.append("rock not destroyed/cleared by blast")
 		# --- garrison: robots inside make the fort shoot missiles ---
@@ -1602,8 +1602,8 @@ static func run(ctx: Node) -> void:
 			print("CANCEL: queue=%s money %d -> %d (sniper refund %d)" % [
 				fort3.queue.items, money_mid, MatchState.money[1], 80])
 	if "--vehpath-test" in args:
-		var rg: AStarGrid2D = NavWorld.nav_grid
-		var vg: AStarGrid2D = NavWorld.vehicle_grid
+		var rg: AStarGrid2D = NavWorld.current.nav_grid
+		var vg: AStarGrid2D = NavWorld.current.vehicle_grid
 		var water_cell := Vector2i(-1, -1)
 		for y in rg.region.size.y:
 			for x in rg.region.size.x:
@@ -1617,9 +1617,9 @@ static func run(ctx: Node) -> void:
 			print("VEHPATH: no water cells on map")
 		else:
 			var water_px := Vector2(water_cell) * 16.0 + Vector2(8, 8)
-			var start: Vector2i = NavWorld._open_cell(Vector2i(((water_px + Vector2(200, 0)) / 16.0).floor()), rg)
-			var rpath := NavWorld.request_path(water_px + Vector2(200, 0), water_px, "robot")
-			var vpath := NavWorld.request_path(water_px + Vector2(200, 0), water_px, "vehicle")
+			var start: Vector2i = NavWorld.current._open_cell(Vector2i(((water_px + Vector2(200, 0)) / 16.0).floor()), rg)
+			var rpath := NavWorld.current.request_path(water_px + Vector2(200, 0), water_px, "robot")
+			var vpath := NavWorld.current.request_path(water_px + Vector2(200, 0), water_px, "vehicle")
 			var vehicle_refused: bool = vpath.is_empty()
 			var vends_on_water: bool = not vehicle_refused \
 				and vg.is_point_solid(Vector2i((vpath[vpath.size() - 1] / 16.0).floor()))
@@ -1887,19 +1887,19 @@ static func run(ctx: Node) -> void:
 			nav_fails.append("no fort on map")
 		else:
 			for cell in fort.footprint_cells():
-				if NavWorld.nav_grid.region.has_point(cell) \
-						and not NavWorld.nav_grid.is_point_solid(cell):
+				if NavWorld.current.nav_grid.region.has_point(cell) \
+						and not NavWorld.current.nav_grid.is_point_solid(cell):
 					nav_fails.append("nav open %s" % cell)
-				if NavWorld.vehicle_grid.region.has_point(cell) \
-						and not NavWorld.vehicle_grid.is_point_solid(cell):
+				if NavWorld.current.vehicle_grid.region.has_point(cell) \
+						and not NavWorld.current.vehicle_grid.is_point_solid(cell):
 					nav_fails.append("vgrid open %s" % cell)
 			var fdef := ContentDB.building_def(fort.building_id)
 			var origin := Vector2i((fort.art_world_rect().position / 16.0).floor())
 			var open_walked := 0
 			for t in fdef.open_tiles:
 				var c := origin + Vector2i(t)
-				if NavWorld.nav_grid.region.has_point(c) \
-						and not NavWorld.nav_grid.is_point_solid(c):
+				if NavWorld.current.nav_grid.region.has_point(c) \
+						and not NavWorld.current.nav_grid.is_point_solid(c):
 					open_walked += 1
 			if open_walked == 0:
 				nav_fails.append("no open platform cells walkable")
@@ -1912,12 +1912,12 @@ static func run(ctx: Node) -> void:
 					Vector2(art.get_center().x, art.position.y - 40.0)],
 				[Vector2(art.position.x - 40.0, art.get_center().y),
 					Vector2(art.end.x + 40.0, art.get_center().y)]]:
-				var across: PackedVector2Array = NavWorld.request_path(
+				var across: PackedVector2Array = NavWorld.current.request_path(
 					probe[0], probe[1], "robot")
 				for p in across:
 					var cell := Vector2i((p / 16.0).floor())
-					if NavWorld.nav_grid.region.has_point(cell) \
-							and NavWorld.nav_grid.is_point_solid(cell) \
+					if NavWorld.current.nav_grid.region.has_point(cell) \
+							and NavWorld.current.nav_grid.is_point_solid(cell) \
 							and fort.footprint_cells().has(cell):
 						nav_fails.append("path crosses fort at %s" % cell)
 						break

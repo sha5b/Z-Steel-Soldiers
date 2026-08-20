@@ -92,10 +92,10 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 	for rock in Engine.get_main_loop().root.get_tree().get_nodes_in_group("rocks"):
 		if rock is Node2D and rock.global_position.distance_to(world_pos) <= radius:
 			var cell := Vector2i(((rock.global_position - Vector2(8, 8)) / 16.0).floor())
-			if NavWorld.nav_grid and NavWorld.nav_grid.is_point_solid(cell):
-				NavWorld.nav_grid.set_point_solid(cell, false)
-			if NavWorld.vehicle_grid and NavWorld.vehicle_grid.is_point_solid(cell):
-				NavWorld.vehicle_grid.set_point_solid(cell, false)
+			if NavWorld.current.nav_grid and NavWorld.current.nav_grid.is_point_solid(cell):
+				NavWorld.current.nav_grid.set_point_solid(cell, false)
+			if NavWorld.current.vehicle_grid and NavWorld.current.vehicle_grid.is_point_solid(cell):
+				NavWorld.current.vehicle_grid.set_point_solid(cell, false)
 			Fx.play("debris", rock.global_position)
 			rock.queue_free()
 

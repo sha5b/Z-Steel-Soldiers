@@ -189,7 +189,7 @@ func spawn_produced(item: String) -> void:
 	# neighbouring wall or waterline)
 	var fp := world_footprint()
 	var raw_spawn := Vector2(fp.get_center().x, fp.end.y + 14.0)
-	var spawn_pos := NavWorld.find_free_spot(raw_spawn, kind)
+	var spawn_pos := NavWorld.current.find_free_spot(raw_spawn, kind)
 	if spawn_pos == Vector2.INF:
 		spawn_pos = raw_spawn  # boxed-in apron: better clipped than eaten
 	if kind == "robot":
@@ -412,7 +412,7 @@ func apply_footprint() -> void:
 		return
 	var cells := footprint_cells()
 	set_solid_body(true, cells)
-	for grid in [NavWorld.nav_grid, NavWorld.vehicle_grid]:
+	for grid in [NavWorld.current.nav_grid, NavWorld.current.vehicle_grid]:
 		if grid != null:
 			for cell in cells:
 				if grid.region.has_point(cell):
@@ -744,7 +744,7 @@ func _repair_tick(delta: float) -> void:
 		done.add_to_group("units")
 		# validated exit: the fixed +44 nudge half-spawned 16px vehicle
 		# boxes back inside the shop's own wall
-		var exit_spot := NavWorld.find_free_spot(
+		var exit_spot := NavWorld.current.find_free_spot(
 			world_footprint().get_center() + Vector2(0, 44), done.kind)
 		if exit_spot != Vector2.INF:
 			done.global_position = exit_spot
@@ -835,10 +835,10 @@ func _bridge_damage(amount: int) -> void:
 	hp = 0
 	Fx.destroyed(world_footprint().get_center())
 	for cell in bridge_cells:
-		if NavWorld.nav_grid:
-			NavWorld.nav_grid.set_point_solid(cell, true)
-		if NavWorld.vehicle_grid:
-			NavWorld.vehicle_grid.set_point_solid(cell, true)
+		if NavWorld.current.nav_grid:
+			NavWorld.current.nav_grid.set_point_solid(cell, true)
+		if NavWorld.current.vehicle_grid:
+			NavWorld.current.vehicle_grid.set_point_solid(cell, true)
 	set_solid_body(true, bridge_cells)
 	_sprite.modulate = Color(0.35, 0.35, 0.35)
 
@@ -864,10 +864,10 @@ func repair_by(amount: int) -> void:
 	hp = mini(hp + amount, BRIDGE_HP)
 	if hp >= BRIDGE_HP:
 		for cell in bridge_cells:
-			if NavWorld.nav_grid:
-				NavWorld.nav_grid.set_point_solid(cell, false)
-			if NavWorld.vehicle_grid:
-				NavWorld.vehicle_grid.set_point_solid(cell, false)
+			if NavWorld.current.nav_grid:
+				NavWorld.current.nav_grid.set_point_solid(cell, false)
+			if NavWorld.current.vehicle_grid:
+				NavWorld.current.vehicle_grid.set_point_solid(cell, false)
 		# the rubble physics wall must go with the nav solids — grids
 		# saying "walkable" while move_and_slide still hits invisible
 		# rubble jams every unit sent across

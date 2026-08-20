@@ -93,8 +93,8 @@ static func _build_nav_grid(data: Dictionary, w: int, h: int) -> AStarGrid2D:
 		for x in w:
 			if data.passable != null and not bool(data.passable[y * w + x]):
 				grid.set_point_solid(Vector2i(x, y), true)
-	NavWorld.nav_grid = grid
-	NavWorld.map_rect = Rect2(0.0, 0.0, float(w) * TILE, float(h) * TILE)
+	NavWorld.current.nav_grid = grid
+	NavWorld.current.map_rect = Rect2(0.0, 0.0, float(w) * TILE, float(h) * TILE)
 	return grid
 
 
@@ -144,7 +144,7 @@ static func _build_vehicle_grid(grid: AStarGrid2D, data: Dictionary, w: int, h: 
 					or (data.water != null and bool(data.water[y * w + x]))
 			if solid:
 				vgrid.set_point_solid(Vector2i(x, y), true)
-	NavWorld.vehicle_grid = vgrid
+	NavWorld.current.vehicle_grid = vgrid
 	return vgrid
 
 
@@ -297,9 +297,9 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 
 	var vgrid := _build_vehicle_grid(grid,
 		{"water": _water_array(planet, painted, min_c, w, h)}, w, h)
-	NavWorld.nav_grid = grid
-	NavWorld.vehicle_grid = vgrid
-	NavWorld.map_rect = map_rect
+	NavWorld.current.nav_grid = grid
+	NavWorld.current.vehicle_grid = vgrid
+	NavWorld.current.map_rect = map_rect
 
 	# solid building footprints / bridge spans / CPU brains — same rules
 	# as the JSON path

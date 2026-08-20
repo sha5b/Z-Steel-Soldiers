@@ -16,7 +16,7 @@ const KNOWN_CROSSING_BASELINE := 16
 ## walks a routable pair while its cell is sampled for solidity — any
 ## solid sample is a placement/nav regression, not a printout.
 static func walk_a_pair(ctx: Node, rig: TestRig) -> void:
-	var grid: AStarGrid2D = NavWorld.nav_grid
+	var grid: AStarGrid2D = NavWorld.current.nav_grid
 	if grid == null:
 		rig.check(false, "no nav grid")
 		rig.finish()
@@ -43,7 +43,7 @@ static func walk_a_pair(ctx: Node, rig: TestRig) -> void:
 		var b2: Vector2 = open_cells[rng.randi_range(0, open_cells.size() - 1)]
 		if a2.distance_to(b2) < 60.0:
 			continue
-		var probe := NavWorld.request_path(a2 * 16.0 + Vector2(8, 8),
+		var probe := NavWorld.current.request_path(a2 * 16.0 + Vector2(8, 8),
 			b2 * 16.0 + Vector2(8, 8), "robot")
 		if not probe.is_empty():
 			start_px = a2 * 16.0 + Vector2(8, 8)

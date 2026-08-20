@@ -142,7 +142,7 @@ func _progress_watchdog(delta: float) -> void:
 			_repaths = 0
 			_arrive_at_target()
 		else:
-			waypoints = NavWorld.request_path(
+			waypoints = NavWorld.current.request_path(
 				global_position, move_target, kind)
 
 
@@ -197,7 +197,7 @@ func _steer(delta: float) -> void:
 					# (exposed by building orders that resolve on arrival)
 					_arrive_at_target()
 		global_position = global_position.clamp(
-			NavWorld.map_rect.position, NavWorld.map_rect.end)
+			NavWorld.current.map_rect.position, NavWorld.current.map_rect.end)
 		_progress_watchdog(delta)
 	else:
 		_play("fire" if _target else "stand", _last_dir)
@@ -250,7 +250,7 @@ func _separation(delta: float) -> void:
 			return
 	global_position = target
 	global_position = global_position.clamp(
-		NavWorld.map_rect.position, NavWorld.map_rect.end)
+		NavWorld.current.map_rect.position, NavWorld.current.map_rect.end)
 
 
 ## True when the body box overlaps a nav-solid cell of the kind's OWN
@@ -261,10 +261,10 @@ func _separation(delta: float) -> void:
 ## tick and MUST stay cheap (the first version walked every building's
 ## footprint and cost the whole frame budget).
 func _inside_building(p: Vector2) -> bool:
-	var grid := NavWorld.vehicle_grid if kind != "robot" else NavWorld.nav_grid
+	var grid := NavWorld.current.vehicle_grid if kind != "robot" else NavWorld.current.nav_grid
 	if grid == null:
 		return false
-	var pad: float = NavWorld.BODY_HALF.get(kind, 7.0)
+	var pad: float = NavWorld.current.BODY_HALF.get(kind, 7.0)
 	for off in [Vector2.ZERO,
 			Vector2(-pad, 0), Vector2(pad, 0), Vector2(0, -pad), Vector2(0, pad),
 			Vector2(-pad, -pad), Vector2(pad, -pad), Vector2(-pad, pad), Vector2(pad, pad)]:
@@ -275,7 +275,7 @@ func _inside_building(p: Vector2) -> bool:
 
 
 func _walkable(p: Vector2) -> bool:
-	var grid := NavWorld.vehicle_grid if kind != "robot" else NavWorld.nav_grid
+	var grid := NavWorld.current.vehicle_grid if kind != "robot" else NavWorld.current.nav_grid
 	if grid == null:
 		return true
 	var cell := Vector2i((p / 16.0).floor())
@@ -438,7 +438,7 @@ func take_damage(amount: int) -> void:
 		play_gesture("dodge")
 		# validated scramble: the old center-cell check teleported robots
 		# INTO building walls, where move_and_slide pinned them for good
-		var spot := NavWorld.find_free_spot(global_position
+		var spot := NavWorld.current.find_free_spot(global_position
 			+ Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0)), kind)
 		if spot != Vector2.INF:
 			global_position = spot
@@ -554,7 +554,7 @@ func _order_anchor() -> Vector2:
 
 func _begin_move(world_pos: Vector2) -> void:
 	move_target = world_pos
-	waypoints = NavWorld.request_path(global_position, world_pos, kind)
+	waypoints = NavWorld.current.request_path(global_position, world_pos, kind)
 	if waypoints.is_empty():
 		move_target = Vector2.ZERO  # unreachable (e.g. water for vehicles)
 		state = State.IDLE
