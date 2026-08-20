@@ -106,7 +106,9 @@ func _play_doors() -> void:
 		_doors.play(anim)
 
 
-func _on_arrived() -> void:
+# ---- locomotion hooks (the movement engine lives in Unit2D._steer) ----
+
+func _on_arrived_extras() -> void:
 	if is_apc() and not cargo.is_empty():
 		unload()
 
@@ -299,83 +301,26 @@ func _physics_process(delta: float) -> void:
 	_separation(delta)
 
 
-## REAL collision can pin a unit against a wall (corner hugs, crowds in
-## the fort gate): when it strives but makes no ground, re-route from
-## where it actually stands; after three re-routes, give the order up —
-## a cancelled move beats a permanently jammed army. (State lives in
-## Unit2D; vehicles bail out via _on_arrived instead of the robot's
-## order bookkeeping.)
-func _progress_watchdog(delta: float) -> void:
-	if velocity.length_squared() < 4.0 or move_target == Vector2.ZERO:
-		_stuck_timer = 0.0
-		return
-	if global_position.distance_to(_last_pos) < 0.5:
-		_stuck_timer += delta
-	else:
-		_stuck_timer = 0.0
-	_last_pos = global_position
-	if _stuck_timer > 0.7:
-		_stuck_timer = 0.0
-		_repaths += 1
-		if _repaths > 3:
-			_repaths = 0
-			_on_arrived()
-			velocity = Vector2.ZERO
-			move_target = Vector2.ZERO
-		else:
-			waypoints = NavWorld.current.request_path(
-				global_position, move_target, kind)
+func _run_multiplier(_delta: float) -> float:
+	return 1.0  # hardware has no legs to sprint on
 
 
-func _steer(delta: float) -> void:
-	if move_target != Vector2.ZERO:
-		var next: Vector2 = waypoints[0] if not waypoints.is_empty() else move_target
-		var offset := next - global_position
-		if offset.length() <= (6.0 if not waypoints.is_empty() else 8.0):
-			if not waypoints.is_empty():
-				waypoints.remove_at(0)
-			else:
-				move_target = Vector2.ZERO
-				velocity = Vector2.ZERO
-				_on_arrived()
-		else:
-			velocity = offset.normalized() * speed
-	if velocity.length_squared() > 1.0:
-		_last_dir = _angle_to_dir(velocity.angle())
-		_play_body()
-		var dist_before := offset_to_next_waypoint()
-		var prev_pos := global_position
-		if TestLevers.direct_step:
-			global_position += velocity * delta
-		else:
-			move_and_slide()  # real collision — slides along building walls  # real collision — slides along building walls
-		_track_distance += prev_pos.distance_to(global_position)
-		if _track_distance >= Decals.TRACK_SPACING:
-			_track_distance = 0.0
-			Decals.track(_last_dir, global_position, unit_name == "jeep")
-		# consume waypoints leapfrogged by a large step (see Unit2D._steer
-		# for the wall-slide exception — sliding along a building also
-		# increases the distance and must NOT consume the waypoint)
-		var final_before: float = global_position.distance_to(move_target) \
-				if move_target != Vector2.ZERO else INF
-		var slid_into_wall := not TestLevers.direct_step \
-				and get_last_slide_collision() != null
-		if not slid_into_wall:
-			if not waypoints.is_empty():
-				if global_position.distance_to(waypoints[0]) > dist_before:
-					waypoints.remove_at(0)
-			elif move_target != Vector2.ZERO \
-					and global_position.distance_to(move_target) > final_before:
-				# the FINAL leg can be leapfrogged too — without this a fast
-				# unit ping-pongs around the 4px arrival radius forever
-				move_target = Vector2.ZERO
-				velocity = Vector2.ZERO
-				_on_arrived()
-		global_position = global_position.clamp(
-			NavWorld.current.map_rect.position, NavWorld.current.map_rect.end)
-		_progress_watchdog(delta)
-	else:
-		_play_body()
+func _play_move() -> void:
+	_play_body()
+
+
+func _play_idle() -> void:
+	_play_body()
+
+
+func _on_stepped(step: float) -> void:
+	_track_distance += step
+	if _track_distance >= Decals.TRACK_SPACING:
+		_track_distance = 0.0
+		Decals.track(_last_dir, global_position, unit_name == "jeep")
+
+
+func _steer_tail() -> void:
 	_sync_wheels()
 
 

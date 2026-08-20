@@ -149,12 +149,16 @@ func _progress_watchdog(delta: float) -> void:
 		_repaths += 1
 		if _repaths > 3:
 			_repaths = 0
-			_arrive_at_target()
+			_arrive()
 		else:
 			waypoints = NavWorld.current.request_path(
 				global_position, move_target, kind)
 
 
+## THE movement engine — one implementation for robots and vehicles
+## (Vehicle2D used to carry a copy that drifted: arrivals stopped arming
+## defend posts and clearing orders for hardware). Per-type differences
+## live in the hook methods below.
 func _steer(delta: float) -> void:
 	if move_target != Vector2.ZERO:
 		var next: Vector2 = waypoints[0] if not waypoints.is_empty() else move_target
@@ -163,18 +167,15 @@ func _steer(delta: float) -> void:
 			if not waypoints.is_empty():
 				waypoints.remove_at(0)
 			else:
-				_arrive_at_target()
+				_arrive()
 		else:
-			velocity = offset.normalized() * speed
-			if _run_flag and run_stamina > 0.05:
-				velocity *= 1.6  # double time (original run)
-				run_stamina = maxf(0.0, run_stamina - delta * 0.2)
+			velocity = offset.normalized() * speed * _run_multiplier(delta)
 	if move_target == Vector2.ZERO:
 		_run_flag = false
 	run_stamina = minf(1.0, run_stamina + delta * 0.08)
 	if velocity.length_squared() > 1.0:
 		_last_dir = _angle_to_dir(velocity.angle())
-		_play("walk", _last_dir)
+		_play_move()
 		var dist_before := offset_to_next_waypoint()
 		# the final leg has no waypoint — offset_to_next_waypoint is INF
 		# there, so capture it separately
@@ -183,38 +184,77 @@ func _steer(delta: float) -> void:
 		# REAL collision (modern engine, no grid-only limits): the slide
 		# follows the A* route and pushes back off building walls — the
 		# corner-cutting that steered units through solid cells is gone
+		var prev_pos := global_position
 		if TestLevers.direct_step:
 			global_position += velocity * delta
 		else:
 			move_and_slide()  # real collision — slides along building walls
-			# a large step can leapfrog the waypoint (the arrival check
-			# above only looks before moving): if we are now farther away
-			# than before the step, we passed it — consume it. UNLESS the
-			# step hit a wall: sliding along a building also increases
-			# the distance, and consuming then sent the beeline straight
-			# across the wall corner (units jammed against factories)
-			var slid_into_wall := not TestLevers.direct_step \
-					and get_last_slide_collision() != null
-			if not slid_into_wall:
-				if not waypoints.is_empty():
-					if global_position.distance_to(waypoints[0]) > dist_before:
-						waypoints.remove_at(0)
-				elif move_target != Vector2.ZERO \
-						and global_position.distance_to(move_target) > final_before:
-					# same for the FINAL leg: without this a fast unit
-					# ping-pongs around the 4px arrival radius forever
-					# (exposed by building orders that resolve on arrival)
-					_arrive_at_target()
+		_on_stepped(prev_pos.distance_to(global_position))
+		# a large step can leapfrog the waypoint (the arrival check
+		# above only looks before moving): if we are now farther away
+		# than before the step, we passed it — consume it. UNLESS the
+		# step hit a wall: sliding along a building also increases
+		# the distance, and consuming then sent the beeline straight
+		# across the wall corner (units jammed against factories)
+		var slid_into_wall := not TestLevers.direct_step \
+				and get_last_slide_collision() != null
+		if not slid_into_wall:
+			if not waypoints.is_empty():
+				if global_position.distance_to(waypoints[0]) > dist_before:
+					waypoints.remove_at(0)
+			elif move_target != Vector2.ZERO \
+					and global_position.distance_to(move_target) > final_before:
+				# same for the FINAL leg: without this a fast unit
+				# ping-pongs around the 4px arrival radius forever
+				# (exposed by building orders that resolve on arrival)
+				_arrive()
 		global_position = global_position.clamp(
 			NavWorld.current.map_rect.position, NavWorld.current.map_rect.end)
 		_progress_watchdog(delta)
 	else:
-		_play("fire" if _target else "stand", _last_dir)
+		_play_idle()
+	_steer_tail()
 
 
-## Final destination reached (or leapfrogged): clear the move state; an
-## order with a target (ENTERING) keeps waiting on _try_enter to act.
-func _arrive_at_target() -> void:
+# --------- locomotion hooks: robot defaults, Vehicle2D overrides ---------
+
+## Sprint multiplier while running (robots: double time on stamina).
+func _run_multiplier(delta: float) -> float:
+	if _run_flag and run_stamina > 0.05:
+		run_stamina = maxf(0.0, run_stamina - delta * 0.2)
+		return 1.6  # double time (original run)
+	return 1.0
+
+
+func _play_move() -> void:
+	_play("walk", _last_dir)
+
+
+func _play_idle() -> void:
+	_play("fire" if _target else "stand", _last_dir)
+
+
+## Called with the step length after each actual move (vehicles stamp
+## track decals every TRACK_SPACING of ground).
+func _on_stepped(_step: float) -> void:
+	pass
+
+
+## Tail of the steering tick (vehicles sync their wheel layer).
+func _steer_tail() -> void:
+	pass
+
+
+## Per-type arrival extras (vehicles unload APC cargo).
+func _on_arrived_extras() -> void:
+	pass
+
+
+## Arrival (reached, leapfrogged, or given up) — ONE implementation:
+## clear the move state, arm a DEFEND post when the order was DEFEND,
+## land IDLE; an order with a target (ENTERING) keeps waiting on
+## _try_enter to act.
+func _arrive() -> void:
 	move_target = Vector2.ZERO
 	velocity = Vector2.ZERO
 	if enter_target == null:
@@ -222,6 +262,7 @@ func _arrive_at_target() -> void:
 			defend_post = global_position  # hold this spot
 		state = State.IDLE
 		order = null
+	_on_arrived_extras()
 
 
 func offset_to_next_waypoint() -> float:

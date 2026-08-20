@@ -25,7 +25,7 @@ static func should_run() -> bool:
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
-			"mp", "rally", "placement", "fortkill"]:
+			"mp", "rally", "placement", "fortkill", "parity"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -451,6 +451,31 @@ static func run(ctx: Node) -> void:
 		if gunner:
 			gunner.queue_free()
 		fk.finish()
+	if "--parity-test" in args:
+		# ONE movement engine: robot and vehicle must arrive the SAME way
+		# — order cleared, state IDLE, DEFEND post armed (vehicle arrivals
+		# used to skip all of that bookkeeping; the copies had drifted)
+		var pr := TestRig.start("PARITY")
+		var anchor := NavWorld.current.find_free_spot(Vector2(700, 520), "robot")
+		for spec in [["robot", "grunt"], ["vehicle", "jeep"]]:
+			var u: Unit2D = Spawner.spawn(ctx, spec[0], spec[1], 1,
+				anchor, spec[0] == "vehicle") as Unit2D
+			u.issue_order(Order.move_defend(
+				NavWorld.current.find_free_spot(anchor + Vector2(160, 0), spec[0])))
+			for i in 600:
+				u._process(0.05)
+				u._physics_process(0.05)
+				if u.move_target == Vector2.ZERO:
+					break
+			pr.check(u.move_target == Vector2.ZERO,
+				"%s never arrived (at %s)" % [spec[1], u.global_position])
+			pr.check(u.defend_post != Vector2.INF,
+				"%s arrival did not arm the defend post" % spec[1])
+			pr.check(u.state == Unit2D.State.IDLE,
+				"%s not idle after arrival (state %d)" % [spec[1], u.state])
+			pr.check(u.order == null, "%s kept a finished order" % spec[1])
+			u.queue_free()
+		pr.finish()
 	if "--placement-test" in args:
 		await PlacementTests.run(ctx, TestRig.start("PLACEMENT"))
 	if "--rally-test" in args:

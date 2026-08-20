@@ -17,6 +17,8 @@ static func _clear(u: Unit2D) -> bool:
 
 static func run(ctx: Node, rig: TestRig) -> void:
 	TestLevers.direct_step = false  # real move_and_slide this block
+	var idle_was: bool = GameSettings.auto_idle
+	GameSettings.auto_idle = false  # dodge robots must not self-order walks
 	# fixture: a vehicle factory (5x5 solid art) on open ground near the
 	# map's second zone — same spot the factory tests use
 	var vf := VehicleFactory.new()
@@ -42,7 +44,7 @@ static func run(ctx: Node, rig: TestRig) -> void:
 	for i in 40:
 		bot.take_damage(600)  # above the ratio-dodge threshold every hit
 		await ctx.get_tree().physics_frame
-	rig.check(_clear(bot), "dodge teleported robot into the wall")
+	rig.check(_clear(bot), "dodge teleported robot into the wall (at %s)" % bot.global_position)
 	bot.queue_free()
 
 	# 2. APC unload beside a wall: all cargo boxes must land clear
@@ -105,4 +107,5 @@ static func run(ctx: Node, rig: TestRig) -> void:
 		walker.global_position])
 	walker.queue_free()
 	TestLevers.direct_step = true  # restore the harness default
+	GameSettings.auto_idle = idle_was
 	rig.finish("samples=%d bad=%d" % [samples, bad])
