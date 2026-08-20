@@ -85,6 +85,24 @@ func _tech_tick() -> void:
 		tech_level_changed.emit()
 
 
+## Serializable economy state, the save contract's SHAPE (subset):
+## money, zone owners by rect, facility levels. The MP host pushes this
+## to bound drift in the most visible state; full-entity resync and
+## late-join extend it.
+func economy_snapshot() -> Dictionary:
+	var owners := []
+	for z in zones:
+		owners.append({"x": z.zone_rect.position.x, "y": z.zone_rect.position.y,
+			"w": z.zone_rect.size.x, "h": z.zone_rect.size.y,
+			"team": z.owner_team})
+	var facilities := []
+	for b in _facilities:
+		if is_instance_valid(b) and b.alive and b.owner_team != 0:
+			facilities.append({"id": b.building_id, "team": b.owner_team,
+				"level": b.level})
+	return {"money": money.duplicate(), "zones": owners, "facilities": facilities}
+
+
 ## Facilities register on spawn / unregister on exit — the tech tick
 ## iterates this array instead of walking the whole scene tree from an
 ## autoload every second.

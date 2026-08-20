@@ -382,6 +382,19 @@ static func run(ctx: Node) -> void:
 								queued = true
 								break
 						mm.check(queued, "queue intent never applied")
+				# STATE snapshot: host pushes economy; zone ownership
+				# converges through the save-contract shape
+				MatchState.current.set_money(client.match_team, 777)
+				var zone: Zone = MatchState.current.zones[0]
+				var snap := MatchState.current.economy_snapshot()
+				snap.zones[0]["team"] = 1 if zone.owner_team != 1 else 2
+				Net._apply_state(snap)
+				for i in 10:
+					await tree.process_frame
+				mm.check(int(MatchState.current.money.get(client.match_team, 0)) >= 777,
+					"snapshot money did not apply")
+				mm.check(MatchState.current.zones[0].owner_team == int(snap.zones[0]["team"]),
+					"snapshot zone owner did not apply")
 				Net.leave()
 				client.leave()
 		mm.finish()

@@ -267,6 +267,20 @@ func _validate_intent(sender_team: int, intent: Dictionary) -> void:
 	_apply_intent.rpc(intent)
 
 
+## Host -> peers: authoritative economy snapshot (money/zones/levels,
+## save-contract shape) — the bounded resync. Push on a cadence or on
+## demand; full-entity resync stays future work.
+@rpc("authority", "call_local", "reliable")
+func _apply_state(state: Dictionary) -> void:
+	MatchRelay.apply_state(state)
+
+
+## Host: broadcast the current economy snapshot to every peer.
+func push_state() -> void:
+	if role == Role.HOST and in_match and MatchState.current != null:
+		_apply_state.rpc(MatchState.current.economy_snapshot())
+
+
 @rpc("authority", "call_local", "reliable")
 func _apply_intent(intent: Dictionary) -> void:
 	replaying_intents = true
