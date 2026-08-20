@@ -48,11 +48,14 @@ signal-driven). Adding content (units, buildings, pickups, effects,
 maps, team colours) is documented step by step in
 `docs/ASSET_CONVENTIONS.md` — copy a `.tres`, drop an art folder.
 
-Headless test suite: 34 flags (`--combat-test`, `--teams-test`,
+Headless test suite: 37 flags (`--combat-test`, `--teams-test`,
 `--scenes-test`, ...), run in parallel lanes from `project/`:
-`res://scenes/main.tscn --<flag>-test --quit-after N`. Screenshot
-verification: add `--screenshot <seconds>` (warps the mouse so edge pan
-stays put).
+`res://scenes/main.tscn --<flag>-test --quit-after N`. A run passes
+with zero `SCRIPT ERROR` and zero `CHECK FAILED:` lines — the harness
+lives in `project/scripts/tests/` (TestRig is the assertion helper,
+per-domain modules like path_tests.gd split out of self_tests.gd).
+Screenshot verification: add `--screenshot <seconds>` (warps the mouse
+so edge pan stays put).
 
 ## Asset licensing
 

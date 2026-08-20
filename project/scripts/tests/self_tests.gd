@@ -3,9 +3,12 @@ extends Object
 ## Headless regression harness behind command-line flags (no test
 ## framework dependency). Run, e.g.:
 ##   godot --headless --path . res://scenes/main.tscn --combat-test --quit-after 600
-## Each flag prints one TESTNAME: line; zero SCRIPT ERROR lines is a pass.
-## A runtime error aborts the whole run — later flags stay silent, so fix
-## the first error you see.
+## Each flag prints one TESTNAME: line; a pass is zero SCRIPT ERROR and
+## zero `CHECK FAILED:` lines (TestRig). A runtime error aborts the whole
+## run — later flags stay silent, so fix the first error you see.
+## Domain modules live beside this file (path_tests.gd is the pattern):
+## one class_name per domain, static funcs taking (ctx, rig), flags
+## routed from run() so the CLI surface stays one list.
 
 
 static func _all_nodes(root: Node) -> Array:
@@ -413,57 +416,7 @@ static func run(ctx: Node) -> void:
 					int(MatchState.money.get(2, 0)), f2, q2, ai._attack_mode])
 			ctx.get_tree().quit()
 	if "--path-test" in args:
-		var grid: AStarGrid2D = NavWorld.nav_grid
-		if grid == null:
-			print("PATH: no grid")
-		else:
-			var solid := 0
-			var open_cells := PackedVector2Array()
-			for y in grid.region.size.y:
-				for x in grid.region.size.x:
-					if not grid.is_point_solid(Vector2i(x, y)):
-						open_cells.append(Vector2(x, y))
-					else:
-						solid += 1
-			# pick a routable pair (maps can have disconnected landmasses)
-			var start_px := Vector2.ZERO
-			var goal := Vector2.ZERO
-			var rng := RandomNumberGenerator.new()
-			rng.seed = 42
-			for attempt in 200:
-				var a2: Vector2 = open_cells[rng.randi_range(0, open_cells.size() - 1)]
-				var b2: Vector2 = open_cells[rng.randi_range(0, open_cells.size() - 1)]
-				if a2.distance_to(b2) < 60.0:
-					continue
-				var probe := NavWorld.request_path(a2 * 16.0 + Vector2(8, 8), b2 * 16.0 + Vector2(8, 8), "robot")
-				if not probe.is_empty():
-					start_px = a2 * 16.0 + Vector2(8, 8)
-					goal = b2 * 16.0 + Vector2(8, 8)
-					break
-			if goal == Vector2.ZERO:
-				print("PATH: no routable pair found")
-			else:
-				var u4: Unit2D = load("res://scenes/unit.tscn").instantiate()
-				u4.team = 1
-				u4.position = start_px
-				ctx.add_child(u4)
-				u4.move_to(goal)
-				var crossed_solid := 0
-				var total := 0
-				for i in 6000:
-					u4._process(0.05)
-					u4._physics_process(0.05)
-					if i % 5 == 0:
-						var cell := Vector2i((u4.position / 16.0).floor())
-						if grid.is_point_solid(cell):
-							crossed_solid += 1
-						total += 1
-					if u4.move_target == Vector2.ZERO:
-						break
-				var dist: float = u4.position.distance_to(goal)
-				print("PATH: solid_cells=%d waypoints=%d crossed_solid=%d/%d arrived=%s dist=%.1f" % [
-					solid, u4.waypoints.size(), crossed_solid, total,
-					u4.move_target == Vector2.ZERO, dist])
+		PathTests.walk_a_pair(ctx, TestRig.start("PATH"))
 	if "--dir-test" in args:
 		# zod convention: r000 faces +X (right), r090 up, r180 left, r270
 		# down — the numbering runs counter-clockwise, so facing down
