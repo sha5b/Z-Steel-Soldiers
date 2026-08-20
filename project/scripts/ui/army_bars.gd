@@ -51,6 +51,13 @@ func _rebuild() -> void:
 		c.queue_free()
 	_gauges.clear()
 	for team in _teams():
+		# a dark plate behind the figure: only the FIRST gauge gets the
+		# frame's own black window, and a bare numeral on the bar's grey
+		# metal was the unreadable part of the bottom bar
+		var backing := ColorRect.new()
+		backing.color = Color(0.02, 0.02, 0.02, 0.85)
+		backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(backing)
 		var count := Label.new()
 		count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -69,7 +76,7 @@ func _rebuild() -> void:
 		if ResourceLoader.exists(path):
 			bar.texture = load(path)
 		add_child(bar)
-		_gauges[team] = {"label": count, "bar": bar}
+		_gauges[team] = {"label": count, "bar": bar, "backing": backing}
 	_place()
 	_refresh()
 
@@ -122,6 +129,11 @@ func _place() -> void:
 		label.position = Vector2(_region.position.x if i == 0 else slot_x,
 				_region.position.y)
 		label.size = Vector2(WINDOW_W if i == 0 else COUNT_W, _region.size.y)
+		# the frame already draws a black window for gauge 1
+		var backing: ColorRect = g["backing"]
+		backing.visible = i > 0
+		backing.position = label.position
+		backing.size = label.size
 		var bar_x: float = slot_x + (0.0 if i == 0 else COUNT_W + 2.0)
 		bar.position = Vector2(bar_x,
 				_region.position.y + (_region.size.y - BAR_ART.y) * 0.5)

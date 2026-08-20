@@ -101,6 +101,16 @@ static func team_name(team: int) -> String:
 	return Teams.display_name(team)
 
 
+## HOW BIG A FLAG DRAWS. The flag art in the working set is a 32x24
+## redraw of the pack's 16x16 sprite — twice the size the original draws
+## a territory flag at — so every flag in the game came out double.
+## Halving it here keeps the cleaner art and restores the original
+## footprint; it is one constant because THREE sprites use these frames
+## (zone flags, building flags, rally markers) and they were each
+## carrying their own "native scale" comment while all three were wrong.
+const FLAG_SCALE := Vector2(0.5, 0.5)
+
+
 ## Territory flag wave: the owning team's own frames — the neutral grey
 ## set for team 0.
 static func flag_frames(team := 0) -> SpriteFrames:

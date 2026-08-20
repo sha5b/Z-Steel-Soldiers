@@ -188,13 +188,24 @@ func release_garrison() -> int:
 	for member in garrison:
 		if not is_instance_valid(member) or not member.alive:
 			continue
-		# fan them along the south apron, each spot body-validated
-		var raw := Vector2(apron.get_center().x + (out - 2) * 18.0, apron.end.y + 14.0)
-		var spot := NavWorld.current.find_free_spot(raw, member.kind)
+		# Fan them along the south apron, each spot body-validated. TRY
+		# EVERY SIDE before giving up: with only the south apron and the
+		# centre to aim at, a fort backed against rock or water could
+		# refuse to give its garrison back at all, and a robot that
+		# cannot come out is a robot lost for the match.
+		var spot := Vector2.INF
+		for candidate in [
+				Vector2(apron.get_center().x + (out - 2) * 18.0, apron.end.y + 14.0),
+				Vector2(apron.get_center().x, apron.end.y + 14.0),
+				Vector2(apron.get_center().x, apron.position.y - 14.0),
+				Vector2(apron.position.x - 14.0, apron.get_center().y),
+				Vector2(apron.end.x + 14.0, apron.get_center().y),
+				apron.get_center()]:
+			spot = NavWorld.current.find_free_spot(candidate, member.kind)
+			if spot != Vector2.INF:
+				break
 		if spot == Vector2.INF:
-			spot = NavWorld.current.find_free_spot(apron.get_center(), member.kind)
-		if spot == Vector2.INF:
-			continue  # boxed in: keep this one inside rather than clip it
+			continue  # genuinely walled in: keep this one inside
 		member.global_position = spot
 		member.carried = false
 		member.visible = true

@@ -253,7 +253,7 @@ func _build_sprite() -> void:
 			# top edge (fort node sits at the art top, others at the middle)
 			_flag.position = Vector2(-8.0 + ts.x * 0.5,
 				-12.0 if is_fort else -ts.y * 0.5 - 4.0)
-			_flag.scale = Vector2.ONE  # native art scale, matching the fort art
+			_flag.scale = AnimLibrary.FLAG_SCALE  # the art is a 2x redraw
 			add_child(_flag)
 			set_flag_team(team)
 
@@ -677,7 +677,7 @@ func set_rally(world_position: Vector2) -> void:
 	if _rally_flag == null:
 		_rally_flag = Sprite2D.new()
 		_rally_flag.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_rally_flag.scale = Vector2.ONE
+		_rally_flag.scale = AnimLibrary.FLAG_SCALE
 		add_child(_rally_flag)
 	# the flag frame swaps with the owning team (native art variants)
 	_rally_flag.texture = load("res://assets/z/flags/flag_%s_n00.png"

@@ -85,6 +85,13 @@ func _bind(unit: Unit2D) -> void:
 	_blink.clear()
 	_talk.clear()
 	_cycle = -1.0
+	# DROP THE OLD SUBJECT'S LAYERS HERE. The hardware branch below adds
+	# a hull layer and returns, and only the robot branch was clearing
+	# them — so selecting one vehicle after another stacked hulls and the
+	# window showed a previous vehicle's art on top of the current one.
+	for c in _art.get_children():
+		_art.remove_child(c)
+		c.queue_free()
 	visible = unit != null
 	if unit == null:
 		_art.texture = null
@@ -137,8 +144,6 @@ func _overlay_hull(hull: Texture2D) -> void:
 func _refresh_face() -> void:
 	if _unit == null or not is_instance_valid(_unit):
 		return
-	for c in _art.get_children():
-		c.queue_free()   # hull layer from a previous hardware subject
 	_art.texture = _resting()
 
 
@@ -153,6 +158,8 @@ func _resting() -> Texture2D:
 
 func _on_barked(seconds: float) -> void:
 	if _unit == null or _talk.is_empty():
+		return
+	if not visible:
 		return
 	_cycling = _talk
 	_cycle_fps = TALK_FPS
@@ -182,6 +189,23 @@ func _process(delta: float) -> void:
 		_cycle_fps = BLINK_FPS
 		_cycle = 0.0
 		set_meta("cycle_until", float(_blink.size()) / BLINK_FPS)
+
+
+## Test seam: which frame the window is showing, and a way to force a
+## cycle so a headless run can prove the flipbook really advances.
+func shown_texture() -> Texture2D:
+	return _art.texture if _art != null else null
+
+
+func force_cycle(talk: bool) -> int:
+	var frames: Array[Texture2D] = _talk if talk else _blink
+	if frames.is_empty():
+		return 0
+	_cycling = frames
+	_cycle_fps = TALK_FPS if talk else BLINK_FPS
+	_cycle = 0.0
+	set_meta("cycle_until", float(frames.size()) / _cycle_fps)
+	return frames.size()
 
 
 static func _load(path: String) -> Texture2D:

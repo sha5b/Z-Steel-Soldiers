@@ -17,8 +17,6 @@ extends Control
 ## player is actually budgeting, and our old panel showed a bare progress
 ## bar with no figure on it at all.
 ##
-## Drawn at SCALE because the art is a 640x480-era window with a 6px
-## font; at native size on a modern display nothing in it is readable.
 ##
 ## Choosing WHAT to build is the roster flyout: click the object window
 ## and the level-gated build list opens above it, on the original's
@@ -29,14 +27,29 @@ extends Control
 signal queue_requested(type_name: String)
 
 const PROD_DIR := "res://assets/z/ui/production"
-const SCALE := 2.0
+## NATIVE scale, like the rest of the HUD. At 2x this window covered a
+## quarter of the screen width where the original's covers a sixth, which
+## is what "the build menu is too big" meant.
+const SCALE := 1.0
+## The readouts use the original's 8px menu font, not the 16px display
+## font — a 16px line does not fit a 12px slot, which is why the value
+## printed over the plate's own lettering and out of its box.
+const READOUT_FONT := 8
 const WINDOW := Vector2(112.0, 80.0)
 const TITLE_PLATE := Rect2(4, 2, 64, 10)
 const HEALTH_GAUGE := Rect2(74, 6, 34, 9)
 const OBJECT_WINDOW := Rect2(7, 18, 42, 40)
 const OBJECT_NAME := Rect2(6, 59, 45, 13)
-const STATUS_PLATE := Rect2(66, 18, 42, 12)
-const TIME_SLOT := Rect2(66, 32, 42, 12)
+## The narrow strip between the object window and the right column: the
+## original draws two vertical gauges there (build level and progress),
+## which we were leaving as bare plate.
+const LEVEL_BAR := Rect2(52, 19, 5, 38)
+const PROGRESS_BAR := Rect2(59, 19, 5, 38)
+const STATUS_PLATE := Rect2(66, 17, 47, 12)
+## The window art PRINTS the word "Time" itself, at x 71..86 — so the
+## value belongs in the 21px to its right, not centred over the whole
+## slot (which is how it came out as "ime1:08").
+const TIME_SLOT := Rect2(87, 32, 21, 12)
 const CANCEL_BUTTON := Rect2(68, 46, 40, 14)
 const OK_BUTTON := Rect2(68, 62, 40, 15)
 ## Roster flyout: object_button plates, four to a row, above the window.
@@ -52,7 +65,10 @@ var _object_name: TextureRect
 var _status: TextureRect
 var _time: Label
 var _health_pct: Label
+var _level_fill: ColorRect
+var _progress_fill: ColorRect
 var _queue_count: Label
+var _exit: Button
 var _roster: Control
 var _roster_open := false
 var _built_for := ""
@@ -65,6 +81,7 @@ func _ready() -> void:
 	var frame := TextureRect.new()
 	frame.texture = _tex("base_image")
 	frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	frame.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(frame)
@@ -77,12 +94,14 @@ func _ready() -> void:
 	_object = _plate(OBJECT_WINDOW)
 	_object_name = _plate(OBJECT_NAME)
 	_status = _plate(STATUS_PLATE)
+	# vertical gauges: filled from the BOTTOM, so they need their own
+	# backing plus a fill rect that grows upward
+	_level_fill = _bar(LEVEL_BAR, Color(0.95, 0.86, 0.25))
+	_progress_fill = _bar(PROGRESS_BAR, Color(0.35, 0.9, 0.35))
 
 	# RIGHT-aligned: the window art already draws the word "Time" at the
 	# left of this slot, so a centred value printed straight over it
-	_time = _label(Rect2(TIME_SLOT.position.x, TIME_SLOT.position.y,
-			TIME_SLOT.size.x - 3.0, TIME_SLOT.size.y),
-			HORIZONTAL_ALIGNMENT_RIGHT, 14)
+	_time = _label(TIME_SLOT, HORIZONTAL_ALIGNMENT_RIGHT)
 	# the building's condition, printed on its gauge like the original's
 	_health_pct = _label(Rect2(HEALTH_GAUGE.position.x, HEALTH_GAUGE.position.y - 1.0,
 			HEALTH_GAUGE.size.x, HEALTH_GAUGE.size.y + 2.0),
@@ -94,7 +113,8 @@ func _ready() -> void:
 	var pick := Button.new()
 	pick.position = OBJECT_WINDOW.position * SCALE
 	pick.size = OBJECT_WINDOW.size * SCALE
-	pick.tooltip_text = "Choose what this factory builds"
+	# NO tooltip: a Godot tooltip on a native-scale window is wider than
+	# the window and printed straight across its readouts
 	pick.focus_mode = Control.FOCUS_NONE
 	pick.flat = true
 	for state in ["normal", "hover", "pressed", "focus"]:
@@ -108,6 +128,25 @@ func _ready() -> void:
 			"Close").pressed.connect(func():
 		Fx.ui_click()
 		SelectionManager.current.clear_selection())
+
+	# GARRISON EXIT. Robots ordered onto their own fort walk inside and
+	# vanish; the only way back out was the X hotkey, and nothing on
+	# screen said either that they were in there or how to get them out.
+	# The original has no garrison at all, so this button cannot live in
+	# its window art — it sits just under it.
+	_exit = Button.new()
+	_exit.position = Vector2(0.0, WINDOW.y * SCALE + 2.0)
+	_exit.size = Vector2(56.0, 14.0)
+	_exit.focus_mode = Control.FOCUS_NONE
+	_exit.visible = false
+	_object_button_chrome(_exit, 2.0)
+	if UiTheme.font() != null:
+		_exit.add_theme_font_override("font", UiTheme.font())
+		_exit.add_theme_font_size_override("font_size", READOUT_FONT)
+	_exit.pressed.connect(func():
+		Fx.ui_click()
+		Commands.eject())
+	add_child(_exit)
 
 	_roster = Control.new()
 	_roster.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -128,21 +167,46 @@ func _plate(at: Rect2) -> TextureRect:
 	r.size = at.size * SCALE
 	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	# IGNORE_SIZE or the rect cannot be smaller than its texture: a
+	# TextureRect's minimum size is the art's size, so at native scale
+	# every plate silently grew to its own art and spilled out of the
+	# window (a 100x18 name plate in a 45x13 slot).
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(r)
 	return r
 
 
-func _label(at: Rect2, align: int, font_size := 16) -> Label:
+func _label(at: Rect2, align: int, font_size := READOUT_FONT) -> Label:
 	var l := Label.new()
 	l.position = at.position * SCALE
 	l.size = at.size * SCALE
 	l.horizontal_alignment = align
 	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	HudFrame._apply_hud_font(l, font_size)
+	if font_size <= 10 and UiTheme.font() != null:
+		l.add_theme_font_override("font", UiTheme.font())
+		l.add_theme_font_size_override("font_size", font_size)
+		l.add_theme_color_override("font_color", Color.WHITE)
+	else:
+		HudFrame._apply_hud_font(l, font_size)
 	add_child(l)
 	return l
+
+
+## A bottom-filling vertical gauge on a dark backing.
+func _bar(at: Rect2, fill: Color) -> ColorRect:
+	var back := ColorRect.new()
+	back.position = at.position * SCALE
+	back.size = at.size * SCALE
+	back.color = Color(0.06, 0.05, 0.04)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(back)
+	var bar := ColorRect.new()
+	bar.color = fill
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	back.add_child(bar)
+	return bar
 
 
 ## A button whose whole face is the original's plate art.
@@ -159,6 +223,7 @@ func _art_button(at: Rect2, art: String, tooltip: String) -> Button:
 	face.texture = _tex(art)
 	face.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	face.set_anchors_preset(Control.PRESET_FULL_RECT)
 	btn.add_child(face)
@@ -222,6 +287,21 @@ func _process(_delta: float) -> void:
 	# (_ready, the rebuild, the toggle) and a rebuild that landed after a
 	# selection change left it on screen with nobody having opened it.
 	_roster.visible = _roster_open and _roster.get_child_count() > 0
+	if _roster.visible:
+		_keep_roster_on_screen()
+
+
+## The flyout sits above the window, which puts it off the top of the
+## screen for a factory in the upper part of the map — flip it below in
+## that case, and clamp sideways so a wide roster never runs under the
+## sidebar.
+func _keep_roster_on_screen() -> void:
+	var view := HudFrame.view_rect()
+	var above: float = -_roster.size.y - 2.0
+	var below: float = size.y + 2.0
+	var y: float = above if position.y + above >= view.position.y else below
+	var max_x: float = view.end.x - _roster.size.x - 2.0 - position.x
+	_roster.position = Vector2(minf(0.0, max_x), y)
 
 
 func _sync_readouts() -> void:
@@ -246,7 +326,36 @@ func _sync_readouts() -> void:
 		_object_name.texture = null
 	_status.texture = _tex("building_label" if head != "" else "buildingless_label")
 	_time.text = _time_left(head)
+	_sync_gauges(head)
+	_sync_exit()
 	_queue_count.text = "" if q.size() < 2 else "+%d" % (q.size() - 1)
+
+
+## The garrison has no signal of its own (robots walk in by themselves),
+## so the window's own tick follows it.
+func _sync_exit() -> void:
+	var held := 0
+	if _wired is FortBuilding:
+		for member in (_wired as FortBuilding).garrison:
+			if is_instance_valid(member) and member.alive:
+				held += 1
+	_exit.visible = held > 0
+	if held > 0:
+		_exit.text = "EXIT %d" % held
+		_exit.tooltip_text = "Send the %d robot(s) inside back out (X)" % held
+
+
+## Level out of 5 and the current item's progress, both bottom-filling.
+func _sync_gauges(head: String) -> void:
+	var level_frac := clampf(float(_wired.level) / 5.0, 0.0, 1.0)
+	var prog: float = _wired.progress() if head != "" else 0.0
+	for pair in [[_level_fill, level_frac], [_progress_fill, prog]]:
+		var bar: ColorRect = pair[0]
+		var frac: float = clampf(pair[1], 0.0, 1.0)
+		var full: float = (bar.get_parent() as ColorRect).size.y
+		bar.size = Vector2((bar.get_parent() as ColorRect).size.x,
+				roundf(full * frac))
+		bar.position = Vector2(0.0, full - bar.size.y)
 
 
 ## Seconds remaining on the unit being built, as m:ss — the original's
@@ -308,8 +417,7 @@ func _build_roster(factory: Node) -> void:
 	_roster.size = Vector2(
 		float(ROSTER_COLUMNS) * (ROSTER_SLOT.x + ROSTER_GAP),
 		float(rows) * (ROSTER_SLOT.y + ROSTER_GAP))
-	# above the window, so it never covers the readouts it is feeding
-	_roster.position = Vector2(0.0, -_roster.size.y - 4.0)
+	_roster.position = Vector2(0.0, -_roster.size.y - 2.0)
 	for i in items.size():
 		var item := String(items[i])
 		var parts: PackedStringArray = item.split(":")

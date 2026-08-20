@@ -167,6 +167,64 @@ static func run(ctx: Node) -> void:
 					fails.append("view_rect includes the sidebar")
 				if view.has_point(Vector2(vp.x * 0.25, vp.y - 2.0)):
 					fails.append("view_rect includes the bottom bar")
+			# THE PORTRAIT FLIPBOOK REALLY ADVANCES, and hardware does not
+			# inherit a robot's face. Both were reported broken: the window
+			# looked static, and selecting one vehicle after another showed
+			# the previous vehicle's hull stacked on the current one.
+			var portrait: HudPortrait = null
+			if frame != null:
+				for c in frame.get_child(0).get_children():
+					if c is HudPortrait:
+						portrait = c
+						break
+			if portrait == null:
+				fails.append("no HudPortrait in the sidebar")
+			else:
+				var a_robot: Unit2D = null
+				var a_vehicle: Unit2D = null
+				for u in UnitRegistry.current.world_units():
+					if not u.alive or u.team != MatchState.current.player_team:
+						continue
+					if a_robot == null and u.kind == "robot":
+						a_robot = u
+					elif a_vehicle == null and u.kind != "robot":
+						a_vehicle = u
+				if a_robot == null:
+					fails.append("no player robot to bind a portrait to")
+				else:
+					SelectionManager.current.select_single(a_robot)
+					await Engine.get_main_loop().process_frame
+					var resting: Texture2D = portrait.shown_texture()
+					if resting == null:
+						fails.append("portrait bound to a robot shows nothing")
+					var frames: int = portrait.force_cycle(false)
+					if frames < 2:
+						fails.append("robot has %d blink frames" % frames)
+					var seen := {}
+					for step in 8:
+						portrait._process(0.05)
+						var tex: Texture2D = portrait.shown_texture()
+						if tex != null:
+							seen[tex.resource_path] = true
+					if seen.size() < 2:
+						fails.append("blink cycle never changed frame (%d distinct)"
+							% seen.size())
+					if portrait.force_cycle(true) < 2:
+						fails.append("robot has no talk frames")
+					# and hardware: a plate, no head, and no stacked layers
+					if a_vehicle != null:
+						SelectionManager.current.select_single(a_vehicle)
+						await Engine.get_main_loop().process_frame
+						var art: TextureRect = portrait.get_child(0)
+						var layers: int = art.get_child_count()
+						SelectionManager.current.select_single(a_vehicle)
+						await Engine.get_main_loop().process_frame
+						if art.get_child_count() > layers:
+							fails.append("vehicle portrait stacked %d layers"
+								% art.get_child_count())
+						if portrait.force_cycle(false) != 0:
+							fails.append("hardware got a robot blink cycle")
+					SelectionManager.current.clear_selection()
 			# the build menu's own chrome (the window, its Ok/Cancel pair
 			# and the status plates the time readout sits beside)
 			for art in ["base_image", "ok_button", "cancel_button",

@@ -77,7 +77,7 @@ func _place_flag() -> void:
 	_flag = AnimatedSprite2D.new()
 	_flag.sprite_frames = AnimLibrary.flag_frames(owner_team)
 	_flag.position = _authored_flag_spot(r)
-	_flag.scale = Vector2.ONE  # native art scale, matching buildings
+	_flag.scale = AnimLibrary.FLAG_SCALE  # the art is a 2x redraw
 	add_child(_flag)
 	if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
 		_flag.play("wave")
