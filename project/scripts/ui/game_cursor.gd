@@ -76,10 +76,8 @@ func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
 		# mannable hardware (neutral vehicles/cannons)
 		if hover is Vehicle2D and hover.team == 0:
 			return "enter"
-		if hover is FortBuilding and hover.team == MatchState.player_team:
-			return "place"  # garrison
 		return "attack" if can_attack else "nono"
-	return "place"  # friendly target: move/follow order
+	return "place"  # friendly target: move/follow/garrison order
 
 
 ## What the mouse points at: units first (closest), then pickups, then
@@ -88,14 +86,14 @@ func _hover_object(world: Vector2) -> Node2D:
 	var best: Node2D = null
 	for u in get_tree().get_nodes_in_group("units"):
 		if u is Unit2D and u.alive and not u.carried \
-				and (world - u.global_position).length() < 14.0:
+				and (world - u.global_position).length() < 8.0:
 			if best == null or (world - u.global_position).length() \
 					< (world - best.global_position).length():
 				best = u
 	if best:
 		return best
 	for p in get_tree().get_nodes_in_group("pickups"):
-		if p is Node2D and (world - p.global_position).length() < 10.0:
+		if p is Node2D and (world - p.global_position).length() < 8.0:
 			return p
 	for b in get_tree().get_nodes_in_group("all_buildings"):
 		if b is Building2D and b.alive and b.art_world_rect().has_point(world):

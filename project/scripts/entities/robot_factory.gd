@@ -17,6 +17,8 @@ func producer_key() -> String:
 
 
 func _process(delta: float) -> void:
+	if not alive:
+		return  # a ruin produces nothing
 	# factory belongs to whoever owns the zone it stands in
 	var center := world_footprint().get_center()
 	for z in MatchState.zones:
@@ -26,5 +28,6 @@ func _process(delta: float) -> void:
 	if owner_team != team:
 		team = owner_team
 		update_flag(owner_team)
+		_refund_queue()
 		queue.clear()  # a capture scraps the old owner's queue
 	tick_production(delta)

@@ -258,5 +258,6 @@ from the extracted GOG release in `assets_original/gog/`:
 ## Generating assets
 
 Any generator (image model, script) only needs to honor the filename
-patterns above and 16x16 pixel-art constraints (nearest filtering, x2
-runtime scale). Nothing else in the codebase needs to change.
+patterns above and 16x16 pixel-art constraints (nearest filtering,
+native 1x runtime scale — the world renders 1:1 with the original
+art). Nothing else in the codebase needs to change.

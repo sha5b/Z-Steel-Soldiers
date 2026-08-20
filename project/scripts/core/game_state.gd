@@ -74,7 +74,9 @@ func check_no_units(team: int) -> void:
 				and b.team == team:
 			has_fort = true
 			break
-	if has_fort and UnitRegistry.of_team(team).is_empty():
+	# carried units (garrisoned / riding an APC) exist too — a fort with
+	# defenders inside must not self-destruct out from under them
+	if has_fort and UnitRegistry.alive_of_team(team).is_empty():
 		report_fort_destroyed(team)
 
 

@@ -201,6 +201,12 @@ static func vehicle_frames(asset_dir: String, team: int, damaged := false) -> Sp
 	var tn := team_name(team)
 	var frames := SpriteFrames.new()
 	for anim in ["empty", "base", "fire"]:
+		if anim == "fire" and _fire_art_is_overlay(asset_dir, tn):
+			# the jeep's `fire_*` frames are the GUNNER OVERLAY (16x14 on
+			# a 32x31 hull) — the turret layer already renders them (aim =
+			# n00, flash = n01); hull fire anims would swap the whole body
+			# for the tiny overlay on every shot and strobe it away
+			continue
 		var found := false
 		for d in DIRECTIONS:
 			var deg := d * 45
@@ -662,6 +668,23 @@ static func _vehicle_anim_path(asset_dir: String, anim: String, tn: String, deg:
 				return team_path
 			return "%s/fire_r%03d_n%02d.png" % [asset_dir, deg, frame]
 	return ""
+
+
+## True when the `fire_*` art lives on a different canvas than the hull —
+## overlay art the turret layer owns (the jeep gunner), not a hull flash.
+## Gatling/howitzer fire frames share the hull canvas exactly, so their
+## legitimate one-shot hull flash keeps building.
+static func _fire_art_is_overlay(asset_dir: String, tn: String) -> bool:
+	var hull := _first_existing([
+		"%s/base_%s_r000_n00.png" % [asset_dir, tn],
+		"%s/equiped_%s_r000.png" % [asset_dir, tn],
+		"%s/empty_r000.png" % [asset_dir]])
+	var flash := _first_existing([
+		"%s/fire_%s_r000_n00.png" % [asset_dir, tn],
+		"%s/fire_r000_n00.png" % [asset_dir]])
+	if hull == "" or flash == "":
+		return false
+	return _canvas_size(hull) != _canvas_size(flash)
 
 
 ## Jeep wheels: separate `under_*` sprites (shared art, no team prefix).

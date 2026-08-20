@@ -45,7 +45,7 @@ anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
 offset_left = -120.0
-offset_top = -172.0
+offset_top = -206.0
 offset_right = 120.0
 offset_bottom = -6.0
 grow_horizontal = 2
@@ -65,6 +65,11 @@ text = "Campaign"
 custom_minimum_size = Vector2(220, 30)
 text = "Skirmish"
 
+[node name="Multiplayer" type="Button" parent="Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 30)
+text = "Multiplayer"
+
 [node name="Settings" type="Button" parent="Menu"]
 custom_minimum_size = Vector2(220, 30)
 text = "Settings"
@@ -76,5 +81,6 @@ text = "Quit"
 [connection signal="pressed" from="Menu/Continue" to="." method="_on_continue_pressed"]
 [connection signal="pressed" from="Menu/Campaign" to="." method="_on_campaign_pressed"]
 [connection signal="pressed" from="Menu/Skirmish" to="." method="_on_skirmish_pressed"]
+[connection signal="pressed" from="Menu/Multiplayer" to="." method="_on_multiplayer_pressed"]
 [connection signal="pressed" from="Menu/Settings" to="." method="_on_settings_pressed"]
 [connection signal="pressed" from="Menu/Quit" to="." method="_on_quit_pressed"]

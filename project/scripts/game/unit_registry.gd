@@ -53,6 +53,16 @@ func of_team(team: int) -> Array[Unit2D]:
 	return out
 
 
+## Alive units of a team INCLUDING carried ones — the no-units rule
+## counts defenders garrisoned in a fort or riding an APC as existing.
+func alive_of_team(team: int) -> Array[Unit2D]:
+	var out: Array[Unit2D] = []
+	for u in _all:
+		if is_instance_valid(u) and u.alive and u.team == team:
+			out.append(u)
+	return out
+
+
 ## Nearest living enemy unit (team != mine, neutral 0 never counts).
 func nearest_enemy(pos: Vector2, max_range: float, my_team: int) -> Unit2D:
 	var best: Unit2D = null

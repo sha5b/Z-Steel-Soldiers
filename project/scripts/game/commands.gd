@@ -79,11 +79,12 @@ static func _find_empty_vehicle(world_position: Vector2) -> Node2D:
 ## Buildings units can be ordered onto: own repair shop (damaged
 ## vehicles heal there) and own damaged buildings/bridges (crane work).
 static func _find_interactable_building(world_position: Vector2) -> Building2D:
-	for group in ["buildings", "facilities"]:
-		for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(group):
-			if b is Building2D and b.alive \
-					and b.art_world_rect().has_point(world_position):
-				return b
+	# "all_buildings": the repair shop sits in none of the narrower
+	# groups — scanning "buildings"/"facilities" never found it
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("all_buildings"):
+		if b is Building2D and b.alive \
+				and b.art_world_rect().has_point(world_position):
+			return b
 	return null
 
 
@@ -101,6 +102,8 @@ static func _wants_building_order(u: Node2D, b: Building2D) -> bool:
 		return false
 	if b.is_repair_shop() and b.owner_team == u.team and u.hp < u.max_hp:
 		return true
-	if u.unit_name == "crane" and b.team == u.team and b.hp < b.max_hp:
+	# bridges are communal infrastructure: any team's crane rebuilds them
+	if u.unit_name == "crane" and b.hp < b.max_hp \
+			and (b.team == u.team or b.is_bridge()):
 		return true
 	return false

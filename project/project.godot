@@ -28,6 +28,7 @@ GameState="*res://scripts/core/game_state.gd"
 SelectionManager="*res://scripts/core/selection_manager.gd"
 MusicPlayer="*res://scripts/core/music_player.gd"
 Campaign="*res://scripts/core/campaign.gd"
+Net="*res://scripts/net/net.gd"
 
 [display]
 

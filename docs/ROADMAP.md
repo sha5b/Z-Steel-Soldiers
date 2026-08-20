@@ -1,7 +1,7 @@
 # Roadmap — Z (1996) remake in Godot
 
-Final state at close: single-player feature-complete. Multiplayer was
-deliberately left out (scope decision).
+Single-player feature-complete; multiplayer milestone 1 (P2P lobby)
+shipped 2026-08 — see the bottom section.
 
 ## Phase 0 — pivot to Z (1996) ✅
 
@@ -38,7 +38,10 @@ deliberately left out (scope decision).
 
 ## Not done (known gaps for a future task)
 
-- Multiplayer (Zod's focus) — netcode not started
+- Multiplayer IN-MATCH sync — the lobby/connection layer is done (next
+  section); replicating player orders needs the determinism work
+  (choke points are ready: `Unit2D.issue_order`, `queue_unit`,
+  `set_rally`)
 - Original GUI chrome (production menu art exists, unused), water
   animation, craters, unit shadows
 - Full soundtrack needs one run of `tools/zod/render_midi.sh`
@@ -79,3 +82,31 @@ Order/state machine, one weapon resolver, entity signals (HUD is
 signal-driven), GameState split into NavWorld/MatchState/SaveSystem,
 UnitRegistry, MapCatalog. Recipes for adding content:
 docs/ASSET_CONVENTIONS.md.
+
+## Multiplayer milestone 1 — P2P lobby (2026-08)
+
+All Godot-native networking, no master server, no addons:
+
+- **LanDiscovery** (`scripts/net/lan_discovery.gd`): hosts broadcast a
+  JSON announce on UDP 46755 every second; the browse screen lists them
+  with a ~5s TTL. Announces are address-targetable — a future
+  self-hostable community list server reuses the same packet.
+- **Net** autoload (`scripts/net/net.gd`): the host player's process IS
+  the game server (ENet, port 46656). Host-authoritative room state
+  over `@rpc`: clients request seats/ready/chat, the host rebroadcasts
+  the whole room dict. Graceful disconnect on leave; late joiners are
+  told the match began. Best-effort UPnP port forward so internet
+  direct-IP joins can reach the host; the lobby shows the shareable
+  address.
+- **Screens**: title → MULTIPLAYER browse (game list, HOST GAME / JOIN /
+  direct IP) → game room (map pick with real previews, per-fort-team
+  seats with OPEN/CPU/CLOSED cycling, ready-up, chat) — skirmish-screen
+  look on the original IPBackground art. Commander name in settings.
+- **Start**: every peer runs the skirmish launch chain with their own
+  `MatchState.player_team`. In-match order replication is NOT shipped —
+  until it lands, remote players act as AI stand-ins locally (the
+  existing MapLoader behaviour) and the connection stays up for phase 2.
+- Verified by `--mp-test` (headless): discovery announce/TTL over
+  loopback + a REAL ENet loopback session (join, hello, seat, ready,
+  chat, start config, host-lost) using a second Net instance under its
+  own SceneMultiplayer.

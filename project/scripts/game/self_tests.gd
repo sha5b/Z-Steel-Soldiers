@@ -21,7 +21,8 @@ static func should_run() -> bool:
 			"pickup", "prod", "fortprod", "cancel", "vehpath", "apc", "save",
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
-			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor"]:
+			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
+			"mp"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -49,6 +50,11 @@ static func maybe_screenshot(ctx: Node, out := "screenshot_tmp.png") -> void:
 static func run(ctx: Node) -> void:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	var tree := ctx.get_tree()
+	# movement is physics-driven (move_and_slide) in the real game; the
+	# harness steps units directly for speed — logic-only, the physics
+	# path is exercised by playing (and by --path-test's solid audit)
+	MatchState.direct_step = true
+	Engine.time_scale = 4.0  # awaited-frame sims run 4x faster; manual loops pass fixed deltas
 
 	# isolate the micro-tests from the live CPU brain: the AI now really
 	# expands and fights, and its roaming units used to intercept test
@@ -139,6 +145,138 @@ static func run(ctx: Node) -> void:
 			GameSettings.apply()
 			GameSettings.save()
 			print("UI: %s" % (",".join(fails) if fails.size() > 0 else "all original-art kit present"))
+	if "--mp-test" in args:
+			# multiplayer milestone 1: LAN discovery over loopback, and the
+			# full room protocol over a REAL ENet loopback — a second Net
+			# script instance under its own SceneMultiplayer is a genuine
+			# client (same RPC node paths; the custom api is polled by hand).
+			# A PRIVATE port + loopback-only assertions keep this stable
+			# while real games run on the LAN.
+			var fails: PackedStringArray = []
+			var test_port := 45678
+			var host_disc := LanDiscovery.new(PackedStringArray(["127.0.0.1"]))
+			var browse_disc := LanDiscovery.new()
+			if not browse_disc.listen():
+				fails.append("discovery bind")
+			else:
+				var my_key := "127.0.0.1:%d" % test_port
+				host_disc.start_broadcast(
+					{"name": "TEST GAME", "map": "P02", "cur": 1, "max": 2}, test_port)
+				host_disc.poll()
+				for i in 5:
+					await tree.process_frame
+				browse_disc.poll()
+				var g: Dictionary = browse_disc.game_info(my_key)
+				if g.is_empty():
+					fails.append("loopback announce not found")
+				elif str(g.get("name", "")) != "TEST GAME" \
+						or int(g.get("port", 0)) != test_port:
+					fails.append("discovery payload %s" % g)
+				host_disc.stop_broadcast()
+				browse_disc.ttl = 1  # deterministic expiry, no wall-clock wait
+				await tree.process_frame
+				await tree.process_frame
+				browse_disc.poll()
+				if not browse_disc.game_info(my_key).is_empty():
+					fails.append("discovery ttl expiry")
+				browse_disc.stop_listen()
+			if not Net.host_game("TEST ROOM", test_port, false):
+				fails.append("host_game: %s" % Net.last_error)
+			else:
+				var map_path := str(Net.room.get("map", ""))
+				if map_path == "":
+					fails.append("no default map")
+				var slot_teams: Array = []
+				for slot in Net.room.get("slots", []):
+					slot_teams.append(int(slot.get("team", 0)))
+				if slot_teams != MapCatalog.fort_teams(map_path.get_file().get_basename()):
+					fails.append("slots %s != map fort teams" % [slot_teams])
+				var dummy := Node.new()
+				dummy.name = "MpTestClient"
+				tree.root.add_child(dummy)
+				var client_api := SceneMultiplayer.new()
+				tree.set_multiplayer(client_api, dummy.get_path())
+				var client: Node = load("res://scripts/net/net.gd").new()
+				client.name = "Net"
+				dummy.add_child(client)
+				if not client.join_game("127.0.0.1", test_port):
+					fails.append("client join start")
+				for i in 60:
+					client_api.poll()
+					await tree.process_frame
+					if not client.room.is_empty():
+						break
+				if client.room.is_empty():
+					fails.append("client never synced a room")
+				else:
+					var cid: int = client.my_id()
+					if not Net.room.players.has(cid):
+						fails.append("hello did not register the client")
+					var open_team := 0
+					for slot in client.room.get("slots", []):
+						if str(slot.get("controller", "")) == "open":
+							open_team = int(slot.get("team", 0))
+							break
+					if open_team == 0:
+						fails.append("no open seat to claim")
+					else:
+						client.request_seat(open_team)
+					client.set_ready(true)
+					client.send_chat("HELLO ROOM")
+					for i in 40:
+						client_api.poll()
+						await tree.process_frame
+						var seated: Dictionary = Net.room.players.get(cid, {})
+						if int(seated.get("team", 0)) == open_team \
+								and bool(seated.get("ready", false)) \
+								and client.room.chat.size() >= 2:
+							break
+					var seated2: Dictionary = Net.room.players.get(cid, {})
+					if int(seated2.get("team", 0)) != open_team \
+							or not bool(seated2.get("ready", false)):
+						fails.append("client seat/ready did not stick")
+					if str(seated2.get("name", "")) \
+							!= GameSettings.player_name.to_upper().substr(0, 14):
+						fails.append("client name %s" % seated2.get("name", ""))
+					var heard := false
+					for e in client.room.get("chat", []):
+						if String(e.get("text", "")) == "HELLO ROOM":
+							heard = true
+					if not heard:
+						fails.append("chat round trip")
+					if not Net.host_start():
+						fails.append("host_start blocked: %s" % Net.start_blocker())
+					else:
+						if not Net.in_match or Net.match_team <= 0:
+							fails.append("host match_team %d" % Net.match_team)
+						for i in 40:
+							client_api.poll()
+							await tree.process_frame
+							if client.in_match:
+								break
+						if not client.in_match:
+							fails.append("client never received the start")
+						elif client.match_team != open_team:
+							fails.append("client match_team %d want %d" % [
+								client.match_team, open_team])
+						if not bool(client.room.get("started", false)):
+							fails.append("room.started flag missing")
+				var lost := [false]
+				client.host_lost.connect(func(_reason: String) -> void:
+					lost[0] = true)
+				Net.leave()
+				for i in 40:
+					client_api.poll()
+					await tree.process_frame
+					if lost[0]:
+						break
+				if not lost[0]:
+					fails.append("host_lost not delivered")
+				client.leave()
+				dummy.queue_free()
+				Net.leave()
+			print("MP: %s" % (",".join(fails) if fails.size() > 0
+					else "discovery + room + start + host-lost all ok"))
 	if "--capture-test" in args:
 		var u: Unit2D = null
 		for unit in tree.get_nodes_in_group("units"):
@@ -150,7 +288,30 @@ static func run(ctx: Node) -> void:
 		for i in 30:
 			z._process(0.1)
 			MatchState._process(1.0)
-		print("CAPTURE: owner=%d money=%d" % [z.owner_team, MatchState.player_money()])
+			print("CAPTURE: owner=%d money=%d" % [z.owner_team, MatchState.player_money()])
+			# a zone with a LIVE enemy fort never flips — the fort is the
+			# win objective, its garrison holds the ground
+			var enemy_fort: Building2D = null
+			for b in tree.get_nodes_in_group("buildings"):
+				if b is FortBuilding and b.alive \
+						and b.team != 0 and b.team != MatchState.player_team:
+					enemy_fort = b
+					break
+			var fort_holds := true
+			if enemy_fort != null:
+				var held: Node2D = null
+				for zh in MatchState.zones:
+					if enemy_fort.art_world_rect().intersection(
+							zh.world_rect()).get_area() > 0:
+						held = zh
+						break
+				if held != null and held.owner_team == enemy_fort.team:
+					u.position = held.world_rect().get_center()
+					for ci in 30:
+						held._process(0.1)
+					fort_holds = held.owner_team == enemy_fort.team
+			print("CAPTURE: fort_zone_holds=%s" % ("n/a" if enemy_fort == null
+				else ("yes" if fort_holds else "NO")))
 	if "--combat-test" in args:
 		var a: Unit2D = load("res://scenes/unit.tscn").instantiate()
 		a.unit_name = "grunt"
@@ -184,9 +345,16 @@ static func run(ctx: Node) -> void:
 			f.queue_unit("robot:grunt")
 		for i in 30:
 			f._process(0.5)
-		print("FACTORY: units %d -> %d money %d -> %d queue=%d" % [
+		# a destroyed factory is a RUIN: nothing crawls out of the
+		# rubble (the alive-guard in _process is load-bearing)
+		var units_at_death := tree.get_nodes_in_group("units").size()
+		f.take_damage(f.hp + 9999)
+		for fi in 20:
+			f._process(0.5)
+		var ruin_spawned := tree.get_nodes_in_group("units").size() - units_at_death
+		print("FACTORY: units %d -> %d money %d -> %d queue=%d ruin_spawned=%d" % [
 			before, tree.get_nodes_in_group("units").size(),
-			money_before, MatchState.player_money(), f.queue.items.size()])
+			money_before, MatchState.player_money(), f.queue.items.size(), ruin_spawned])
 	if "--ai-test" in args:
 		MatchState.fast_build = true  # real build times are 72-373s
 		var ai := ctx.get_node_or_null("CpuAi_T2")
@@ -284,6 +452,7 @@ static func run(ctx: Node) -> void:
 				var total := 0
 				for i in 6000:
 					u4._process(0.05)
+					u4._physics_process(0.05)
 					if i % 5 == 0:
 						var cell := Vector2i((u4.position / 16.0).floor())
 						if grid.is_point_solid(cell):
@@ -327,6 +496,17 @@ static func run(ctx: Node) -> void:
 			var inst := ContentDB.scene_for("vehicle", vname).instantiate()
 			var hull_ok: bool = inst is Vehicle2D and (inst as Vehicle2D) \
 					.turret_hull_off.size() == AnimLibrary.DIRECTIONS
+			# mirrored hull facings need x-mirrored turret offsets — the
+			# tables once copied dirs 0-3 verbatim into 4-7 and every
+			# west/south-facing turret hung off its mounting ring
+			if hull_ok and vname in ["light", "medium", "heavy"]:
+				var tbl: PackedVector2Array = (inst as Vehicle2D).turret_hull_off
+				var pair_ok := func(i: int, j: int) -> bool:
+					return is_equal_approx(tbl[i].x, -tbl[j].x) \
+						and is_equal_approx(tbl[i].y, tbl[j].y)
+				if not (pair_ok.call(3, 1) and pair_ok.call(4, 0)
+						and pair_ok.call(5, 7) and pair_ok.call(6, 2)):
+					problems.append("%s: mirrored turret offsets not mirrored" % vname)
 			inst.free()
 			if not hull_ok:
 				problems.append("%s: hull offsets missing" % vname)
@@ -358,6 +538,22 @@ static func run(ctx: Node) -> void:
 				ContentDB.def_for("vehicle", vname).asset_dir, 1)
 			if not vframes.has_animation("wasted"):
 				problems.append("%s: no wreck sprite" % vname)
+		# the jeep's `fire_*` art is the gunner OVERLAY (16x14 on a
+		# 32x31 hull): the hull must NOT play it (the body strobed away
+		# on every shot) — the turret layer owns aim (n00) and flash (n01)
+		var jeep_hull: SpriteFrames = AnimLibrary.vehicle_frames(
+			ContentDB.def_for("vehicle", "jeep").asset_dir, 1)
+		if jeep_hull.has_animation("fire_0"):
+			problems.append("jeep: hull fire anim exists (overlay art!)")
+		var jeep_gun: Dictionary = AnimLibrary.turret_set("jeep",
+			ContentDB.def_for("vehicle", "jeep").asset_dir, 1)
+		if jeep_gun.is_empty() or not jeep_gun.frames.has_animation("turretfire_0"):
+			problems.append("jeep: gunner flash layer missing")
+		# full-canvas fire art (gatling) keeps its legitimate hull flash
+		if not AnimLibrary.vehicle_frames(
+				ContentDB.def_for("cannon", "gatling").asset_dir, 1) \
+				.has_animation("fire_0"):
+			problems.append("gatling: hull fire flash missing")
 		for tname in ["light", "medium", "heavy"]:
 			if AnimLibrary.plain_empty_path(
 					ContentDB.def_for("vehicle", tname).asset_dir, "red") == "":
@@ -484,7 +680,8 @@ static func run(ctx: Node) -> void:
 			ctx.add_child(radar)
 			bot.issue_order(Order.for_target(radar))
 			for i in 300:
-				await Engine.get_main_loop().process_frame
+				bot._process(0.05)
+				bot._physics_process(0.05)
 				if bot.is_idle():
 					break
 			if not bot.is_idle():
@@ -493,15 +690,17 @@ static func run(ctx: Node) -> void:
 			var jeep5: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 0,
 				Vector2(900, 700))
 			bot.issue_order(Order.for_target(jeep5))
-			jeep5.queue_free()
+			jeep5.take_damage(1000000000)  # dies NOW: queue_free needs real frames
 			for i in 10:
-				await Engine.get_main_loop().process_frame
+				bot._process(0.05)
+				bot._physics_process(0.05)
 			if not bot.is_idle():
 				oproblems.append("freed MAN target stuck")
 			# DEFEND stance: arrival arms the post, displacement re-holds it
 			bot.issue_order(Order.move_defend(Vector2(700, 620)))
 			for i in 240:
-				await Engine.get_main_loop().process_frame
+				bot._process(0.05)
+				bot._physics_process(0.05)
 				if bot.is_idle():
 					break
 			if bot.defend_post == Vector2.INF:
@@ -509,26 +708,29 @@ static func run(ctx: Node) -> void:
 			else:
 				bot.global_position += Vector2(80, 0)  # shoved off the post
 				for i in 240:
-					await Engine.get_main_loop().process_frame
+					bot._process(0.05)
+					bot._physics_process(0.05)
 					if bot.is_idle() \
 							and bot.global_position.distance_to(bot.defend_post) < 40.0:
 						break
 				if bot.global_position.distance_to(bot.defend_post) > 40.0:
 					oproblems.append("defend post not re-held")
-			# smart idle: empty hardware within the auto-grab radius (220)
-			# gets a crew without any order — a FRESH robot (defenders hold
-			# their post and never auto-grab by design)
+			# smart idle: empty hardware within the auto-grab radius
+			# (AUTO_RADIUS, playtested to 110) gets a crew without any
+			# order — a FRESH robot (defenders hold their post and never
+			# auto-grab by design). Plant the jeep INSIDE the radius.
 			MatchState.auto_idle = true  # ...and back on for the grab test
 			var idle_bot: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
 				Vector2(560, 520))
 			idle_bot.hp = 100000
 			var grab_jeep: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 0,
-				Vector2(560 + 160, 520))
+				Vector2(560 + 90, 520))
 			# success = the robot boarded SOMETHING (the nearest empty
 			# hardware wins, not necessarily our planted jeep)
 			var manned := false
 			for i in 300:
-				await Engine.get_main_loop().process_frame
+				idle_bot._process(0.05)
+				idle_bot._physics_process(0.05)
 				if not is_instance_valid(idle_bot) or grab_jeep.manned \
 						or idle_bot.state == Unit2D.State.ENTERING:
 					manned = true
@@ -710,24 +912,27 @@ static func run(ctx: Node) -> void:
 					bproblems.append("%s L%d roster drift" % [producer, level])
 		# zsettings.cpp stats at x0.08 (hp/damage/cooldown/range/speed/
 		# hit chance/splash/build seconds/cost). cost is our money overlay.
+		# ranges are zod's native attack_radius values (the world renders
+		# 1:1 — the halved values were a 2x-era transcription error that
+		# left every weapon shorter than the fort's gate-to-centre reach)
 		var want_stats := {
-			"robot:grunt": [86, 1, 0.5, 60.0, 60.0, 0.7, 0.0, 72.0],
-			"robot:psycho": [141, 2, 0.1, 60.0, 51.0, 0.65, 0.0, 98.0],
-			"robot:sniper": [141, 6, 0.4, 72.0, 60.0, 0.8, 0.0, 148.0],
-			"robot:tough": [270, 133, 1.442, 60.0, 51.0, 1.0, 40.0, 116.0],
-			"robot:pyro": [216, 8, 0.1, 60.0, 51.0, 0.7, 0.0, 161.0],
-			"robot:laser": [162, 14, 0.4, 68.0, 60.0, 0.7, 0.0, 179.0],
-			"vehicle:jeep": [141, 2, 0.1, 60.0, 73.0, 0.65, 0.0, 81.0],
-			"vehicle:light": [270, 167, 1.128, 60.0, 60.0, 1.0, 40.0, 137.0],
-			"vehicle:medium": [541, 267, 2.336, 64.0, 51.0, 1.0, 45.0, 225.0],
-			"vehicle:heavy": [670, 400, 4.088, 72.0, 39.0, 1.0, 50.0, 309.0],
+			"robot:grunt": [86, 1, 0.5, 120.0, 60.0, 0.7, 0.0, 72.0],
+			"robot:psycho": [141, 2, 0.1, 120.0, 51.0, 0.65, 0.0, 98.0],
+			"robot:sniper": [141, 6, 0.4, 144.0, 60.0, 0.8, 0.0, 148.0],
+			"robot:tough": [270, 133, 1.442, 120.0, 51.0, 1.0, 40.0, 116.0],
+			"robot:pyro": [216, 8, 0.1, 120.0, 51.0, 0.7, 0.0, 161.0],
+			"robot:laser": [162, 14, 0.4, 136.0, 60.0, 0.7, 0.0, 179.0],
+			"vehicle:jeep": [141, 2, 0.1, 120.0, 73.0, 0.65, 0.0, 81.0],
+			"vehicle:light": [270, 167, 1.128, 120.0, 60.0, 1.0, 40.0, 137.0],
+			"vehicle:medium": [541, 267, 2.336, 128.0, 51.0, 1.0, 45.0, 225.0],
+			"vehicle:heavy": [670, 400, 4.088, 144.0, 39.0, 1.0, 50.0, 309.0],
 			"vehicle:apc": [541, 0, 9.9, 0.0, 60.0, 0.0, 0.0, 118.0],
-			"vehicle:missile_launcher": [541, 670, 4.454, 80.0, 26.0, 1.0, 80.0, 373.0],
+			"vehicle:missile_launcher": [541, 670, 4.454, 160.0, 26.0, 1.0, 80.0, 373.0],
 			"vehicle:crane": [800, 0, 9.9, 0.0, 60.0, 0.0, 0.0, 97.0],
-			"cannon:gatling": [141, 3, 0.1, 60.0, 0.0, 0.65, 0.0, 96.0],
-			"cannon:gun": [270, 250, 2.254, 64.0, 0.0, 1.0, 40.0, 125.0],
-			"cannon:howitzer": [270, 333, 4.86, 100.0, 0.0, 1.0, 40.0, 179.0],
-			"cannon:missile_cannon": [270, 667, 1.124, 72.0, 0.0, 1.0, 50.0, 182.0],
+			"cannon:gatling": [141, 3, 0.1, 120.0, 0.0, 0.65, 0.0, 96.0],
+			"cannon:gun": [270, 250, 2.254, 128.0, 0.0, 1.0, 40.0, 125.0],
+			"cannon:howitzer": [270, 333, 4.86, 200.0, 0.0, 1.0, 40.0, 179.0],
+			"cannon:missile_cannon": [270, 667, 1.124, 144.0, 0.0, 1.0, 50.0, 182.0],
 		}
 		for key in want_stats:
 			var parts: PackedStringArray = String(key).split(":")
@@ -929,6 +1134,11 @@ static func run(ctx: Node) -> void:
 		shop.setup(3, MatchState.player_team, "desert", 0)
 		shop.position = Vector2(600, 600)
 		ctx.add_child(shop)
+		# the shop must be discoverable through the order pipeline —
+		# the old group scans never found it (dead repair bay)
+		if Commands._find_interactable_building(
+				shop.art_world_rect().get_center()) != shop:
+			rproblems.append("repair shop not discoverable by commands")
 		for z in MatchState.zones:
 			if z.world_rect().has_point(Vector2(632, 624)) \
 					or z.world_rect().has_point(Vector2(732, 624)):
@@ -941,6 +1151,7 @@ static func run(ctx: Node) -> void:
 		wrecked_jeep.issue_order(Order.for_target(shop))
 		for i in 60:
 			wrecked_jeep._process(0.1)
+			wrecked_jeep._physics_process(0.1)
 			shop._process(0.1)
 		if wrecked_jeep.hp < wrecked_jeep.max_hp:
 			rproblems.append("jeep not repaired: %d/%d" % [wrecked_jeep.hp, wrecked_jeep.max_hp])
@@ -960,6 +1171,7 @@ static func run(ctx: Node) -> void:
 		crane2.issue_order(Order.for_target(radar2))
 		for i in 80:
 			crane2._process(0.1)
+			crane2._physics_process(0.1)
 			radar2._process(0.1)
 		if radar2.hp < radar2.max_hp:
 			rproblems.append("radar not rebuilt: %d/%d" % [radar2.hp, radar2.max_hp])
@@ -980,6 +1192,7 @@ static func run(ctx: Node) -> void:
 			crane2._start_crane_repair(bridge)
 			for i in 200:
 				crane2._process(0.1)
+				crane2._physics_process(0.1)
 			if bridge.hp < bridge.max_hp:
 				rproblems.append("bridge not rebuilt: %d/%d" % [bridge.hp, bridge.max_hp])
 			var open_after := true
@@ -988,6 +1201,11 @@ static func run(ctx: Node) -> void:
 					open_after = false
 			if not open_after:
 				rproblems.append("repaired bridge still impassable")
+			# the rubble physics wall must be gone with the nav solids —
+			# grids saying walkable while move_and_slide still collides
+			# jams every unit sent across
+			if bridge._body != null:
+				rproblems.append("repaired bridge keeps its rubble wall")
 		else:
 			rproblems.append("no bridge on this map")
 		print("REPAIR: problems=%d %s" % [rproblems.size(),
@@ -1040,14 +1258,34 @@ static func run(ctx: Node) -> void:
 				u10.remove_from_group("units")
 				u10.queue_free()
 		var hp_before := target_tank.hp
+		var gren_threw := false
+		var tank_hurt := false
 		for i in 200:
-			gren._process(0.1)
-			target_tank._process(0.1)
+			# live combat: either side may die (the cannon's missiles
+			# one-shot a grunt) — never drive a freed instance
+			if is_instance_valid(gren) and gren.alive:
+				gren._process(0.1)
+				gren_threw = gren_threw or gren.grenades < 2
+			if is_instance_valid(target_tank):
+				if target_tank.alive:
+					target_tank._process(0.1)
+					tank_hurt = tank_hurt or target_tank.hp < hp_before
+				else:
+					tank_hurt = true
+			if not is_instance_valid(gren) or not gren.alive:
+				break
 			if i % 4 == 0:
 				await Engine.get_main_loop().process_frame  # grenade in flight
-		if gren.grenades >= 2:
+		# let in-flight shells land before judging (live combat may kill
+		# the thrower first — the grenade keeps flying regardless)
+		for w in 90:
+			await Engine.get_main_loop().process_frame
+			if is_instance_valid(target_tank) and target_tank.alive \
+					and target_tank.hp < hp_before:
+				tank_hurt = true
+		if not gren_threw:
 			cproblems.append("grenade never thrown")
-		elif target_tank.hp >= hp_before:
+		if not tank_hurt:
 			cproblems.append("grenade did no damage")
 		# --- area damage crumbles a rock ---
 		var rock_found := false
@@ -1144,6 +1382,7 @@ static func run(ctx: Node) -> void:
 					if u6 is Unit2D and u6.alive:
 						for j in 8:
 							u6._process(0.5)
+							u6._physics_process(0.5)
 				for z4 in MatchState.zones:
 					for j in 8:
 						z4._process(0.2)
@@ -1177,6 +1416,7 @@ static func run(ctx: Node) -> void:
 		var instant: bool = jeep3.manned  # must NOT be manned before walking
 		for i in 400:
 			walker._process(0.05)
+			walker._physics_process(0.05)
 			if jeep3.manned or not is_instance_valid(walker):
 				break
 		print("NEAR: instant=%s manned_after_walk=%s selection_left=%d" % [
@@ -1191,24 +1431,46 @@ static func run(ctx: Node) -> void:
 		radar._process(0.0)
 		print("FLAG: radar team=%d (want %d)" % [radar.team, MatchState.player_team])
 	if "--pickup-test" in args:
+		# quiet corner + overkill HP: the live map's wanderers must not
+		# steal the crate or kill the collector before the check runs
 		var pk := Pickup.new()
 		pk.pickup_type = "grenades"
-		pk.position = Vector2(400, 400)
+		pk.position = Vector2(2400, 3080)
 		ctx.add_child(pk)
 		var collector: Unit2D = load("res://scenes/unit.tscn").instantiate()
 		collector.team = 1
-		collector.position = Vector2(370, 400)
+		collector.position = Vector2(2370, 3080)
+		collector.hp = 10000000
+		collector.max_hp = 10000000
 		ctx.add_child(collector)
-		var mult_before: float = MatchState.robot_damage_mult(1)
-		collector.move_to(Vector2(400, 400))
+		var grenades_before: int = collector.grenades
+		collector.move_to(Vector2(2400, 3080))
 		for i in 100:
 			collector._process(0.05)
+			collector._physics_process(0.05)
 			pk._process(0.05)
 			if not is_instance_valid(pk):
 				break
-		print("PICKUP: granted=%s mult %.1f -> %.1f" % [
-			MatchState.has_upgrade(1, "grenades"), mult_before,
-			MatchState.robot_damage_mult(1)])
+		print("PICKUP: granted=%s grenades %d -> %d" % [
+			grenades_before < collector.grenades, grenades_before,
+			collector.grenades])
+		# rockets crates carry the same 20 grenades (zod
+		# grenades_per_box) — pin the grant so a def edit can't
+		# silently zero it
+		var rk := Pickup.new()
+		rk.pickup_type = "rockets"
+		rk.position = Vector2(2440, 3080)
+		ctx.add_child(rk)
+		var gren_before: int = collector.grenades
+		collector.move_to(Vector2(2440, 3080))
+		for i in 100:
+			collector._process(0.05)
+			collector._physics_process(0.05)
+			rk._process(0.05)
+			if not is_instance_valid(rk):
+				break
+		print("PICKUP: rockets crate grenades %d -> %d (want +20)" % [
+			gren_before, collector.grenades])
 	if "--prod-test" in args:
 		MatchState.fast_build = true  # real build times are 72-373s
 		var f2: RobotFactory = null
@@ -1327,9 +1589,11 @@ static func run(ctx: Node) -> void:
 			if b is Building2D and (b.building_id == 6 or b.building_id == 7):
 				var tile := Vector2i(((b.global_position - Vector2(8, 8)) / 16.0).floor())
 				var span := Vector2i(2, 8) if b.building_id == 6 else Vector2i(8, 2)
+				# the object tile is the span's TOP-LEFT (map anchor
+				# contract) — the span grows right/down, no centring
 				for bx2 in span.x:
 					for by2 in span.y:
-						var cell := tile + Vector2i(bx2 - int(span.x / 2.0), by2 - int(span.y / 2.0))
+						var cell := tile + Vector2i(bx2, by2)
 						total_bridge_cells += 1
 						if vg.is_point_solid(cell):
 							blocked_bridges += 1
@@ -1348,6 +1612,7 @@ static func run(ctx: Node) -> void:
 		apc2.move_to(Vector2(500, 500))
 		for i in 400:
 			apc2._process(0.05)
+			apc2._physics_process(0.05)
 			if apc2.move_target == Vector2.ZERO:
 				break
 		var unloaded_near: bool = robot1.visible and not robot1.carried \
@@ -1532,9 +1797,14 @@ static func run(ctx: Node) -> void:
 			var art := gb.art_world_rect()
 			if gb._sprite.texture is AtlasTexture:
 				geo_fails.append("%s sprite cropped" % spec[1])
-			if absf(art.get_center().y - gb.position.y) > 0.5:
-				geo_fails.append("%s sort line %.1f vs art middle %.1f" % [
-					spec[1], gb.position.y, art.get_center().y])
+			# sort line: forts sit at their art TOP (zod ground-stamps
+			# fort bases — nothing is ever occluded by a fort), every
+			# other building at its vertical middle
+			var want_sort: float = (art.position.y if gb.is_fort
+					else art.get_center().y)
+			if absf(want_sort - gb.position.y) > 0.5:
+				geo_fails.append("%s sort line %.1f vs want %.1f" % [
+					spec[1], gb.position.y, want_sort])
 			var want_rect: Rect2i = bdef.solid_tiles \
 				if bdef.solid_tiles.size.x > 0 and bdef.solid_tiles.size.y > 0 \
 				else Rect2i(Vector2i.ZERO, Vector2i((ts / 16.0).ceil()))
@@ -1549,10 +1819,11 @@ static func run(ctx: Node) -> void:
 					Vector2(want_rect.size) * 16.0])
 			if spec[0] == 0:
 				# destroyed swap: full art back on the same anchor
+				var top_before: float = gb._sprite.global_position.y
 				gb.take_damage(gb.hp + 9999)
 				if gb._sprite.texture is AtlasTexture:
 					geo_fails.append("destroyed fort keeps cropped art")
-				elif absf(gb._sprite.global_position.y - art.position.y) > 0.5:
+				elif absf(gb._sprite.global_position.y - top_before) > 0.5:
 					geo_fails.append("destroyed fort shifted")
 			gb.queue_free()
 		print("BUILDINGGEO: %s" % ("OK" if geo_fails.is_empty()
@@ -1617,17 +1888,20 @@ static func run(ctx: Node) -> void:
 			var v: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 			v.setup_vehicle(spec[0], spec[1], spec[2])
 			v.position = origin + Vector2(-240 + x * 70, -80)
+			v.add_to_group("parade")
 			ctx.add_child(v)
 			x += 1
 		var empty: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 		empty.setup_vehicle("vehicle", "jeep", 0)
 		empty.position = origin + Vector2(-240, 0)
+		empty.add_to_group("parade")
 		ctx.add_child(empty)
 		# direction matrix: medium tanks facing all 8 directions
 		for i in 8:
 			var dt: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 			dt.setup_vehicle("vehicle", "medium", 1)
 			dt.position = origin + Vector2(-280 + i * 74, -170)
+			dt.add_to_group("parade")
 			ctx.add_child(dt)
 			dt._last_dir = i
 			dt._play("base", i)
@@ -1652,7 +1926,9 @@ static func run(ctx: Node) -> void:
 		await Engine.get_main_loop().process_frame
 		var spawned := 0
 		var missing_turret := 0
-		for c in ctx.get_children():
+		# count the parade's OWN hardware — earlier flags leave their
+		# manned vehicles all over the map
+		for c in tree.get_nodes_in_group("parade"):
 			if c is Vehicle2D and c.manned:
 				spawned += 1
 				if c.unit_name in ["light", "medium", "heavy"] \
@@ -1682,7 +1958,7 @@ static func run(ctx: Node) -> void:
 		Fx.shell(Vector2(600, 100), Vector2(700, 100), test_proj,
 			func(): hits[0] += 1)
 		var spawned: int = fx_root.get_child_count() - before
-		for i in 120:
+		for i in 30:  # time_scale 4: the 0.2s shell flight lands in ~3
 			await Engine.get_main_loop().process_frame
 		print("FX: spawned=%d shell_hits=%d remaining=%d" % [
 			spawned, hits[0], fx_root.get_child_count() - before])

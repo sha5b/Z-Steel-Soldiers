@@ -4,6 +4,6 @@
 [node name="Light" instance=ExtResource("1_base")]
 unit_name = "light"
 kind = "vehicle"
-turret_hull_off = PackedVector2Array(2.0, 0.0, 0.0, 0.0, -2.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, -2.0, 0.0, 0.0, 0.0)
+turret_hull_off = PackedVector2Array(2.0, 0.0, 0.0, 0.0, -2.0, 0.0, 0.0, 0.0, -2.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0)
 turret_aim_off = PackedVector2Array(0.0, -2.0, 0.0, -2.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, -2.0)
 turret_scans = true

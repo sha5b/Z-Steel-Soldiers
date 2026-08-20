@@ -70,6 +70,8 @@ func _ready() -> void:
 	cooldown = stats.cooldown
 	speed = stats.speed
 	scale = Vector2(sprite_scale, sprite_scale)
+	collision_layer = 1
+	collision_mask = 2  # physics solves unit-vs-BUILDING only
 	_build_frames()
 	set_selected(false)
 	_play("stand", _last_dir)
@@ -99,8 +101,6 @@ func _process(delta: float) -> void:
 		if _enter_timer > 0.9:  # gesture missing or signal never came
 			_finish_entering()
 	_combat()
-	_steer(delta)
-	_separation(delta)
 	_try_enter()
 	if kind == "robot":
 		if MatchState.auto_idle and defend_post == Vector2.INF:
@@ -108,6 +108,42 @@ func _process(delta: float) -> void:
 		_return_to_post()
 		_idle(delta)
 	ring.queue_redraw()
+
+
+func _physics_process(delta: float) -> void:
+	if Engine.is_editor_hint() or carried or not alive:
+		return
+	_steer(delta)
+	_separation(delta)
+
+
+var _stuck_timer := 0.0
+var _last_pos := Vector2.ZERO
+var _repaths := 0
+
+
+## REAL collision can pin a unit against a wall (corner hugs, crowds in
+## the fort gate): when it strives but makes no ground, re-route from
+## where it actually stands; after three re-routes, give the order up —
+## a cancelled move beats a permanently jammed army.
+func _progress_watchdog(delta: float) -> void:
+	if velocity.length_squared() < 4.0 or move_target == Vector2.ZERO:
+		_stuck_timer = 0.0
+		return
+	if global_position.distance_to(_last_pos) < 0.5:
+		_stuck_timer += delta
+	else:
+		_stuck_timer = 0.0
+	_last_pos = global_position
+	if _stuck_timer > 0.7:
+		_stuck_timer = 0.0
+		_repaths += 1
+		if _repaths > 3:
+			_repaths = 0
+			_arrive_at_target()
+		else:
+			waypoints = NavWorld.request_path(
+				global_position, move_target, kind)
 
 
 func _steer(delta: float) -> void:
@@ -135,7 +171,13 @@ func _steer(delta: float) -> void:
 		# there, so capture it separately
 		var final_before: float = global_position.distance_to(move_target) \
 				if move_target != Vector2.ZERO else INF
-		global_position += velocity * delta
+		# REAL collision (modern engine, no grid-only limits): the slide
+		# follows the A* route and pushes back off building walls — the
+		# corner-cutting that steered units through solid cells is gone
+		if MatchState.direct_step:
+			global_position += velocity * delta
+		else:
+			move_and_slide()  # real collision — slides along building walls
 		# a large step can leapfrog the waypoint (the arrival check
 		# above only looks before moving): if we are now farther away
 		# than before the step, we passed it — consume it
@@ -150,6 +192,7 @@ func _steer(delta: float) -> void:
 			_arrive_at_target()
 		global_position = global_position.clamp(
 			NavWorld.map_rect.position, NavWorld.map_rect.end)
+		_progress_watchdog(delta)
 	else:
 		_play("fire" if _target else "stand", _last_dir)
 
@@ -187,17 +230,38 @@ func _separation(delta: float) -> void:
 			push += Vector2(randf() - 0.5, randf() - 0.5)  # perfectly stacked
 	var step := push * clampf(delta * 6.0, 0.0, 1.0) * 0.5
 	var target := global_position + step
-	if not _walkable(target):
-		# never shove units into water/rock: try axes separately, else stay
-		if _walkable(Vector2(target.x, global_position.y)):
+	if not _walkable(target) or _inside_building(target):
+		# never shove units into water/rock/WALLS: the cell check alone
+		# misses sub-cell overlaps — the shoulder push used to bury
+		# bodies inside building physics rects, freezing them
+		if _walkable(Vector2(target.x, global_position.y)) \
+				and not _inside_building(Vector2(target.x, global_position.y)):
 			target = Vector2(target.x, global_position.y)
-		elif _walkable(Vector2(global_position.x, target.y)):
+		elif _walkable(Vector2(global_position.x, target.y)) \
+				and not _inside_building(Vector2(global_position.x, target.y)):
 			target = Vector2(global_position.x, target.y)
 		else:
 			return
 	global_position = target
 	global_position = global_position.clamp(
 		NavWorld.map_rect.position, NavWorld.map_rect.end)
+
+
+## True when the body (point + 6px margin) overlaps a nav-solid cell —
+## the building walls ARE those cells. Five grid lookups, no geometry,
+## no allocations: this runs per unit per physics tick and MUST stay
+## cheap (the first version walked every building's footprint and cost
+## the whole frame budget).
+func _inside_building(p: Vector2) -> bool:
+	var grid := NavWorld.nav_grid
+	if grid == null:
+		return false
+	for off in [Vector2.ZERO, Vector2(6, 0), Vector2(-6, 0),
+			Vector2(0, 6), Vector2(0, -6)]:
+		var cell := Vector2i(((p + off) / 16.0).floor())
+		if grid.region.has_point(cell) and grid.is_point_solid(cell):
+			return true
+	return false
 
 
 func _walkable(p: Vector2) -> bool:
@@ -266,32 +330,53 @@ func _combat() -> void:
 	# within reach (original: robots throw grenades at vehicles/guns)
 	if grenades > 0 and _target and _grenade_timer <= 0.0 \
 			and (_target is Vehicle2D or (_target is Building2D and _target.is_fort)) \
-			and global_position.distance_to(_target.global_position) < 80.0:
+			and global_position.distance_to(_target_point()) < 80.0:
 		_grenade_timer = 3.0
 		grenades -= 1
 		play_gesture("throw")
-		var g_impact: Vector2 = _target.global_position
+		var g_impact: Vector2 = _target_point()  # the node is the fort's art TOP edge
 		Fx.gunfire("GRENLOBX")
 		Fx.shell(global_position, g_impact, GRENADE,
 			func():
-				Combat.area_damage(g_impact, 30.0, 13, team, true))  # grenade_damage 40/240 r30, x0.08
+				Combat.area_damage(g_impact, 30.0, 133, team, true))  # grenade_damage 40/240 r30, x0.08
 		return
 	if _target and _fire_timer <= 0.0:
-		var to_target := _target.global_position - global_position
+		var to_target := _target_point() - global_position
 		if to_target.length() <= range_px * sprite_scale:
 			_last_dir = _angle_to_dir(to_target.angle())
 			_fire_timer = cooldown
 			_shoot(_target, to_target)
 
 
+## Where shots measure to: a building's footprint centre, a unit's body
+## (fort nodes sit at the art TOP edge — measuring to the node made
+## forts unreachable inside every weapon's range).
+func _target_point() -> Vector2:
+	if _target is Building2D:
+		return _target.visual_center()
+	return _target.global_position
+
+
 func _find_target() -> Node2D:
-	# nearest enemy unit from the registry, then enemy forts in range
+	return _find_target_within(range_px * sprite_scale)
+
+
+## Nearest enemy unit from the registry, then enemy buildings in reach —
+## forts AND the destructible factories/radar/repair (bridges are
+## neutral and never shot at).
+func _find_target_within(eff_range: float) -> Node2D:
 	var best: Node2D = UnitRegistry.nearest_enemy(
-		global_position, range_px * sprite_scale, team)
+		global_position, eff_range, team)
 	var best_d: float = global_position.distance_to(best.global_position) \
-			if best != null else range_px * sprite_scale
-	for b in get_tree().get_nodes_in_group("buildings"):
-		if b is Node2D and b.alive and b.team != 0 and b.team != team:
+			if best != null else eff_range
+	for b in get_tree().get_nodes_in_group("all_buildings"):
+		# dead buildings stay registered (elimination cascade) and test
+		# maps remove nodes without freeing — 'is' on a freed instance
+		# is a hard crash, so filter validity first
+		if not is_instance_valid(b) or not (b is Building2D):
+			continue
+		if b.alive and not b.is_bridge() \
+				and b.team != 0 and b.team != team:
 			var d: float = global_position.distance_squared_to(b.visual_center())
 			if d < best_d * best_d:
 				best_d = sqrt(d)
@@ -306,8 +391,8 @@ func _find_target() -> Node2D:
 func _shoot(target: Node2D, to_target: Vector2) -> void:
 	_play("fire", _last_dir, true)
 	var def := ContentDB.def_for(kind, unit_name)
-	var muzzle := global_position + to_target.normalized() * 10.0
-	var amount := int(round(damage * MatchState.robot_damage_mult(team)))
+	var muzzle := global_position + to_target.normalized() * 6.0
+	var amount := damage
 	# the lid over a tank's crew hatch opens while it fires — that is the
 	# window a marksman takes (original: can_be_sniped = lid_open)
 	if def.snipe_chance > 0.0 and target is Vehicle2D and target.manned \
@@ -328,13 +413,18 @@ func take_damage(amount: int) -> void:
 	if ring:
 		ring.visible = true
 		ring.queue_redraw()
-	modulate = Color(3, 3, 3)
-	var tween := create_tween()
-	tween.tween_property(self, "modulate", Color.WHITE, 0.15)
+	# rapid-fire attackers restart this every hit — only start a new
+	# flash when the previous one has fully faded (building.gd rule)
+	if modulate == Color.WHITE:
+		modulate = Color(3, 3, 3)
+		var tween := create_tween()
+		tween.tween_property(self, "modulate", Color.WHITE, 0.15)
 	if hp <= 0:
 		die()
-	elif kind == "robot" and amount >= 10 and alive:
-		# near-miss scrambles the robot aside (original: DodgeMissile)
+	elif kind == "robot" and amount >= max_hp * 0.05 and alive:
+		# a solid hit scrambles the robot aside (original: DodgeMissile —
+		# ratio-based: raw damage thresholds died with the 10000-scale
+		# rebalance, grunt hits are 1 and laser hits are 14)
 		play_gesture("dodge")
 		var sidestep := Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0))
 		if _walkable(global_position + sidestep):
@@ -482,15 +572,20 @@ func _order_done() -> void:
 ## work); robots garrison their OWN fort, and any other building order
 ## resolves on ARRIVAL — the robot walks up first, then goes idle.
 func _try_enter() -> void:
-	# GODOT TRAP: a FREED instance compares == null, so this one guard
-	# covers null, freed and dead targets — an ENTERING order whose
-	# target is gone resolves back to retaskable idle (robots used to
-	# stick in ENTERING forever when their target died mid-walk)
-	if enter_target == null or not is_instance_valid(enter_target) \
-			or not enter_target.alive:
+	# GODOT TRAP: a FREED instance compares == null. An enter target that
+	# DIED mid-walk cancels the whole errand — the bot stops and becomes
+	# retaskable instead of finishing its march to the corpse's spot.
+	# (enter_target == null is the NORMAL state of every plain move
+	# order — that case must do nothing.)
+	if enter_target != null and (not is_instance_valid(enter_target) \
+			or not enter_target.alive):
 		enter_target = null
-		if state == State.ENTERING:
-			_order_done()
+		move_target = Vector2.ZERO
+		waypoints = PackedVector2Array()
+		velocity = Vector2.ZERO
+		_order_done()
+		return
+	if enter_target == null:
 		return
 	if enter_target is Building2D:
 		# _steer clears move_target on arrival while enter_target keeps

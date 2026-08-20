@@ -5,6 +5,7 @@ extends HBoxContainer
 const MAX_PORTRAITS := 12
 
 var _slots: Array[Control] = []
+var _wired: Array = []  # [unit, callable] — disconnected on every rebuild
 
 
 func _ready() -> void:
@@ -13,6 +14,10 @@ func _ready() -> void:
 
 
 func _sync(units: Array) -> void:
+	# drop every damaged-signal hook first: freed slots or REUSED slots
+	# left hooked would either crash the emit (bound slot already freed)
+	# or update the wrong unit's bar
+	_unwire()
 	var desired: int = mini(units.size(), MAX_PORTRAITS)
 	if _slots.size() != desired:
 		for c in get_children():
@@ -38,11 +43,23 @@ func _sync(units: Array) -> void:
 			_update_hp(slot, u)
 			if u.has_signal("damaged"):
 				var cb := _on_unit_damaged.bind(slot)
-				if not u.damaged.is_connected(cb):
-					u.damaged.connect(cb)
+				u.damaged.connect(cb)
+				_wired.append([u, cb])
+
+
+func _unwire() -> void:
+	for pair in _wired:
+		var u = pair[0]
+		var cb: Callable = pair[1]
+		if is_instance_valid(u) and cb.is_valid() \
+				and u.damaged.is_connected(cb):
+			u.damaged.disconnect(cb)
+	_wired.clear()
 
 
 func _on_unit_damaged(_amount: int, slot: Control) -> void:
+	if not is_instance_valid(slot):
+		return
 	var u = slot.get_meta("unit")
 	if u != null and is_instance_valid(u):
 		_update_hp(slot, u)

@@ -129,6 +129,8 @@ func garrison_robot(robot: Unit2D) -> bool:
 
 
 func _process(delta: float) -> void:
+	if not alive:
+		return  # ruins produce nothing and fire nothing
 	tick_production(delta)
 	if team != 0 and not garrison.is_empty():
 		_garrison_fire(delta)
@@ -154,14 +156,12 @@ func _garrison_fire(delta: float) -> void:
 	_missile_target = best
 	Fx.gunfire("MOBIMIS")
 	var from := visual_center() + Vector2(0, -10)
-	var tid := best.get_instance_id()
 	var impact: Vector2 = best.global_position
 	Fx.shell(from, impact, GARRISON_MISSILE,
-		func():
-			var hit: Node2D = instance_from_id(tid) as Node2D
-			if hit and hit.alive:
-				hit.take_damage(167)  # map_item_turrent_damage 50/240, x0.08
-			Combat.area_damage(impact, 40.0, 80, team, true))
+			func():
+				# ONE roll with falloff (combat.gd rule) — a direct hit
+				# plus splash double-charged the primary target
+				Combat.area_damage(impact, 40.0, 167, team, true))  # map_item_turrent_damage 50/240, x0.08
 
 
 ## The fort falling kills everyone inside.

@@ -95,7 +95,9 @@ func _draw() -> void:
 	draw_texture_rect(_texture, _map_rect, false)
 	for b in get_tree().get_nodes_in_group("buildings"):
 		if b is Node2D and b.alive:
-			_blip(b.global_position, Teams.minimap_color(b.team), 3.0)
+			# the fort node sits at the art's TOP edge (Y-sort lift) —
+			# blip the visual centre, which is where the structure is
+			_blip(b.visual_center(), Teams.minimap_color(b.team), 3.0)
 	# enemy intel needs a radar station (original Z) — own units always show
 	var radar = _player_has_radar()
 	for u in UnitRegistry.world_units():
@@ -111,7 +113,8 @@ func _draw() -> void:
 
 
 func _player_has_radar() -> bool:
-	for b in get_tree().get_nodes_in_group("buildings"):
+	# "all_buildings": radar sits in none of the narrower groups
+	for b in get_tree().get_nodes_in_group("all_buildings"):
 		if b is Building2D and b.alive and b.building_id == 2 \
 				and b.owner_team == MatchState.player_team:
 			return true

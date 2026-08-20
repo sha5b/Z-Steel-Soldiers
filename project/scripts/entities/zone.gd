@@ -22,7 +22,7 @@ var _capture_progress := 0.0
 var _flag: AnimatedSprite2D
 var _cells: Array[Vector2i] = []      # passable land tiles -> land marker
 var _water_cells: Array[Vector2i] = []  # water tiles -> bobbing water marker
-var _bob_phase := {}  # water cell -> random bob phase
+var _bob_frame := 0  # synchronized bob step (advances once per redraw)
 var _bob_timer := 0.0
 
 static var _marker_cache := {}  # "<team>_<water>" -> Texture2D
@@ -41,6 +41,21 @@ var _flag_pending := true  # buildings spawn after zones — decide once
 func _build_visuals() -> void:
 	_rebuild_marker_cells()
 	queue_redraw()
+
+
+## An alive fort of the CURRENT owner inside the zone: its garrison
+## holds the territory — the zone flips only when the fort falls (same
+## intersection test as the flag placement).
+func _held_by_fort() -> bool:
+	if owner_team == 0:
+		return false
+	var r := world_rect()
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b is FortBuilding and is_instance_valid(b) and b.alive \
+				and b.team == owner_team \
+				and b.art_world_rect().intersection(r).get_area() > 0:
+			return true
+	return false
 
 
 ## Flag placement (deferred one tick, when buildings exist): a zone
@@ -101,7 +116,6 @@ func _rebuild_marker_cells() -> void:
 				and NavWorld.vehicle_grid.region.has_point(c) \
 				and NavWorld.vehicle_grid.is_point_solid(c):
 			_water_cells.append(c)
-			_bob_phase[c] = randf() * 2.0
 		else:
 			_cells.append(c)
 
@@ -125,22 +139,32 @@ func _process(delta: float) -> void:
 		_capturing_team = 0  # enemies present: nobody captures
 		_capture_progress = 0.0
 	elif occupying != 0 and occupying != owner_team:
-		if _capturing_team != occupying:
-			_capturing_team = occupying
-			_capture_progress = 0.0
-		_capture_progress += delta
-		if _capture_progress >= CAPTURE_SECONDS:
-			set_owner_team(occupying)
+		if _held_by_fort():
+			# a live fort holds its ground: territory only changes hands
+			# when the fort falls (GameState.report_fort_destroyed
+			# neutralizes its zones) — the fort IS the win objective
 			_capturing_team = 0
 			_capture_progress = 0.0
+		else:
+			if _capturing_team != occupying:
+				_capturing_team = occupying
+				_capture_progress = 0.0
+			_capture_progress += delta
+			if _capture_progress >= CAPTURE_SECONDS:
+				set_owner_team(occupying)
+				_capturing_team = 0
+				_capture_progress = 0.0
 	elif occupying == 0 or occupying == owner_team:
 		_capture_progress = 0.0
 		_capturing_team = 0
-	# only the water markers animate: redraw on a slow bob cadence
+	# only the water markers animate: redraw on a slow bob cadence, one
+	# synchronized bob step per redraw (per-cell random phases redraw as
+	# unsynchronized noise — read as a flickering border texture)
 	if not _water_cells.is_empty():
 		_bob_timer += delta
 		if _bob_timer >= BOB_SECONDS:
 			_bob_timer = 0.0
+			_bob_frame = (_bob_frame + 1) % 2
 			queue_redraw()
 
 
@@ -156,7 +180,6 @@ func _draw() -> void:
 		return
 	var land := _marker_tex(owner_team, false)
 	var water := _marker_tex(owner_team, true)
-	var t := Time.get_ticks_msec() * 0.001
 	# stamp sizes come from the TEXTURE: team stamps are 8x4 but the
 	# neutral one is 4x4 — a fixed 8x4 source rect smeared the neutral
 	# art sideways
@@ -171,11 +194,11 @@ func _draw() -> void:
 	if water:
 		var wsrc := Rect2(Vector2(), water.get_size())
 		var wdst_size := water.get_size() * MARKER_SCALE
-		var woff := (Vector2(16, 16) - wdst_size) * 0.5
+		var woff := (Vector2(16, 16) - wdst_size) * 0.5 \
+				+ Vector2(0, float(_bob_frame))
 		var wdst := Rect2(woff, wdst_size)
 		for c in _water_cells:
-			var bob := 1.0 if fmod(t * 2.0 + float(_bob_phase.get(c, 0.0)), 2.0) < 1.0 else 0.0
-			wdst.position = Vector2(c) * 16.0 + woff + Vector2(0, bob)
+			wdst.position = Vector2(c) * 16.0 + woff
 			draw_texture_rect_region(water, wdst, wsrc)
 
 

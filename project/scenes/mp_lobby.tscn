@@ -1,0 +1,178 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/mp_lobby.gd" id="1"]
+
+[node name="MpLobby" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Background" type="TextureRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+stretch_mode = 6
+expand_mode = 1
+modulate = Color(0.45, 0.45, 0.45, 1)
+
+[node name="TitleLabel" type="Label" parent="."]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_top = 10.0
+offset_right = 200.0
+offset_bottom = 42.0
+theme_override_font_sizes/font_size = 26
+text = "GAME ROOM"
+grow_horizontal = 2
+
+[node name="Columns" type="HBoxContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 48.0
+offset_right = -16.0
+offset_bottom = -72.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 14
+
+[node name="LeftCol" type="VBoxContainer" parent="Columns"]
+custom_minimum_size = Vector2(264, 0)
+theme_override_constants/separation = 6
+
+[node name="MapList" type="ItemList" parent="Columns/LeftCol"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 104)
+
+[node name="PreviewPanel" type="Control" parent="Columns/LeftCol"]
+custom_minimum_size = Vector2(0, 130)
+size_flags_vertical = 3
+
+[node name="PreviewFrame" type="ColorRect" parent="Columns/LeftCol/PreviewPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.05, 0.06, 0.05, 0.85)
+
+[node name="Preview" type="TextureRect" parent="Columns/LeftCol/PreviewPanel"]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = -6.0
+grow_horizontal = 2
+grow_vertical = 2
+stretch_mode = 5
+expand_mode = 1
+
+[node name="MapName" type="Label" parent="Columns/LeftCol"]
+unique_name_in_owner = true
+theme_override_font_sizes/font_size = 16
+text = " "
+horizontal_alignment = 1
+
+[node name="MapInfo" type="Label" parent="Columns/LeftCol"]
+unique_name_in_owner = true
+theme_override_font_sizes/font_size = 12
+text = " "
+horizontal_alignment = 1
+
+[node name="RightCol" type="VBoxContainer" parent="Columns"]
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="Status" type="Label" parent="Columns/RightCol"]
+unique_name_in_owner = true
+theme_override_font_sizes/font_size = 13
+text = " "
+horizontal_alignment = 1
+
+[node name="SlotsScroll" type="ScrollContainer" parent="Columns/RightCol"]
+custom_minimum_size = Vector2(0, 118)
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="Slots" type="VBoxContainer" parent="Columns/RightCol/SlotsScroll"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+theme_override_constants/separation = 3
+
+[node name="ChatFrame" type="ColorRect" parent="Columns/RightCol"]
+custom_minimum_size = Vector2(0, 64)
+color = Color(0.05, 0.06, 0.05, 0.85)
+
+[node name="ChatLog" type="Label" parent="Columns/RightCol/ChatFrame"]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = 4.0
+offset_right = -6.0
+offset_bottom = -4.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 12
+vertical_alignment = 2
+autowrap_mode = 2
+text = " "
+
+[node name="ChatRow" type="HBoxContainer" parent="Columns/RightCol"]
+theme_override_constants/separation = 6
+
+[node name="ChatInput" type="LineEdit" parent="Columns/RightCol/ChatRow"]
+unique_name_in_owner = true
+size_flags_horizontal = 3
+placeholder_text = "SAY SOMETHING..."
+
+[node name="Send" type="Button" parent="Columns/RightCol/ChatRow"]
+custom_minimum_size = Vector2(74, 30)
+text = "SEND"
+
+[node name="Menu" type="HBoxContainer" parent="."]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -180.0
+offset_top = -64.0
+offset_right = 180.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_constants/separation = 16
+
+[node name="Ready" type="Button" parent="Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 36)
+toggle_mode = true
+text = "READY"
+
+[node name="Start" type="Button" parent="Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 36)
+text = "START"
+
+[node name="Leave" type="Button" parent="Menu"]
+custom_minimum_size = Vector2(110, 36)
+text = "LEAVE"
+
+[connection signal="item_selected" from="Columns/LeftCol/MapList" to="." method="_on_map_selected"]
+[connection signal="text_submitted" from="Columns/RightCol/ChatRow/ChatInput" to="." method="_on_chat_submitted"]
+[connection signal="pressed" from="Columns/RightCol/ChatRow/Send" to="." method="_on_send_pressed"]
+[connection signal="toggled" from="Menu/Ready" to="." method="_on_ready_toggled"]
+[connection signal="pressed" from="Menu/Start" to="." method="_on_start_pressed"]
+[connection signal="pressed" from="Menu/Leave" to="." method="_on_leave_pressed"]

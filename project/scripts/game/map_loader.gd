@@ -16,6 +16,8 @@ const PLANET_TILESETS := {
 
 
 static func load_map(parent: Node, map_path: String) -> Dictionary:
+	# decals (tracks/craters) and ambient animals anchor to the match root
+	MatchState.map_root = parent
 	if map_path.ends_with(".tscn"):
 		return load_map_scene(parent, map_path)
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(map_path))
@@ -65,6 +67,7 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 static func _build_terrain(parent: Node, data: Dictionary, planet: String, w: int, h: int) -> void:
 	var tilemap := TileMapLayer.new()
 	tilemap.name = "Terrain"
+	tilemap.z_index = -2  # ground: under the decal layer (-1), under the world
 	var tileset := TileSet.new()
 	tileset.tile_size = Vector2i(TILE, TILE)
 	var source := TileSetAtlasSource.new()

@@ -10,7 +10,10 @@ extends Node2D
 ## length itself tells toughness: a grunt shows a sliver, a fort spans
 ## the full 30px.
 
-const HP_REF := 500.0   # fort HP = the 30px reference (zod MAX_UNIT_HEALTH)
+const HP_REF := 800.0   # toughest field unit (crane) = the full 30px
+# reference — absolute widths so length tells toughness (zod convention,
+# rescaled to the original-balance HP table: the old 500 was the PRE-
+# rebalance fort HP and pinned heavy/crane bars full forever)
 const BAR_MAX_W := 30.0
 const ARM := 5.0
 const PAD := 3.0
@@ -77,7 +80,7 @@ func _unit_rect(unit: Node) -> Rect2:
 			var bb := _content_box(tex)
 			if bb.size.x > 0:
 				return Rect2(bb.position - tex.get_size() * 0.5, bb.size)
-	return Rect2(-12, -16, 24, 32)
+	return Rect2(-8, -8, 16, 16)
 
 
 static func _content_box(tex: Texture2D) -> Rect2:

@@ -81,7 +81,7 @@ func laser(from: Vector2, to: Vector2) -> void:
 	add_child(line)
 	var glow := Line2D.new()
 	glow.points = PackedVector2Array([from, to])
-	glow.width = 5.0
+	glow.width = 2.5
 	glow.default_color = Color(0.3, 0.8, 1.0, 0.35)
 	glow.z_index = 4
 	add_child(glow)

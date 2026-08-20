@@ -191,8 +191,9 @@ func _build_layer() -> void:
 
 func _building_order(b: Building2D) -> void:
 	var dist := global_position.distance_to(b.world_footprint().get_center())
-	if unit_name == "crane" and manned and b.team == team \
-			and b.hp < b.max_hp and dist < 60.0:
+	# bridges are communal infrastructure: any team's crane rebuilds them
+	if unit_name == "crane" and manned and b.hp < b.max_hp \
+			and (b.team == team or b.is_bridge()) and dist < 60.0:
 		_start_crane_repair(b)
 		return
 	if b.is_repair_shop() and b.owner_team == team and dist < 60.0:
@@ -277,13 +278,48 @@ func _process(delta: float) -> void:
 	_lid_timer = maxf(0.0, _lid_timer - delta)
 	if manned:
 		_combat()
-	_steer(delta)
-	_separation(delta)
 	_try_enter()
 	_update_layer(delta)
 	_damage_fx(delta)
 	_crane_repair_tick(delta)
 	ring.queue_redraw()
+
+
+func _physics_process(delta: float) -> void:
+	if Engine.is_editor_hint() or not alive:
+		return
+	if _wreck:
+		return
+	_steer(delta)
+	_separation(delta)
+
+
+## REAL collision can pin a unit against a wall (corner hugs, crowds in
+## the fort gate): when it strives but makes no ground, re-route from
+## where it actually stands; after three re-routes, give the order up —
+## a cancelled move beats a permanently jammed army. (State lives in
+## Unit2D; vehicles bail out via _on_arrived instead of the robot's
+## order bookkeeping.)
+func _progress_watchdog(delta: float) -> void:
+	if velocity.length_squared() < 4.0 or move_target == Vector2.ZERO:
+		_stuck_timer = 0.0
+		return
+	if global_position.distance_to(_last_pos) < 0.5:
+		_stuck_timer += delta
+	else:
+		_stuck_timer = 0.0
+	_last_pos = global_position
+	if _stuck_timer > 0.7:
+		_stuck_timer = 0.0
+		_repaths += 1
+		if _repaths > 3:
+			_repaths = 0
+			_on_arrived()
+			velocity = Vector2.ZERO
+			move_target = Vector2.ZERO
+		else:
+			waypoints = NavWorld.request_path(
+				global_position, move_target, kind)
 
 
 func _steer(delta: float) -> void:
@@ -304,7 +340,10 @@ func _steer(delta: float) -> void:
 		_play_body()
 		var dist_before := offset_to_next_waypoint()
 		var prev_pos := global_position
-		global_position += velocity * delta
+		if MatchState.direct_step:
+			global_position += velocity * delta
+		else:
+			move_and_slide()  # real collision — slides along building walls  # real collision — slides along building walls
 		_track_distance += prev_pos.distance_to(global_position)
 		if _track_distance >= Decals.TRACK_SPACING:
 			_track_distance = 0.0
@@ -324,6 +363,7 @@ func _steer(delta: float) -> void:
 			_on_arrived()
 		global_position = global_position.clamp(
 			NavWorld.map_rect.position, NavWorld.map_rect.end)
+		_progress_watchdog(delta)
 	else:
 		_play_body()
 	_sync_wheels()
@@ -350,7 +390,11 @@ func _play_body() -> void:
 		return
 	if _fire_flash > 0.0 and sprite.sprite_frames \
 			and sprite.sprite_frames.has_animation("fire_%d" % _last_dir):
-		_play("fire", _last_dir)
+		# rapid-fire units (0.1s cooldown) must not restart the one-shot
+		# flash every shot — that strobes the whole hull
+		var fire := "fire_%d" % _last_dir
+		if sprite.animation != fire or not sprite.is_playing():
+			_play("fire", _last_dir)
 		return
 	_play("base" if manned else "empty", _last_dir)
 
@@ -379,6 +423,19 @@ func _sync_wheels() -> void:
 		_wheels.frame = 0
 
 
+func _find_target() -> Node2D:
+	if is_apc() and not cargo.is_empty():
+		# the APC itself is unarmed (range 0) — the squad's gunner
+		# acquires through the firing ports with his own reach
+		var gunner = cargo[0]  # untyped: may hold any robot subtype
+		var gname := "grunt"
+		if gunner is Unit2D:
+			gname = gunner.unit_name
+		return _find_target_within(
+			ContentDB.def_for("robot", gname).range_px * sprite_scale)
+	return super()
+
+
 func _combat() -> void:
 	if attack_move and move_target != Vector2.ZERO and manned:
 		var probe := _find_target()
@@ -391,22 +448,24 @@ func _combat() -> void:
 	_target = _find_target()
 	# APC: the squad inside fires through the ports — the first cargo
 	# robot's weapon stands in for the squad (original behaviour: every
-	# passenger shoots with his own gun)
+	# passenger shoots with his own gun). Full weapon rules apply: the
+	# gunner's range and cooldown, hit chance and shells via Combat.fire,
+	# measured to the building centre like every other weapon
 	if is_apc() and not cargo.is_empty() and _target and _fire_timer <= 0.0:
 		var gunner = cargo[0]  # untyped: may hold any robot subtype
-		var to_squad_target := _target.global_position - global_position
-		if to_squad_target.length() <= 70.0 * sprite_scale:
+		var gname := "grunt"
+		if gunner is Unit2D:
+			gname = gunner.unit_name
+		var gdef := ContentDB.def_for("robot", gname)
+		var to_squad_target: Vector2 = (_target.visual_center()
+				if _target is Building2D else _target.global_position) - global_position
+		if to_squad_target.length() <= gdef.range_px * sprite_scale:
 			_last_dir = _angle_to_dir(to_squad_target.angle())
-			_fire_timer = 0.8
+			_fire_timer = gdef.cooldown
 			_fire_flash = 0.0  # no hull flash art for the APC
-			var gname := "grunt"
-			if gunner is Unit2D:
-				gname = gunner.unit_name
-			var gsound := ContentDB.def_for("robot", gname).sound
-			Fx.gunfire(gsound if gsound != "" else "RIFLE3")
-			Fx.bullet(global_position + to_squad_target.normalized() * 10.0,
-				_target.global_position)
-			_target.take_damage(6)
+			Combat.fire(self, gdef,
+				global_position + to_squad_target.normalized() * 10.0,
+				_target, gdef.damage)
 	if _target:
 		# turret tracks the target even while the gun reloads; the hull
 		# only turns when the aim genuinely changes sector (hysteresis —
@@ -421,7 +480,8 @@ func _combat() -> void:
 			if diff >= 0.35:
 				_last_dir = want
 	if _target and _fire_timer <= 0.0:
-		var to_target := _target.global_position - global_position
+		var to_target: Vector2 = (_target.visual_center()
+				if _target is Building2D else _target.global_position) - global_position
 		if to_target.length() <= range_px * sprite_scale:
 			_last_dir = _angle_to_dir(to_target.angle())
 			_fire_timer = cooldown
@@ -429,7 +489,7 @@ func _combat() -> void:
 			_fire_flash = 0.3
 			_lid_timer = 1.2  # hatch open: snipers take note
 			var def := ContentDB.def_for(kind, unit_name)
-			var amount := int(round(damage * MatchState.vehicle_damage_mult(team)))
+			var amount := damage
 			Combat.fire(self, def, global_position + to_target.normalized() * 12.0,
 				_target, amount)
 
@@ -617,6 +677,8 @@ func die() -> void:
 	SelectionManager.drop_from_selection(self)
 	remove_from_group("selectable")
 	remove_from_group("units")
+	UnitRegistry.untrack(self)  # vehicle deaths count for the no-units rule
+	died.emit(self)
 	Fx.destroyed(global_position)
 	var has_wreck := sprite.sprite_frames \
 		and sprite.sprite_frames.has_animation("wasted") \

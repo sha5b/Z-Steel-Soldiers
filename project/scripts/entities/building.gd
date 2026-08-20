@@ -44,6 +44,9 @@ func setup(id: int, owner_team_value: int, planet_name: String, building_level :
 	if id == 6 or id == 7:
 		max_hp = BRIDGE_HP
 		hp = BRIDGE_HP
+	elif not is_fort:
+		max_hp = BUILDING_HP  # zod: robot/vehicle/radar/repair 2000/240
+		hp = BUILDING_HP
 
 
 # ----------------------- shared production -----------------------
@@ -141,6 +144,17 @@ func cancel_at(index: int) -> void:
 	MatchState.money_changed.emit(owner_team, MatchState.money[owner_team])
 
 
+## A capture scraps the old owner's queue — payment is upfront and
+## cancellation refunds, so the outgoing team gets its money back too.
+func _refund_queue() -> void:
+	if team == 0 or queue.items.is_empty():
+		return
+	for item in queue.items:
+		var parts: PackedStringArray = item.split(":")
+		MatchState.money[team] += ContentDB.def_for(parts[0], parts[1]).cost
+	MatchState.money_changed.emit(team, MatchState.money[team])
+
+
 ## Cap gate: alive + queued + this unit must fit under the team cap.
 ## `silent` suppresses the denial beep for CPU-initiated production.
 func _pop_allows(kind: String, stats: UnitDef, silent := false) -> bool:
@@ -208,6 +222,8 @@ func _ready() -> void:
 	var bdef := ContentDB.building_def(building_id)
 	if (bdef != null and bdef.produces) or is_fort:
 		add_to_group("facilities")
+	if not is_bridge():
+		set_solid_body(true, footprint_cells())
 
 
 func _build_sprite() -> void:
@@ -264,7 +280,8 @@ func _build_sprite() -> void:
 
 	if is_fort:
 		# the ORIGINAL team-coloured bar art, cropped right-to-left as
-		# health depletes (never recoloured, never stretched)
+		# health depletes (never recoloured; scaled to the fort's full
+		# art width — the one sanctioned world-art resample)
 		_hp_bar = Sprite2D.new()
 		_hp_bar.centered = false
 		_hp_bar.texture = _bar_texture(team)
@@ -276,7 +293,10 @@ func _build_sprite() -> void:
 		_hp_bar.region_enabled = true
 		_hp_bar.region_rect = Rect2(0, 0, 62, 16)
 		_hp_bar_max_w = bar_w
-		_hp_bar.position = Vector2(-8.0, -18.0 if is_fort else -ts.y * 0.5 - 10)
+		# above the waving flag, clear of its pole (the flag spans
+		# y -24..0 at the art top edge) — the only world art resampled
+		# to fit the fort's full width, at 6px height
+		_hp_bar.position = Vector2(-8.0, -30.0 if is_fort else -ts.y * 0.5 - 10)
 		_hp_bar.visible = false  # shown while selected or damaged
 		add_child(_hp_bar)
 
@@ -287,14 +307,14 @@ func _build_sprite() -> void:
 ## cells.
 func art_world_rect() -> Rect2:
 	if _sprite == null or _art_size == Vector2.ZERO:
-		return Rect2(global_position - Vector2(16, 16), Vector2(32, 32))
+		return Rect2(global_position - Vector2(8, 8), Vector2(16, 16))
 	if building_id == 7:  # rotated horizontal bridge
 		return Rect2(global_position + Vector2(-8, -8),
 			Vector2(_art_size.y, _art_size.x))
-	# forts sort at their art TOP (zod ground-stamp behaviour), every
-	# other building at its vertical middle
-	return Rect2(global_position
-		+ Vector2(-8, -8 if is_fort else -_art_size.y * 0.5), _art_size)
+	# the sprite's own offset IS the anchor truth: forts sit at the art
+	# top (zod ground-stamp behaviour, offset (-8, 0)), every other
+	# building at its vertical middle (offset (-8, -art/2))
+	return Rect2(global_position + _sprite.position, _art_size)
 
 
 ## World tiles this building makes impassable: the def's solid_tiles
@@ -318,6 +338,51 @@ func footprint_cells() -> Array[Vector2i]:
 			if not open.has(Vector2i(x, y) + (rect.position - origin)):
 				cells.append(rect.position + Vector2i(x, y))
 	return cells
+
+
+## Physics wall for REAL collision (units move_and_slide against it):
+## one 16x16 shape per SOLID CELL on a dedicated layer — physics and the
+## A* grids block exactly the same squares, so the fort's walkable gate
+## and side platforms stay walkable while nothing cuts through walls.
+## Bridges start WITHOUT a body (their span is a road); blowing one up
+## drops rubble physics onto the span, repair lifts it again.
+var _body: StaticBody2D = null
+
+func set_solid_body(on: bool, cells: Array[Vector2i] = []) -> void:
+	if not on:
+		if _body:
+			_body.queue_free()
+			_body = null
+		return
+	if _body:
+		return
+	_body = StaticBody2D.new()
+	_body.collision_layer = 2  # dedicated building layer
+	_body.collision_mask = 0
+	# merge consecutive cells in a row into single wide rectangles — a
+	# fort is ~8 shapes instead of ~74, same exact coverage
+	var by_row := {}
+	for cell in cells:
+		by_row[cell.y] = (by_row.get(cell.y, []) as Array)
+		by_row[cell.y].append(cell.x)
+	for y in by_row:
+		var xs: Array = by_row[y]
+		xs.sort()
+		var run_start: int = xs[0]
+		var prev: int = xs[0]
+		for x in xs + [999999]:
+			if x != prev + 1:
+				var width := prev - run_start + 1
+				var shape := CollisionShape2D.new()
+				var rect := RectangleShape2D.new()
+				rect.size = Vector2(width * 16.0, 16.0)
+				shape.shape = rect
+				shape.position = Vector2(run_start * 16.0 + width * 8.0,
+					y * 16.0 + 8.0) - global_position
+				_body.add_child(shape)
+				run_start = x
+			prev = x
+	add_child(_body)
 
 
 ## Mark this building's cells solid on both navigation grids — called by
@@ -386,20 +451,23 @@ func _build_overlays() -> void:
 	if bdef == null:
 		return
 	for anim in bdef.anims:
-		var frames := SpriteFrames.new()
-		frames.add_animation("loop")
-		frames.set_animation_speed("loop", anim.fps)
-		frames.set_animation_loop("loop", true)
 		var frame := 0
+		var paths: Array[String] = []
 		while true:
 			var path := "res://assets/z/buildings/%s/%s_%d.png" % [
 				bdef.tex, anim.prefix, frame]
 			if not ResourceLoader.exists(path):
 				break
-			frames.add_frame("loop", load(path))
+			paths.append(path)
 			frame += 1
-		if frame == 0:
+		if paths.is_empty():
 			continue
+		var frames := SpriteFrames.new()
+		frames.add_animation("loop")
+		frames.set_animation_speed("loop", anim.fps)
+		frames.set_animation_loop("loop", true)
+		for tex in _overlay_frames(paths):
+			frames.add_frame("loop", tex)
 		var overlay := AnimatedSprite2D.new()
 		overlay.name = "Overlay_%s" % anim.prefix
 		overlay.sprite_frames = frames
@@ -410,13 +478,45 @@ func _build_overlays() -> void:
 		overlay.play("loop")
 
 
+## Overlay frame set. Sets that ship tight-cropped to MIXED canvases
+## (the radar dish: 32/24/16 px wide) get padded onto one common canvas,
+## content-centred across and foot-aligned — with plain top-left
+## anchoring the dish slid ~13px sideways as it spun. Uniform sets pass
+## through untouched.
+static func _overlay_frames(paths: Array[String]) -> Array[Texture2D]:
+	var size := Vector2i.ZERO
+	for path in paths:
+		var tex: Texture2D = load(path)
+		size = size.max(Vector2i(tex.get_width(), tex.get_height()))
+	var mixed := false
+	for path in paths:
+		var tex: Texture2D = load(path)
+		if Vector2i(tex.get_width(), tex.get_height()) != size:
+			mixed = true
+			break
+	var out: Array[Texture2D] = []
+	for path in paths:
+		var tex: Texture2D = load(path)
+		if not mixed:
+			out.append(tex)
+			continue
+		var img := tex.get_image()
+		var bb := img.get_used_rect()
+		var padded := Image.create_empty(size.x, size.y, false, Image.FORMAT_RGBA8)
+		padded.blend_rect(img, Rect2i(Vector2i.ZERO, img.get_size()),
+			Vector2i((size.x - bb.size.x) / 2 - bb.position.x,
+				size.y - img.get_height()))
+		out.append(ImageTexture.create_from_image(padded))
+	return out
+
+
 ## ---- save contract: dynamic producer state ----
 
 func to_dict() -> Dictionary:
 	if not produces_anything():
 		return {}
 	return {
-		"id": building_id, "team": owner_team,
+		"id": building_id, "team": owner_team, "level": level,
 		"rally_x": rally_point.x if rally_point != Vector2.INF else 0.0,
 		"rally_y": rally_point.y if rally_point != Vector2.INF else 0.0,
 		"has_rally": rally_point != Vector2.INF,
@@ -425,6 +525,8 @@ func to_dict() -> Dictionary:
 
 
 func apply_dict(d: Dictionary) -> void:
+	if d.has("level"):
+		level = clampi(int(d.level), level, 5)
 	if bool(d.get("has_rally", false)):
 		set_rally(Vector2(float(d.get("rally_x", 0.0)), float(d.get("rally_y", 0.0))))
 	for item in d.get("queue", []):
@@ -440,22 +542,30 @@ func produces_anything() -> bool:
 ## for regular buildings (what blocks movement is what you click and
 ## target), the art/2 rect for bridges. The node itself sits at the
 ## art's vertical middle for y-sorting, so undo that offset here.
+var _fp_cache := Rect2()  # buildings never move — compute once
+
 func world_footprint() -> Rect2:
+	# HOT PATH (targeting, splash, AI, garrison): buildings never move,
+	# so the solid-cell union is computed exactly once
+	if _fp_cache != Rect2():
+		return _fp_cache
 	if not is_bridge() and ContentDB.building_def(building_id) != null \
 			and not Engine.is_editor_hint():
 		var cells := footprint_cells()
 		if cells.is_empty():
-			return art_world_rect()
+			_fp_cache = art_world_rect()
+			return _fp_cache
 		var area := Rect2(cells[0] * 16, Vector2(16, 16))
 		for cell in cells:
 			area = area.expand(Vector2(cell * 16))
 			area = area.expand(Vector2(cell * 16 + Vector2i.ONE * 16))
-		return area
-	var ts := _art_size if _art_size != Vector2.ZERO else Vector2(64, 64)
-	if building_id == 7:
-		ts = Vector2(ts.y, ts.x)  # rotated horizontal bridge
-	var half := ts * 0.25
-	return Rect2(global_position - half, half * 2.0)
+		_fp_cache = area
+		return _fp_cache
+	# bridges: the art span from its anchor tile (top-left contract) —
+	# art_world_rect already swaps w/h for the rotated horizontal bridge.
+	# The old art/4 rect centred on the node predates that anchor.
+	_fp_cache = art_world_rect()
+	return _fp_cache
 
 
 func visual_center() -> Vector2:
@@ -495,7 +605,7 @@ func _draw() -> void:
 		0: Color("737373"), 1: Color("df0000"), 2: Color("1337fb"),
 		3: Color("178f13"), 4: Color("cb632f"),
 	}.get(owner_team if team == 0 else team, Color.WHITE)
-	var r := Rect2(Vector2(-8.0, -8.0 if is_fort else -_art_size.y * 0.5),
+	var r := Rect2(Vector2(-8.0, 0.0 if is_fort else -_art_size.y * 0.5),
 		_art_size)
 	var arm := 6.0
 	var pad := 4.0
@@ -513,7 +623,7 @@ func update_flag(for_team: int) -> void:
 
 
 func _process(delta: float) -> void:
-	if Engine.is_editor_hint():
+	if Engine.is_editor_hint() or not alive:
 		return
 	if is_fort:
 		return
@@ -568,6 +678,9 @@ func try_start_repair(unit: Node2D) -> bool:
 	unit.waypoints = PackedVector2Array()
 	unit.remove_from_group("selectable")
 	unit.remove_from_group("units")
+	# out of the world while inside (same contract as APC/garrison
+	# cargo): not targetable through the shop walls, holds no territory
+	unit.carried = true
 	SelectionManager.drop_from_selection(unit)
 	return true
 
@@ -588,6 +701,7 @@ func _repair_tick(delta: float) -> void:
 		if owner_team == MatchState.player_team:
 			Fx.announce("vehicle_repaired")
 		done.visible = true
+		done.carried = false
 		done.add_to_group("selectable")
 		done.add_to_group("units")
 		done.global_position = world_footprint().get_center() + Vector2(0, 44)
@@ -600,12 +714,14 @@ func take_damage(amount: int) -> void:
 	if is_bridge():
 		_bridge_damage(amount)
 		return
-	if not is_fort:
-		return
 	hp -= amount
-	if team == MatchState.player_team:
-		Fx.announce("fort_under_attack")
-	if _sprite:
+	if is_fort and team == MatchState.player_team:
+		Fx.announce("fort_under_attack")  # forts only — factories have
+		# their own distinct original voice lines
+	# rapid-fire attackers restart this every hit — only start a new
+	# flash when the previous one has fully faded, or the building
+	# strobes white permanently
+	if _sprite and _sprite.modulate == Color.WHITE:
 		_sprite.modulate = Color(3, 3, 3)
 		var tween := create_tween()
 		tween.tween_property(_sprite, "modulate", Color.WHITE, 0.15)
@@ -619,7 +735,8 @@ func take_damage(amount: int) -> void:
 	if hp <= 0:
 		alive = false
 		_death_visuals()
-		GameState.report_fort_destroyed(team)
+		if is_fort:
+			GameState.report_fort_destroyed(team)
 
 
 ## Ruin look + bookkeeping shared by battle death and the elimination
@@ -659,6 +776,7 @@ func kill() -> void:
 # by a manned crane (original: CheckDestroyedBridge + crane repair).
 
 const BRIDGE_HP := 6667  # bridge_building_health 2000/240 (zsettings), x0.08
+const BUILDING_HP := 6667  # radar/repair/factory health, same zsettings row
 const FORT_HP := 33333  # fort_building_health 10000/240 (zsettings), x0.08
 var bridge_cells: Array[Vector2i] = []  # filled by the map loader
 
@@ -678,6 +796,7 @@ func _bridge_damage(amount: int) -> void:
 			NavWorld.nav_grid.set_point_solid(cell, true)
 		if NavWorld.vehicle_grid:
 			NavWorld.vehicle_grid.set_point_solid(cell, true)
+	set_solid_body(true, bridge_cells)
 	_sprite.modulate = Color(0.35, 0.35, 0.35)
 
 
@@ -685,6 +804,12 @@ func _bridge_damage(amount: int) -> void:
 func repair_by(amount: int) -> void:
 	if not is_bridge():
 		hp = mini(hp + amount, max_hp)
+		# the bar must grow back with the hull (and vanish at full
+		# health per the "selected or damaged" visibility rule)
+		if _hp_bar:
+			_hp_bar.region_rect.size.x = maxf(6.0,
+				62.0 * clampf(float(hp) / float(max_hp), 0.0, 1.0))
+			_hp_bar.visible = selected or hp < max_hp
 		return
 	if hp >= BRIDGE_HP:
 		return
@@ -695,5 +820,9 @@ func repair_by(amount: int) -> void:
 				NavWorld.nav_grid.set_point_solid(cell, false)
 			if NavWorld.vehicle_grid:
 				NavWorld.vehicle_grid.set_point_solid(cell, false)
+		# the rubble physics wall must go with the nav solids — grids
+		# saying "walkable" while move_and_slide still hits invisible
+		# rubble jams every unit sent across
+		set_solid_body(false)
 		_sprite.modulate = Color.WHITE
 		Fx.play("spark", world_footprint().get_center())

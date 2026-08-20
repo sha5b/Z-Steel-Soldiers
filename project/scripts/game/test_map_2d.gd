@@ -39,10 +39,11 @@ func _ready() -> void:
 	if not GameState.pending_load.is_empty():
 		_apply_load()
 	camera.position = Vector2(int(data.width), int(data.height)) * 8.0
-	# start on the player's fort when the map has one
-	for child in get_children():
-		if child is FortBuilding and child.team == MatchState.player_team:
-			camera.position = child.visual_center()
+	# start on the player's fort when the map has one (group scan: scene
+	# maps nest everything one level deeper, under the ZMap instance)
+	for b in get_tree().get_nodes_in_group("buildings"):
+		if b is FortBuilding and b.team == MatchState.player_team:
+			camera.position = b.visual_center()
 			break
 	camera.bounds = Rect2(0.0, 0.0, float(data.width) * 16.0, float(data.height) * 16.0)
 	GameState.game_over.connect(_on_game_over)
@@ -66,6 +67,10 @@ func _ready() -> void:
 			MatchState.zones.size(),
 			get_tree().get_nodes_in_group("units").size()])
 		await SelfTests.run(self)
+		# the suite is value-driven and fast — don't idle the match out
+		# to --quit-after once it's done (that linger ate minutes per run)
+		if "--screenshot" not in shot_args:
+			get_tree().quit()
 	if "--screenshot" in shot_args:
 		await _screenshot(shot_args[shot_args.find("--screenshot") + 1] if shot_args.size() > shot_args.find("--screenshot") + 1 else "2.0")
 
@@ -92,11 +97,34 @@ func _screenshot(delay_text: String) -> void:
 	var delay := float(delay_text)
 	Input.warp_mouse(DisplayServer.window_get_size() * 0.5)
 	await get_tree().create_timer(delay).timeout
+	if "--dump-visible" in (OS.get_cmdline_args() + OS.get_cmdline_user_args()):
+		_dump_ground_nodes()
 	var image := get_viewport().get_texture().get_image()
 	var out_path := ProjectSettings.globalize_path("res://") + "screenshot_tmp.png"
 	image.save_png(out_path)
 	print("SCREENSHOT: saved ", out_path, " ", image.get_size())
 	get_tree().quit()
+
+
+## TEMP diagnostic: ground-layer nodes (decals, wrecks, building art)
+## in the current view with their textures — pins screenshots to nodes.
+func _dump_ground_nodes() -> void:
+	var xform: Transform2D = get_canvas_transform()
+	var view := Rect2(xform.affine_inverse() * Vector2.ZERO,
+		get_viewport().get_visible_rect().size / xform.get_scale().abs()).grow(64)
+	for node in get_tree().get_nodes_in_group("craters") \
+			+ get_tree().get_nodes_in_group("tracks") \
+			+ get_tree().get_nodes_in_group("all_buildings"):
+		if node is not CanvasItem or not (node as CanvasItem).is_visible_in_tree():
+			continue
+		var wpos: Vector2 = (node as CanvasItem).get_global_transform() * Vector2()
+		if not view.has_point(wpos):
+			continue
+		var tex := ""
+		var sprite: Node = node.get_node_or_null("Sprite2D") if node.get_child_count() > 0 else null
+		if sprite and sprite.get("texture") is Texture2D:
+			tex = String((sprite.get("texture") as Texture2D).resource_path)
+		print("DUMP ", node.name, " pos=", wpos.round(), " alive=", node.get("alive"), " ", tex)
 
 
 ## A few ambient critters wander every map (original hut animals).
@@ -231,12 +259,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _pick_select(screen_pos: Vector2) -> void:
 	var world := SelectionManager.screen_to_world(screen_pos)
-	# player factories and fort first (selecting opens the production panel)
-	for c in get_children():
+	# player factories and fort first (selecting opens the production
+	# panel) — group scans, so scene maps (nested under ZMap) work too
+	for c in get_tree().get_nodes_in_group("facilities"):
 		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == MatchState.player_team \
 				and c.art_world_rect().has_point(world):
 			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
+	for c in get_tree().get_nodes_in_group("buildings"):
 		if c is FortBuilding and c.team == MatchState.player_team \
 				and c.art_world_rect().has_point(world):
 			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
@@ -245,7 +275,7 @@ func _pick_select(screen_pos: Vector2) -> void:
 	for unit in get_tree().get_nodes_in_group("selectable"):
 		if unit is Unit2D and unit.alive and not unit.carried \
 				and unit.team == MatchState.player_team \
-				and unit.global_position.distance_to(world) < 14.0:
+				and unit.global_position.distance_to(world) < 8.0:
 			if best == null or unit.global_position.distance_squared_to(world) < best.global_position.distance_squared_to(world):
 				best = unit
 	if best:

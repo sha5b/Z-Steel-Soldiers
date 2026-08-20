@@ -10,7 +10,7 @@ const CRATERS_DIR := "res://assets/z/effects/craters"
 const MAX_TRACKS := 60
 const MAX_CRATERS := 40
 const TRACK_FADE_SECONDS := 18.0
-const TRACK_SPACING := 14.0  # world px of travel between marks
+const TRACK_SPACING := 7.0  # world px of travel between marks (stamps are 8px at native scale)
 
 
 ## Drop a track mark for a vehicle facing `dir` on `planet`. Jeep tracks
@@ -61,13 +61,24 @@ static func _spawn(map: Node2D, tex: Texture2D, pos: Vector2,
 	if tex == null:
 		return
 	_enforce_cap(map, group, cap)
+	# craters/track marks are GROUND: over the terrain (z -2), under
+	# every unit and building — the original stamps them into the map,
+	# they never paint over structures (the 'weird grey overlay on the
+	# fort' was craters y-sorting above it)
+	var layer := map.get_node_or_null("GroundDecals") as Node2D
+	if layer == null:
+		layer = Node2D.new()
+		layer.name = "GroundDecals"
+		layer.z_index = -1
+		map.add_child(layer)
+	map = layer
 	var decal := Sprite2D.new()
 	decal.texture = tex
 	decal.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	decal.centered = false
 	# GROUND art renders at tile scale (like terrain) — 2x made the
-	# marks giant smears; top-left placement keeps the sort point at the
-	# top edge so units standing on/near them draw over them
+	# marks giant smears; centred on the track point, and the layer's
+	# z_index (-1) keeps them under every unit and building
 	decal.position = pos - tex.get_size() * 0.5
 	decal.add_to_group(group)
 	map.add_child(decal)

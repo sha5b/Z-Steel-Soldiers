@@ -83,10 +83,25 @@ static func meta(map_name: String) -> Dictionary:
 ## converter, even on 8-fort maps) — the real count is how many distinct
 ## teams own a fort half. p02/p03/p04/p08 names match this by design.
 static func _fort_teams(parsed: Dictionary) -> int:
+	return fort_team_ids(parsed).size()
+
+
+## The team ids that own a fort half on this map, sorted — the
+## multiplayer lobby's seat list. Same fort-half test as the count.
+static func fort_team_ids(parsed: Dictionary) -> Array:
 	var teams := {}
 	for o in parsed.get("objects", []):
 		if String(o.get("type", "")) == "building" \
 				and (int(o.get("id", -1)) == 0 or int(o.get("id", -1)) == 1) \
 				and int(o.get("owner", 0)) != 0:
 			teams[int(o.owner)] = true
-	return teams.size()
+	var out := teams.keys()
+	out.sort()
+	return out
+
+
+## Fort teams by map NAME (every scene map has a JSON twin).
+static func fort_teams(map_name: String) -> Array:
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(
+		"res://assets/maps/%s.json" % map_name))
+	return fort_team_ids(parsed) if parsed is Dictionary else [1, 2]

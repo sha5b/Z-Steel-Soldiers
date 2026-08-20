@@ -88,6 +88,7 @@ func _ready() -> void:
 	col.add_child(_queue_row)
 	SelectionManager.selection_changed.connect(_on_selection_changed)
 	MatchState.zone_captured.connect(func(_t): _check_roster())
+	MatchState.tech_level_changed.connect(_check_roster)
 	hide()
 
 
@@ -97,8 +98,13 @@ func _on_selection_changed(_units: Array) -> void:
 	var factory := _selected_factory()
 	visible = factory != null
 	if factory != _wired:
-		if _wired and queue_requested.is_connected(_wired.queue_unit):
-			queue_requested.disconnect(_wired.queue_unit)
+		if _wired:
+			if queue_requested.is_connected(_wired.queue_unit):
+				queue_requested.disconnect(_wired.queue_unit)
+			# the queue row follows the producer — unwind the old wire or
+			# captured factories keep invoking _check_roster forever
+			if _wired.queue.changed.is_connected(_check_roster):
+				_wired.queue.changed.disconnect(_check_roster)
 		_wired = factory
 		_queue_cache.clear()
 		if factory:

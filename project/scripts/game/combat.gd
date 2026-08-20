@@ -22,9 +22,13 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 	Fx.gunfire(def.sound)
 	Fx.play("muzzle", muzzle)
 	var weapon := weapon_of(def)
+	# building nodes sit at the art TOP/middle (Y-sort lift) — every
+	# visual terminates at the building's visual centre, like shells
+	var aim: Vector2 = (target.visual_center()
+			if target is Building2D else target.global_position)
 	if randf() > def.hit_chance:
 		# missed: the shot flies past
-		var past: Vector2 = target.global_position \
+		var past: Vector2 = aim \
 				+ Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
 		if weapon == "laser":
 			Fx.laser(muzzle, past)
@@ -33,47 +37,54 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 		return
 	match weapon:
 		"laser":
-			Fx.laser(muzzle, target.global_position)
+			Fx.laser(muzzle, aim)
 			target.take_damage(amount)
 		"shell":
-			var tid := target.get_instance_id()
-			var impact: Vector2 = target.global_position
 			var splash := def.splash_radius
-			# capture the team, not the shooter — the shooter may be
+			# capture ids, not nodes — the shooter and target may be
 			# freed by the time the shell lands (lambdas capture by value)
 			var shooter_team: int = shooter.team
-			Fx.shell(muzzle, impact, def.projectile,
+			var tid := target.get_instance_id()
+			Fx.shell(muzzle, aim, def.projectile,
 				func():
-					var hit: Node2D = instance_from_id(tid) as Node2D
-					if hit and hit.alive:
-						hit.take_damage(amount)
 					if splash > 0.0:
-						Decals.crater(impact, splash > 36.0)
-						area_damage(impact, splash, int(amount * 0.5),
-							shooter_team))
+						Decals.crater(aim, splash > 36.0)
+						area_damage(aim, splash, amount, shooter_team)
+					else:
+						var hit: Node2D = instance_from_id(tid) as Node2D
+						if hit and hit.alive:
+							hit.take_damage(amount))
 		_:
-			Fx.bullet(muzzle, target.global_position)
+			Fx.bullet(muzzle, aim)
 			target.take_damage(amount)
 
 
-## Explosion splash (original damage_missile with radius): hits every
-## enemy unit and fort/bridge around the impact, and crumbles rocks the
-## blast reaches. Friendly fire is off — the shooter's team is spared.
+## Explosion splash (zod ProcessMissileDamage): ONE damage roll per
+## object with linear falloff — full at the impact point, zero at the
+## rim; a direct hit + splash on top of it double-charged the primary.
+## Hits every enemy unit and BUILDING around the impact (not just
+## forts/bridges), and crumbles rocks the blast reaches. Friendly fire
+## is off — the shooter's team is spared.
 static func area_damage(world_pos: Vector2, radius: float, amount: int,
 		shooter_team: int, crater := false) -> void:
 	if crater:
 		Decals.crater(world_pos, radius > 36.0)
-	var r2 := radius * radius
 	for u in UnitRegistry.in_radius(world_pos, radius):
 		if u.team != shooter_team and u.team != 0:
-			u.take_damage(amount)
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("buildings"):
+			u.take_damage(_falloff(amount, u.global_position.distance_to(world_pos), radius))
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("all_buildings"):
 		if b is Node2D and b is Building2D and b.alive \
-				and (b.is_bridge() or (b.is_fort and b.team != shooter_team and b.team != 0)):
-			if b.world_footprint().get_center().distance_squared_to(world_pos) <= r2:
-				b.take_damage(amount)
+				and b.team != shooter_team and b.team != 0:
+			# distance to the RECT, not the centre — a shell bursting on
+			# a big factory's wall must not measure to the building middle
+			# (<= like the unit/rock probes)
+			var fp: Rect2 = b.world_footprint()
+			var cp := world_pos.clamp(fp.position, fp.position + fp.size)
+			var d: float = cp.distance_to(world_pos)
+			if d <= radius:
+				b.take_damage(_falloff(amount, d, radius))
 	for rock in Engine.get_main_loop().root.get_tree().get_nodes_in_group("rocks"):
-		if rock is Node2D and rock.global_position.distance_squared_to(world_pos) <= r2:
+		if rock is Node2D and rock.global_position.distance_to(world_pos) <= radius:
 			var cell := Vector2i(((rock.global_position - Vector2(8, 8)) / 16.0).floor())
 			if NavWorld.nav_grid and NavWorld.nav_grid.is_point_solid(cell):
 				NavWorld.nav_grid.set_point_solid(cell, false)
@@ -81,3 +92,7 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 				NavWorld.vehicle_grid.set_point_solid(cell, false)
 			Fx.play("debris", rock.global_position)
 			rock.queue_free()
+
+
+static func _falloff(amount: int, dist: float, radius: float) -> int:
+	return maxi(int(round(amount * (1.0 - dist / radius))), 1)

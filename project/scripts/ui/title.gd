@@ -14,6 +14,7 @@ func _ready() -> void:
 	$Background.texture = UiTheme.trimmed("res://assets/z/ui/Background.png")
 	splash.texture = UiTheme.trimmed("res://assets/z/ui/splash.png")
 	continue_btn.visible = GameState.has_save()
+	Net.leave()  # backing out of the menus ends any session
 	await SelfTests.maybe_screenshot(self, "screenshot_title.png")
 
 
@@ -34,6 +35,10 @@ func _on_campaign_pressed() -> void:
 
 func _on_skirmish_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/skirmish.tscn")
+
+
+func _on_multiplayer_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/multiplayer.tscn")
 
 
 func _on_settings_pressed() -> void:

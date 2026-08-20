@@ -31,6 +31,14 @@ UI = ["Background.png", "Splash.png", "BoxLeft.png", "BoxRight.png",
       "BoxCentreWide.png", "BoxCentreNarrow.png", "BoxDivide.png",
       "BoxInfo.png", "BoxInfo2.png", "Buttons.png", "PMHSprites.png"]
 
+# Multiplayer menu set: IPBackground/IPSplash back the multiplayer
+# screens; MultiPlayer.png (3x2 button atlas) and the hi-res (2x) IPBox*
+# panel chrome are spare until adopted.
+MP_UI = ["MultiPlayer.png", "IPBackground.png", "IPSplash.png",
+         "IPBoxLeft.png", "IPBoxRight.png", "IPBoxCentreWide.png",
+         "IPBoxCentreNarrow.png", "IPBoxDivide.png", "IPBoxInfo.png",
+         "IPBoxInfo2.png"]
+
 # 320x200 world thumbs for the campaign/map screens (pairs: base + alt
 # lighting pass). Palette-mode PNGs; Godot imports them as-is.
 PLANETS = ["ARTIC", "CITY", "DESERT", "JUNGLE", "VOLCAN"]
@@ -76,6 +84,14 @@ def main() -> None:
             shutil.copy2(src, dst)
             n += 1
     print(f"ui: {n} HUD/background images copied")
+
+    n = 0
+    for name in MP_UI:
+        src, dst = GOG / "PNG" / name, PROJ / "ui" / name
+        if src.exists() and not dst.exists():
+            shutil.copy2(src, dst)
+            n += 1
+    print(f"mp ui: {n} multiplayer menu images copied")
 
     (PROJ / "ui" / "planets").mkdir(parents=True, exist_ok=True)
     n = 0

@@ -3,6 +3,7 @@ extends Control
 ## via Engine.time_scale), music/effects volume (runtime buses), smart
 ## idle. Every change applies immediately and persists to user://.
 
+@onready var name_field: LineEdit = %Name
 @onready var difficulty: OptionButton = %Difficulty
 @onready var speed: OptionButton = %Speed
 @onready var idle: OptionButton = %Idle
@@ -25,6 +26,7 @@ func _ready() -> void:
 	for label in GameSettings.SPEED_LABELS:
 		speed.add_item(label)
 	difficulty.selected = GameSettings.difficulty
+	name_field.text = GameSettings.player_name
 	speed.selected = GameSettings.speed_index
 	idle.selected = 1 if GameSettings.auto_idle else 0
 	music.set_value_no_signal(GameSettings.music_volume)
@@ -42,6 +44,11 @@ func _layout_plaques() -> void:
 	var wide := size.x > 760.0
 	options_plaque.visible = wide
 	audio_plaque.visible = wide
+
+
+func _on_name_changed(text: String) -> void:
+	GameSettings.player_name = text.to_upper()
+	GameSettings.save()
 
 
 func _on_difficulty_selected(index: int) -> void:

@@ -8,7 +8,7 @@
 script = ExtResource("1_ix0r5")
 prefix = "smoke_stack"
 fps = 5.0
-offset = Vector2(-10, -14)
+offset = Vector2(26, -22)
 
 [resource]
 script = ExtResource("3_47dhw")

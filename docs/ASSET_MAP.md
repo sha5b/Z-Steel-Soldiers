@@ -32,13 +32,14 @@ asset — see `project/assets_map.json` for the machine-readable form.
 | other/particles, birds, hut_animals | 44 | - | **NOT WIRED** | ambient life; maps carry no animal objects in our conversion |
 | hud unit icons | 156 | selection bar portraits | **WIRED** | icon_<type>_<team>.png (converted from bmp) |
 | hud unit labels | 156 | - | **COPIED, NOT WIRED** | unit_label_<type>_<team> name plates |
-| hud amount bar | 156 | HP bars (selection ring) | **WIRED** | unit_amount_bar_<team>.png, cropped to remaining health |
+| hud amount bar | 156 | fort HP bar (world) | **WIRED** | unit_amount_bar_<team>.png, cropped to remaining health (selection-ring bars are procedural) |
 | hud grenade icon | 156 | upgrade indicator (top bar) | **WIRED** |  |
 | hud backdrop | 156 | minimap radar frame per planet | **WIRED** |  |
 | hud main_hud_side | 156 | - | **COPIED, NOT WIRED** | the original's full side HUD chrome |
 | hud a/b/d/g buttons | 156 | - | **COPIED, NOT WIRED** | original in-game action buttons |
 | GOG Buttons.png | 0 | menu button plates (all states) | **WIRED (GOG)** | 2x3 grid of 32x32 faces; UiTheme atlas-regions + margins, tint/offset per state |
-| GOG Box* menu chrome | 0 | menu panel 3-slice | **WIRED (GOG)** | OriginalPanel; BoxInfo/BoxDivide + IP* 2x + TTAch copied, spare |
+| GOG Box* menu chrome | 0 | menu panel 3-slice | **WIRED (GOG)** | OriginalPanel; BoxInfo/BoxDivide spare |
+| GOG IP* multiplayer set | 0 | multiplayer screens backdrop | **PARTIAL (GOG)** | IPBackground backs the MP browse + lobby screens; IPSplash/MultiPlayer.png atlas/2x IPBox* chrome spare |
 | GOG planet thumbs | 0 | campaign brief world art | **WIRED (GOG)** | 320x200, base + alt lighting pass |
 | GOG menu plaques | 0 | - | **COPIED (GOG), NOT WIRED** | 64x128 section headers + 64x64 exit icon |
 | GOG PMHSprites | 0 | - | **COPIED (GOG), NOT WIRED** | in-game HUD atlas: panel outline, round buttons, arrows, unit medallions |

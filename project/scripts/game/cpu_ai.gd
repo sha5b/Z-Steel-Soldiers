@@ -224,16 +224,20 @@ func _man_hardware(robots: Array[Node], empty_hardware: Array[Node]) -> void:
 func _maintenance(vehicles: Array[Node]) -> void:
 	var repair_shop: Building2D = null
 	var damaged_buildings: Array[Node] = []
-	for f in get_tree().get_nodes_in_group("facilities"):
-		if f is Building2D and f.alive and f.team == team:
-			if f.is_repair_shop():
-				repair_shop = f
-			elif f.hp < f.max_hp:
-				damaged_buildings.append(f)
-	for b in get_tree().get_nodes_in_group("buildings"):
-		if b is Building2D and b.alive and b.team == team \
-				and b.is_bridge() and b.hp < b.max_hp:
-			damaged_buildings.append(b)
+	# "all_buildings": the repair shop and the bridges sit in none of the
+	# narrower groups — scanning "facilities"/"buildings" never found them
+	for b in get_tree().get_nodes_in_group("all_buildings"):
+		if not (b is Building2D) or not b.alive:
+			continue
+		if b.is_bridge():
+			# bridges are communal: any crane rebuilds the rubble
+			if b.hp < b.max_hp:
+				damaged_buildings.append(b)
+		elif b.team == team:
+			if b.is_repair_shop():
+				repair_shop = b
+			elif b.hp < b.max_hp:
+				damaged_buildings.append(b)
 	for v in vehicles:
 		if v.enter_target != null:
 			continue  # already tasked
@@ -385,7 +389,8 @@ func _attack_destination() -> Vector2:
 	var want_factory := randf() < 0.5 + 0.15 * diff
 	var best := Vector2.INF
 	var best_d := INF
-	for b in get_tree().get_nodes_in_group("buildings"):
+	# "buildings" carries forts only — factories are in "all_buildings"
+	for b in get_tree().get_nodes_in_group("all_buildings"):
 		if not (b is Node2D) or not b.alive or b.team == 0 or b.team == team:
 			continue
 		if not b.is_fort and not (b is RobotFactory or b is VehicleFactory):
@@ -397,7 +402,7 @@ func _attack_destination() -> Vector2:
 			best_d = d
 			best = b.visual_center()
 	if best == Vector2.INF:
-		for b in get_tree().get_nodes_in_group("buildings"):
+		for b in get_tree().get_nodes_in_group("all_buildings"):
 			if b is Node2D and b.alive and b.is_fort and b.team != 0 and b.team != team:
 				return b.visual_center()
 	return best
@@ -491,4 +496,4 @@ func _zone_touches_owned(z: Node) -> bool:
 
 
 static func _zone_center(z: Node) -> Vector2:
-	return z.position + z.world_rect().get_center()
+	return z.world_rect().get_center()

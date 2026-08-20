@@ -5,9 +5,12 @@ extends Node
 
 signal money_changed(team: int, amount: int)
 signal zone_captured(team: int)
+signal tech_level_changed
 
 const INCOME_PER_ZONE := 1.0
+const LEVEL_SECONDS := 150.0  # original: forts/factories tech up over match TIME (~2.5 min/level)
 var fast_build := false  # self-test lever: 2s builds regardless of defs
+var direct_step := false  # self-test lever: bypass move_and_slide (no physics ticks in tight loops)
 
 ## What a right-click order DOES (set by the Q/E/R hotkeys and the
 ## stance bar next to the minimap): MOVE ignores enemies en route,
@@ -27,12 +30,14 @@ var money := {1: 200, 2: 200, 3: 200, 4: 200}
 var zones: Array[Node] = []
 var upgrades := {}  # team -> {grenades: bool, rockets: bool}
 var _accum := 0.0
+var match_time := 0.0
 
 
 func reset() -> void:
 	zones.clear()
 	over_reset()
 	_accum = 0.0
+	match_time = 0.0
 	upgrades = {}
 
 
@@ -51,6 +56,28 @@ func _process(delta: float) -> void:
 					income += INCOME_PER_ZONE
 			money[team] += int(income)
 			money_changed.emit(team, money[team])
+		_tech_tick()
+
+
+## ORIGINAL tech ladder (the game zod never implemented): every producer
+## gains a build level as the match clock runs — the roster grows for
+## EVERYONE over time, while zone ownership keeps its faithful role of
+## speeding production (BuildTimeModified). Levels only rise, so a
+## captured factory never loses tech.
+func _tech_tick() -> void:
+	match_time += TICK_SECONDS
+	var want := int(match_time / LEVEL_SECONDS)
+	if want <= 0:
+		return
+	var bumped := false
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("facilities"):
+		if b is Building2D and b.alive and b.owner_team != 0 and b.level < 5:
+			var new_level: int = clampi(want, b.level, 5)
+			if new_level > b.level:
+				b.level = new_level
+				bumped = true
+	if bumped:
+		tech_level_changed.emit()
 
 
 func player_money() -> int:
@@ -84,13 +111,6 @@ func grant_upgrade(team: int, key: String) -> void:
 func has_upgrade(team: int, key: String) -> bool:
 	return upgrades.get(team, {}).get(key, false)
 
-
-func robot_damage_mult(team: int) -> float:
-	return 1.4 if has_upgrade(team, "grenades") else 1.0
-
-
-func vehicle_damage_mult(team: int) -> float:
-	return 1.4 if has_upgrade(team, "rockets") else 1.0
 
 
 # ------------------------- population -------------------------

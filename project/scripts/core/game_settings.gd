@@ -17,6 +17,7 @@ var speed_index := 2     # SPEEDS index; 2 = original speed
 var music_volume := 0.8  # linear 0..1
 var sfx_volume := 0.8
 var auto_idle := true    # idle robots auto-grab hardware -> MatchState.auto_idle
+var player_name := "COMMANDER"  # shown in the multiplayer lobby
 
 
 func _ready() -> void:
@@ -42,6 +43,7 @@ func read() -> void:
 	difficulty = clampi(int(cfg.get_value("game", "difficulty", difficulty)), 0, 2)
 	speed_index = clampi(int(cfg.get_value("game", "speed_index", speed_index)), 0, SPEEDS.size() - 1)
 	auto_idle = bool(cfg.get_value("game", "auto_idle", auto_idle))
+	player_name = String(cfg.get_value("player", "name", player_name)).substr(0, 14)
 	music_volume = clampf(float(cfg.get_value("audio", "music", music_volume)), 0.0, 1.0)
 	sfx_volume = clampf(float(cfg.get_value("audio", "sfx", sfx_volume)), 0.0, 1.0)
 
@@ -51,6 +53,7 @@ func save() -> void:
 	cfg.set_value("game", "difficulty", difficulty)
 	cfg.set_value("game", "speed_index", speed_index)
 	cfg.set_value("game", "auto_idle", auto_idle)
+	cfg.set_value("player", "name", player_name)
 	cfg.set_value("audio", "music", music_volume)
 	cfg.set_value("audio", "sfx", sfx_volume)
 	cfg.save(PATH)

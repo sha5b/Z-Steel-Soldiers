@@ -1,6 +1,11 @@
 class_name RtsCamera2D
 extends Camera2D
-## RTS camera: edge pan, WASD/arrow pan, wheel zoom. Pixel-friendly.
+## RTS camera: edge pan, WASD/arrow pan, wheel zoom. Pixel-friendly:
+## the position always lands on whole SCREEN pixels — with NEAREST
+## filtering and a fractional zoom, un-snapped positions resample the
+## terrain differently every frame and the ground shimmers/flickers
+## while panning (the classic Camera2D caveat: project-level
+## snap_2d_transforms_to_pixel does NOT snap the canvas transform).
 
 const PAN_SPEED := 420.0
 const EDGE_MARGIN := 24.0
@@ -16,7 +21,6 @@ func _ready() -> void:
 	# 640x480 base viewport: 1.4 keeps the same world view the old
 	# 1280x720 canvas had at 0.7
 	zoom = Vector2(1.4, 1.4)
-	position_smoothing_enabled = true
 	make_current()
 
 
@@ -69,4 +73,11 @@ func _clamp_move(move: Vector2) -> void:
 			target[axis] = center[axis]
 		else:
 			target[axis] = clampf(target[axis], lo, hi)
-	position = target
+	position = _snapped(target)
+
+
+## Whole-SCREEN-pixel position: the same world texel always maps to the
+## same screen pixel, so NEAREST sampling is stable frame to frame.
+func _snapped(world: Vector2) -> Vector2:
+	var s := zoom.x
+	return Vector2(roundf(world.x * s) / s, roundf(world.y * s) / s)

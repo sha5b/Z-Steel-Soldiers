@@ -1802,9 +1802,9 @@
     "unit_label_sniper": 5,
     "unit_label_tough": 5
    },
-   "game_usage": "HP bars (selection ring)",
+   "game_usage": "fort HP bar (world)",
    "status": "WIRED",
-   "notes": "unit_amount_bar_<team>.png, cropped to remaining health",
+   "notes": "unit_amount_bar_<team>.png, cropped to remaining health (selection-ring bars are procedural)",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
@@ -2154,7 +2154,18 @@
    "prefixes": {},
    "game_usage": "menu panel 3-slice",
    "status": "WIRED (GOG)",
-   "notes": "OriginalPanel; BoxInfo/BoxDivide + IP* 2x + TTAch copied, spare",
+   "notes": "OriginalPanel; BoxInfo/BoxDivide spare",
+   "parity_diff_vs_working_set": null,
+   "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
+  },
+  {
+   "category": "GOG IP* multiplayer set",
+   "zod_source": "gog/PNG/{IPBackground,IPSplash,MultiPlayer,IPBox*}.png",
+   "file_count": 0,
+   "prefixes": {},
+   "game_usage": "multiplayer screens backdrop",
+   "status": "PARTIAL (GOG)",
+   "notes": "IPBackground backs the MP browse + lobby screens; IPSplash/MultiPlayer.png atlas/2x IPBox* chrome spare",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
