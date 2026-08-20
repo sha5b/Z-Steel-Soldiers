@@ -662,23 +662,40 @@ func update_flag(for_team: int) -> void:
 
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint() or not alive:
-		return
+		return  # a ruin produces nothing
+	_follow_zone_owner()
+	_tick_behaviours(delta)
+
+
+## Zone-follow, ONE implementation: whichever zone contains the
+## footprint center owns the building (flag recolors on capture, a
+## capture scraps + refunds the outgoing producer's queue). The two
+## factories used to carry byte-identical copies of this loop and the
+## base a drifted third. Forts hold their zone; they are not held by it.
+func _follow_zone_owner() -> void:
 	if is_fort:
 		return
-	# non-fort buildings (radar, repair) follow their zone's owner so the
-	# flag recolors on capture; factories override with their own loop
 	var center := world_footprint().get_center()
 	for z in MatchState.current.zones:
 		if z.world_rect().has_point(center):
-			if z.owner_team != owner_team:
-				var was_player := owner_team == MatchState.current.player_team
-				owner_team = z.owner_team
-				team = owner_team
-				update_flag(owner_team)
-				if not was_player and owner_team == MatchState.current.player_team \
-						and building_id == 2:
-					Fx.announce("radar_activated")
+			owner_team = z.owner_team
 			break
+	if owner_team == team:
+		return
+	team = owner_team
+	update_flag(owner_team)
+	if produces_anything():
+		_refund_queue()
+		queue.clear()  # a capture scraps the old owner's queue
+	if team == MatchState.current.player_team and building_id == 2:
+		Fx.announce("radar_activated")
+
+
+## Per-type ticking after zone-follow — subclasses override instead of
+## re-listing the loop (base: producers + repair shop; fort: garrison).
+func _tick_behaviours(delta: float) -> void:
+	if produces_anything():
+		tick_production(delta)
 	_repair_tick(delta)
 
 

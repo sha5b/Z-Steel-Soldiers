@@ -128,9 +128,7 @@ func garrison_robot(robot: Unit2D) -> bool:
 	return true
 
 
-func _process(delta: float) -> void:
-	if not alive:
-		return  # ruins produce nothing and fire nothing
+func _tick_behaviours(delta: float) -> void:
 	tick_production(delta)
 	if team != 0 and not garrison.is_empty():
 		_garrison_fire(delta)
