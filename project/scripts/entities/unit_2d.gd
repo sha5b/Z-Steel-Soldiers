@@ -70,6 +70,9 @@ func _ready() -> void:
 	cooldown = stats.cooldown
 	speed = stats.speed
 	scale = Vector2(sprite_scale, sprite_scale)
+	collision_layer = 1
+	collision_mask = 2  # physics solves unit-vs-BUILDING only
+	_build_frames()
 
 
 ## Structural deregistration: whatever frees a unit (death, the
@@ -79,9 +82,6 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if UnitRegistry.current:
 		UnitRegistry.current.forget(self)
-	collision_layer = 1
-	collision_mask = 2  # physics solves unit-vs-BUILDING only
-	_build_frames()
 	set_selected(false)
 	_play("stand", _last_dir)
 	if not GameState.game_over.is_connected(_on_game_over):

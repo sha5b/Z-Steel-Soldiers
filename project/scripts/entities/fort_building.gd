@@ -83,20 +83,20 @@ func queue_unit(item: String, silent := false) -> bool:
 	return super(item, silent)
 
 
-func spawn_produced(item: String) -> void:
-	var parts := item.split(":")
-	if parts.size() == 2 and parts[0] == "cannon":
-		var slots := cannon_slots()
-		for i in slots.size():
-			var mounted = slot_cannons[i] if i < slot_cannons.size() else null
-			if mounted != null and is_instance_valid(mounted) and mounted.alive:
-				continue
-			slot_cannons[i] = Spawner.spawn(get_parent(), "cannon", parts[1],
-				owner_team, slots[i], true)
-			if owner_team == MatchState.current.player_team:
-				Fx.announce("gun_manufactured")
-			return
-	super(item)  # no free mount after all: fall back to spawning beside
+## Fort products try the tower mounts first: a cannon takes a free slot
+## (manned) instead of spawning beside the footprint.
+func mount_product(kind: String, type_name: String) -> bool:
+	if kind != "cannon":
+		return false
+	var slots := cannon_slots()
+	for i in slots.size():
+		var mounted = slot_cannons[i] if i < slot_cannons.size() else null
+		if mounted != null and is_instance_valid(mounted) and mounted.alive:
+			continue
+		slot_cannons[i] = Spawner.spawn(get_parent(), "cannon", type_name,
+			owner_team, slots[i], true)
+		return true
+	return false  # no free mount: the producer spawns it beside
 
 
 ## The fort falling kills its tower guns with it.
