@@ -343,7 +343,7 @@ static func run(ctx: Node) -> void:
 		f.team = MatchState.player_team
 		var before := tree.get_nodes_in_group("units").size()
 		var money_before := MatchState.player_money()
-		MatchState.money[MatchState.player_team] = 500
+		MatchState.set_money(MatchState.player_team, 500)
 		for i in 3:
 			f.queue_unit("robot:grunt")
 		for i in 30:
@@ -467,7 +467,7 @@ static func run(ctx: Node) -> void:
 		vz.owner_team = MatchState.player_team
 		vf.owner_team = MatchState.player_team
 		vf.team = MatchState.player_team
-		MatchState.money[MatchState.player_team] = 500
+		MatchState.set_money(MatchState.player_team, 500)
 		var rally := vf.global_position + Vector2(500, 0)
 		vf.set_rally(rally)
 		vf.queue_unit("vehicle:jeep", true)
@@ -1143,7 +1143,7 @@ static func run(ctx: Node) -> void:
 				break
 		if fort_lv:
 			fort_lv.level = 5
-			MatchState.money[MatchState.player_team] = 9999
+			MatchState.set_money(MatchState.player_team, 9999)
 			# the sandbox roster can start above the base cap — hand the
 			# player some zones for headroom before producing
 			for z5 in MatchState.zones:
@@ -1389,7 +1389,7 @@ static func run(ctx: Node) -> void:
 		if ai2 == null:
 			print("TACTICS: no cpu ai found")
 		else:
-			MatchState.money[ai2.team] = 2000
+			MatchState.set_money(ai2.team, 2000)
 			var t := ai2.team
 			var count := func() -> Dictionary:
 				var robots2 := 0
@@ -1415,7 +1415,7 @@ static func run(ctx: Node) -> void:
 			# simulate a few minutes: think cycles + factory, unit and
 			# zone time (units must walk, capture zones, board hardware)
 			for i in 40:
-				MatchState.money[t] = 2000
+				MatchState.set_money(t, 2000)
 				ai2._think()
 				for c3 in ctx.get_children():
 					if c3 is RobotFactory or c3 is VehicleFactory or c3 is FortBuilding:
@@ -1529,7 +1529,7 @@ static func run(ctx: Node) -> void:
 					break
 			if zone_hit:
 				zone_hit.owner_team = MatchState.player_team
-				MatchState.money[MatchState.player_team] = 500
+				MatchState.set_money(MatchState.player_team, 500)
 				f2._process(0.1)  # sync owner from zone before queueing
 				var ok: bool = f2.queue_unit("robot:psycho")
 				var count_before := tree.get_nodes_in_group("units").size()
@@ -1550,7 +1550,7 @@ static func run(ctx: Node) -> void:
 				fort2 = c
 				break
 		if fort2:
-			MatchState.money[1] = 500
+			MatchState.set_money(1, 500)
 			var ok2: bool = fort2.queue_unit("robot:psycho")
 			for i in 8:
 				fort2.queue_unit("robot:grunt")
@@ -1594,7 +1594,7 @@ static func run(ctx: Node) -> void:
 				fort3 = c
 				break
 		if fort3:
-			MatchState.money[1] = 500
+			MatchState.set_money(1, 500)
 			fort3.queue_unit("robot:grunt")
 			fort3.queue_unit("robot:sniper")
 			var money_mid: int = MatchState.money[1]
@@ -1663,11 +1663,11 @@ static func run(ctx: Node) -> void:
 		print("APC: loaded=%s hidden=%s arrived=%s unloaded_near=%s" % [
 			loaded, hidden, apc2.move_target == Vector2.ZERO, unloaded_near])
 	if "--save-test" in args:
-		MatchState.money[1] = 321
+		MatchState.set_money(1, 321)
 		MatchState.zones[0].set_owner_team(1)
 		var saved: bool = GameState.save_game()
 		var snapshot: Dictionary = GameState.read_save()
-		MatchState.money[1] = 0
+		MatchState.set_money(1, 0)
 		MatchState.zones[0].set_owner_team(0)
 		GameState.pending_load = snapshot
 		ctx._apply_load()
@@ -1792,7 +1792,7 @@ static func run(ctx: Node) -> void:
 				fort = c
 				break
 		if fort:
-			MatchState.money[1] = 99999
+			MatchState.set_money(1, 99999)
 			# drive production until the cap refuses everything
 			for i in 200:
 				fort.queue_unit("robot:grunt")
@@ -1967,7 +1967,7 @@ static func run(ctx: Node) -> void:
 				c.owner_team = MatchState.player_team
 				SelectionManager.clear_selection()
 				SelectionManager.toggle_select(c, false)
-				MatchState.money[MatchState.player_team] = 600
+				MatchState.set_money(MatchState.player_team, 600)
 				c.queue_unit("robot:grunt")
 				c.queue_unit("robot:psycho")
 				c.queue_unit("robot:tough")

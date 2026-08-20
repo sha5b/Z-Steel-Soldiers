@@ -54,8 +54,7 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 	_init_zone_owners(parent)
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
-		if not MatchState.money.has(t):
-			MatchState.money[t] = 200
+		MatchState.grant_ledger(t)
 	for t in ai_teams:
 		if t != MatchState.player_team:
 			var ai := CpuAi.new(t)
@@ -323,8 +322,7 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 	_init_zone_owners(parent)
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
-		if not MatchState.money.has(t):
-			MatchState.money[t] = 200
+		MatchState.grant_ledger(t)
 	for t in ai_teams:
 		if t != MatchState.player_team:
 			var ai := CpuAi.new(t)

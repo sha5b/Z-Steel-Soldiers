@@ -125,8 +125,7 @@ func queue_unit(item: String, silent := false) -> bool:
 	if not MatchState.spend(owner_team, stats.cost):
 		return false
 	if not queue.enqueue(item):
-		MatchState.money[owner_team] += stats.cost  # queue full: refund
-		MatchState.money_changed.emit(owner_team, MatchState.money[owner_team])
+		MatchState.deposit(owner_team, stats.cost)  # queue full: refund
 		return false
 	if owner_team == MatchState.player_team and queue.items.size() == 1:
 		Fx.announce("starting_manufacture")
@@ -140,8 +139,7 @@ func cancel_at(index: int) -> void:
 	if owner_team == MatchState.player_team:
 		Fx.announce("manufacturing_canceled")
 	var stats := ContentDB.def_for(item.split(":")[0], item.split(":")[1])
-	MatchState.money[owner_team] += stats.cost
-	MatchState.money_changed.emit(owner_team, MatchState.money[owner_team])
+	MatchState.deposit(owner_team, stats.cost)
 
 
 ## A capture scraps the old owner's queue — payment is upfront and
@@ -151,8 +149,7 @@ func _refund_queue() -> void:
 		return
 	for item in queue.items:
 		var parts: PackedStringArray = item.split(":")
-		MatchState.money[team] += ContentDB.def_for(parts[0], parts[1]).cost
-	MatchState.money_changed.emit(team, MatchState.money[team])
+		MatchState.deposit(team, ContentDB.def_for(parts[0], parts[1]).cost)
 
 
 ## Cap gate: alive + queued + this unit must fit under the team cap.

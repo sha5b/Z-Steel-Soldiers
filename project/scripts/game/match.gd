@@ -150,7 +150,7 @@ func _apply_load() -> void:
 	GameState.pending_load = {}
 	MatchState.money.clear()
 	for team in save.get("money", {}):
-		MatchState.money[int(team)] = int(save.money[team])
+		MatchState.set_money(int(team), int(save.money[team]))
 	for team in save.get("upgrades", {}):
 		MatchState.upgrades[int(team)] = save.upgrades[team]
 	var owners: Array = save.get("zone_owners", [])

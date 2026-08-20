@@ -92,6 +92,24 @@ func spend(team: int, amount: int) -> bool:
 	return true
 
 
+## Single-writer economy API: nothing outside this file writes `money`
+## directly (loader ledgers, building refunds, save restore all went
+## through here — direct writes from three layers once hid refund bugs).
+func deposit(team: int, amount: int) -> void:
+	money[team] = money.get(team, 0) + amount
+	money_changed.emit(team, money[team])
+
+
+func set_money(team: int, amount: int) -> void:
+	money[team] = amount
+	money_changed.emit(team, amount)
+
+
+func grant_ledger(team: int, start := 200) -> void:
+	if not money.has(team):
+		set_money(team, start)
+
+
 func register_zone(zone: Node) -> void:
 	zones.append(zone)
 
