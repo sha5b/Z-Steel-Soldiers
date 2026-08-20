@@ -83,7 +83,6 @@ func _start() -> void:
 	var selected := list.get_selected_items()
 	if selected.is_empty():
 		return
-	Campaign.active = false  # a hand-picked map is a one-off match
-	GameState.reset_for_new_map()
-	GameState.next_map = list.get_item_metadata(selected[0])
+	GameState.prepare_match(MatchConfig.make("skirmish",
+			list.get_item_metadata(selected[0])))
 	get_tree().change_scene_to_file("res://scenes/main.tscn")

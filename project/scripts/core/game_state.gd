@@ -21,6 +21,21 @@ func reset_for_new_map() -> void:
 	SelectionManager.clear_selection()  # drop freed units from the old map
 
 
+## THE way into a match: apply a typed MatchConfig (skirmish, campaign,
+## continue, multiplayer) and let the caller change the scene. Replaces
+## four hand-rolled per-screen chains; MP sends the same config shape
+## over the wire.
+func prepare_match(cfg: MatchConfig) -> void:
+	if cfg.source == "campaign":
+		Campaign.active = true
+	elif cfg.source != "continue":
+		Campaign.active = false
+	reset_for_new_map()
+	next_map = cfg.map_path
+	pending_load = cfg.save_data
+	MatchState.player_team = cfg.player_team
+
+
 ## Save IO lives in the SaveSystem autoload; GameState keeps the match
 ## flow (pending_load applied by the map after spawning).
 func save_game() -> bool:

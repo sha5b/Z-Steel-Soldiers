@@ -37,8 +37,8 @@ func _terrain() -> String:
 
 
 func _on_start_pressed() -> void:
-	GameState.reset_for_new_map()
-	GameState.next_map = Campaign.current_map_path()
+	GameState.prepare_match(MatchConfig.make("campaign",
+			Campaign.current_map_path()))
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 

@@ -224,8 +224,7 @@ func _on_started(config: Dictionary) -> void:
 	if _launched:
 		return
 	_launched = true
-	Campaign.active = false
-	GameState.reset_for_new_map()
-	GameState.next_map = str(config.get("map", ""))
-	MatchState.player_team = Net.match_team if Net.match_team > 0 else 1
+	GameState.prepare_match(MatchConfig.make("multiplayer",
+			str(config.get("map", "")),
+			Net.match_team if Net.match_team > 0 else 1))
 	get_tree().change_scene_to_file("res://scenes/main.tscn")

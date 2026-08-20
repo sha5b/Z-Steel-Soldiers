@@ -22,9 +22,8 @@ func _on_continue_pressed() -> void:
 	var save := GameState.read_save()
 	if save.is_empty():
 		return
-	GameState.reset_for_new_map()
-	GameState.next_map = String(save.get("map", ""))
-	GameState.pending_load = save
+	GameState.prepare_match(MatchConfig.make("continue",
+			String(save.get("map", "")), 1, save))
 	get_tree().change_scene_to_file("res://scenes/main.tscn")
 
 
