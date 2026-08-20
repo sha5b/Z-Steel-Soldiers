@@ -7,7 +7,7 @@ assets and format knowledge from the open-source
 
 > **Status:** single-player feature-complete — all 57 original maps,
 > full unit roster, territory economy, production, campaign, save/load,
-> AI with difficulty, and a 37-flag headless test suite. Multiplayer:
+> AI with difficulty, and a 43-flag headless test suite. Multiplayer:
 > P2P lobby shipped (LAN discovery + host rooms); in-match order
 > replication is the open milestone. See `docs/ROADMAP.md` and
 > `docs/BUGS.md`.
@@ -50,12 +50,17 @@ signal-driven). Adding content (units, buildings, pickups, effects,
 maps, team colours) is documented step by step in
 `docs/ASSET_CONVENTIONS.md` — copy a `.tres`, drop an art folder.
 
-Headless test suite: 37 flags (`--combat-test`, `--teams-test`,
+Headless test suite: 43 flags (`--combat-test`, `--teams-test`,
 `--scenes-test`, ...), run in parallel lanes from `project/`:
-`res://scenes/main.tscn --<flag>-test --quit-after N`. A run passes
-with zero `SCRIPT ERROR` and zero `CHECK FAILED:` lines — the harness
-lives in `project/scripts/tests/` (TestRig is the assertion helper,
-per-domain modules like path_tests.gd split out of self_tests.gd).
+`res://scenes/main.tscn --<flag>-test --quit-after N`. **`--quit-after`
+counts FRAMES, not seconds** (Godot's own option): the real-physics
+lanes (`--placement-test`, `--garrison-test`) need a few thousand, so
+use `--quit-after 6000` for a whole-suite sweep. A run passes with zero
+`SCRIPT ERROR` and zero `CHECK FAILED:` lines — the harness lives in
+`project/scripts/tests/` (TestRig is the assertion helper, per-domain
+modules like path_tests.gd and garrison_tests.gd split out of
+self_tests.gd). Note that only 8 of the 43 flags currently assert
+through TestRig; the rest only print (see `docs/BUGS.md`).
 Screenshot verification: add `--screenshot <seconds>` (warps the mouse
 so edge pan stays put).
 

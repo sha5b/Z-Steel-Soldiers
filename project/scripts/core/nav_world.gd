@@ -6,6 +6,17 @@ extends Node
 ## each match owns its grids and dies with them, and two matches can
 ## coexist in one tree (the in-process MP loopback needs that).
 ## Call sites reach the active instance through `NavWorld.current`.
+##
+## THE CELL CONTRACT (one rule, everything else follows):
+## a cell id `c` covers world pixels [c*CELL, (c+1)*CELL) and its
+## CENTRE is `c*CELL + CELL/2`. World position -> cell is
+## `floor(pos/CELL)`; cell -> position is always the CENTRE.
+## `make_grid()` is the only place an AStarGrid2D is built, and it sets
+## `offset = CELL/2` so `get_point_path` returns cell CENTRES. With the
+## engine default (offset 0) every waypoint landed on the 4-cell corner
+## junction — a half-cell up-left of the cell it stood for — so routes
+## through 1-2 cell gaps (the fort gate) aimed AT the wall line and
+## units jammed there until the stuck watchdog cancelled the order.
 
 ## The active match's navigation (set on _ready, cleared on exit — the
 ## locator that keeps per-instance state behind the familiar name).
@@ -25,11 +36,52 @@ var nav_grid: AStarGrid2D          # robots: tileinfo passability + rocks
 var vehicle_grid: AStarGrid2D      # vehicles: additionally no water
 var map_rect := Rect2(0.0, 0.0, 1024.0, 1376.0)
 
-## Body half-extents by kind — the physics boxes are 12x12 for robots,
-## 16x16 for vehicles/cannons; +1px breathing margin. Used by
-## body_clear()/find_free_spot() so placements probe the FULL box, not
-## just the center pixel.
-const BODY_HALF := {"robot": 7.0, "vehicle": 9.0, "cannon": 9.0}
+## The one tile size. Grid cell_size, the cell contract above and every
+## `/ CELL` conversion in this file read it — no bare 16.0 literals.
+const CELL := 16.0
+
+## Body half-extents by kind, for the 9-point box probe in body_clear().
+## Physics bodies are 12x12 (robots) and 16x16 (vehicles/cannons); these
+## are the NAV clearances, and they MUST stay under CELL/2 so that the
+## centre of any open cell is a legal standing spot — the placement
+## contract and A*'s cell-centre waypoints have to agree. Vehicles used
+## to carry 9.0 (their true half-extent + 1px), which is wider than a
+## half cell: every cell touching a wall then probed dirty, so no
+## vehicle could legally stand, spawn, eject or park anywhere along a
+## building — find_free_spot pushed them a full cell clear of every
+## wall. Physics (move_and_slide vs. the building body) is what resolves
+## real contact; nav only has to agree with itself.
+const BODY_HALF := {"robot": 7.0, "vehicle": 7.5, "cannon": 7.5}
+
+
+## THE grid factory — region + the cell contract in one place. Both
+## loader paths (JSON maps and scene maps) and the vehicle grid build
+## through here, so a grid can never ship with the wrong origin.
+static func make_grid(region: Rect2i) -> AStarGrid2D:
+	var grid := AStarGrid2D.new()
+	grid.region = region
+	grid.cell_size = Vector2(CELL, CELL)
+	grid.offset = grid.cell_size * 0.5  # get_point_path -> cell CENTRES
+	# ONLY_IF_NO_OBSTACLES, not AT_LEAST_ONE_WALKABLE: the permissive mode
+	# lets a route step diagonally past a wall corner, and the straight
+	# leg between those two cell centres passes exactly THROUGH the
+	# corner point — the last source of solid-cell grazing after the
+	# cell-centre fix (1/145 walker samples). Units have a 12-16px body
+	# box, so a gap only a corner wide was never really passable anyway;
+	# refusing the cut costs one extra cell of detour and clips nothing.
+	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	grid.update()
+	return grid
+
+
+## World position -> cell id (the contract's only conversion).
+static func cell_at(pos: Vector2) -> Vector2i:
+	return Vector2i((pos / CELL).floor())
+
+
+## Cell id -> its world CENTRE (never its corner).
+static func cell_center(cell: Vector2i) -> Vector2:
+	return Vector2(cell) * CELL + Vector2(CELL, CELL) * 0.5
 
 
 func reset() -> void:
@@ -37,39 +89,67 @@ func reset() -> void:
 	vehicle_grid = null
 
 
+## The grid a kind walks on — robots use the base grid, everything with
+## wheels or tracks uses the vehicle grid (same, plus water).
+func grid_for(for_kind: String) -> AStarGrid2D:
+	return nav_grid if for_kind == "robot" else vehicle_grid
+
+
 func walkable(cell: Vector2i, vehicle: bool) -> bool:
 	var grid := vehicle_grid if vehicle else nav_grid
-	return grid != null and not grid.is_point_solid(cell)
+	return grid != null and not blocked(grid, cell)
+
+
+## True when `pos` sits in a solid cell of the kind's grid (out of
+## region counts as solid — never walk off the terrain).
+func solid_at(pos: Vector2, for_kind := "robot") -> bool:
+	var grid := grid_for(for_kind)
+	if grid == null:
+		return false
+	return blocked(grid, cell_at(pos))
 
 
 ## A blast clears the rock at `rock_pos` — its cell opens on BOTH grids.
 ## Navigation mutation stays behind this API (combat used to reach into
 ## the grids directly).
 func clear_rock(rock_pos: Vector2) -> void:
-	var cell := Vector2i(((rock_pos - Vector2(8, 8)) / 16.0).floor())
+	var cell := cell_at(rock_pos)
 	for grid in [nav_grid, vehicle_grid]:
-		if grid != null and grid.is_point_solid(cell):
+		if grid != null and grid.region.has_point(cell) \
+				and grid.is_point_solid(cell):
 			grid.set_point_solid(cell, false)
 
 
+## The 9-point body box: centre, edge midpoints and corners at `pad`.
+const BOX_PROBES: Array[Vector2] = [
+	Vector2(0, 0), Vector2(-1, 0), Vector2(1, 0), Vector2(0, -1), Vector2(0, 1),
+	Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1),
+]
+
+
+## Blocked = solid OR outside the grid region. AStarGrid2D errors out on
+## an out-of-region query, so every probe in this file goes through here
+## — off the terrain counts as wall, which is what every caller wants.
+static func blocked(grid: AStarGrid2D, cell: Vector2i) -> bool:
+	return not grid.region.has_point(cell) or grid.is_point_solid(cell)
+
+
 ## True when a body of half-extent `pad` centred at `pos` touches only
-## open cells of the kind's grid: center, edge midpoints and corners.
-## Center-cell-only checks are how units ended up inside walls.
+## open cells of the kind's grid. Center-cell-only checks are how units
+## ended up inside walls.
 func body_clear(pos: Vector2, pad: float, for_kind := "robot") -> bool:
-	var grid := nav_grid if for_kind == "robot" else vehicle_grid
+	var grid := grid_for(for_kind)
 	if grid == null:
 		return true
-	for offset in [Vector2.ZERO,
-			Vector2(-pad, 0), Vector2(pad, 0), Vector2(0, -pad), Vector2(0, pad),
-			Vector2(-pad, -pad), Vector2(pad, -pad), Vector2(-pad, pad), Vector2(pad, pad)]:
-		if grid.is_point_solid(Vector2i(((pos + offset) / 16.0).floor())):
+	for probe in BOX_PROBES:
+		if blocked(grid, cell_at(pos + probe * pad)):
 			return false
 	return true
 
 
 ## Nearest validated position to `near` for a body of the kind's
 ## half-extent: `near` itself when clear, else a ring search over
-## neighbouring cell centers. Returns Vector2.INF when no clear spot
+## neighbouring cell centres. Returns Vector2.INF when no clear spot
 ## exists within 6 cells — callers then keep their previous position.
 ## Every instant placement (eject, unload, dodge, production spawn,
 ## save restore) goes through here — never raw position writes gated
@@ -79,94 +159,85 @@ func find_free_spot(near: Vector2, for_kind := "robot", pad := -1.0) -> Vector2:
 		pad = BODY_HALF.get(for_kind, 7.0)
 	if body_clear(near, pad, for_kind):
 		return near
-	var grid := nav_grid if for_kind == "robot" else vehicle_grid
+	var grid := grid_for(for_kind)
 	if grid == null:
 		return near
-	var cs: float = grid.cell_size.x
-	var cell := Vector2i((near / cs).floor())
-	for radius in range(1, 7):
+	for cell in _ring_cells(cell_at(near), 6, grid):
+		var spot := cell_center(cell)
+		if body_clear(spot, pad, for_kind):
+			return spot
+	return Vector2.INF
+
+
+## Cells around `origin` in growing rings (the ring perimeter only, so
+## a radius-6 search visits 168 cells instead of re-walking 169 every
+## step), clipped to the grid region. Shared by find_free_spot and
+## _open_cell — the two used to carry the same triple-nested loop.
+static func _ring_cells(origin: Vector2i, max_radius: int,
+		grid: AStarGrid2D) -> Array[Vector2i]:
+	var out: Array[Vector2i] = []
+	for radius in range(1, max_radius + 1):
 		for dx in range(-radius, radius + 1):
 			for dy in range(-radius, radius + 1):
 				if maxi(absi(dx), absi(dy)) != radius:
 					continue
-				var spot := Vector2(cell + Vector2i(dx, dy)) * cs + Vector2(cs * 0.5, cs * 0.5)
-				if body_clear(spot, pad, for_kind):
-					return spot
-	return Vector2.INF
+				var cell := origin + Vector2i(dx, dy)
+				if grid.region.has_point(cell):
+					out.append(cell)
+	return out
 
 
+## A route from `from` to `to` as world-space breadcrumbs — cell
+## CENTRES (see the cell contract), so every waypoint of an open cell
+## is body-clear by construction for any kind whose BODY_HALF is under
+## a half cell. Empty means "no route for this kind": the caller must
+## treat that as a refused order, not as a beeline.
 func request_path(from: Vector2, to: Vector2, for_kind := "robot") -> PackedVector2Array:
-	var grid := nav_grid if for_kind == "robot" else vehicle_grid
+	var grid := grid_for(for_kind)
 	if grid == null:
 		return PackedVector2Array([to])
-	var cs: Vector2 = grid.cell_size
 	var r := grid.region
 	# clamp the goal into the map — never path (or walk) off the terrain
-	var max_px := Vector2(r.position + r.size) * cs
-	to = to.clamp(Vector2(r.position) * cs, max_px - cs * 0.5)
-	var a := _open_cell(Vector2i((from / cs).floor()), grid)
-	var b := _open_cell(Vector2i((to / cs).floor()), grid)
-	if a.x < 0:
-		return PackedVector2Array()
-	if b.x < 0:
-		return PackedVector2Array()  # unreachable for this unit kind: refuse
+	to = to.clamp(Vector2(r.position) * CELL,
+		Vector2(r.position + r.size) * CELL - Vector2(CELL, CELL) * 0.5)
+	var a := _open_cell(cell_at(from), grid)
+	var b := _open_cell(cell_at(to), grid)
+	if a.x < 0 or b.x < 0:
+		return PackedVector2Array()  # unreachable for this kind: refuse
 	var path := grid.get_point_path(a, b)
 	if path.is_empty():
-		return PackedVector2Array()  # no route for this unit kind: refuse
-	# get_point_path already returns world coordinates (cell * cell_size)
-	var world_path := path.duplicate()
-	# breadcrumbs must FIT THE BODY: a waypoint tucked into a wall corner
-	# is unreachable at contact distance and units stall pressing into it
-	# for good — nudge each onto a body-clear spot (same contract as
-	# find_free_spot). A nudge that would bend a NEIGHBOURING segment
-	# through a solid cell is reverted (the A* line was already legal).
-	var pad: float = BODY_HALF.get(for_kind, 7.0)
-	var original := world_path.duplicate()
-	for i in world_path.size() - 1:
-		if not body_clear(world_path[i], pad, for_kind):
-			var nudged := find_free_spot(world_path[i], for_kind, pad)
-			if nudged != Vector2.INF:
-				world_path[i] = nudged
-	for i in range(1, world_path.size() - 1):
-		if world_path[i] != original[i] \
-				and (not _segment_clear(world_path[i - 1], world_path[i], for_kind) \
-					or not _segment_clear(world_path[i], world_path[i + 1], for_kind)):
-			world_path[i] = original[i]
-	# land exactly on the clicked point only when the final approach is
-	# itself clear — the beeline from the last breadcrumb through a solid
-	# cell was the last corner-clipping source (keep the breadcrumb
-	# otherwise; the arrival radius resolves the residual)
-	if not grid.is_point_solid(Vector2i((to / cs).floor())) \
-			and _segment_clear(world_path[world_path.size() - 1], to, for_kind):
-		world_path[world_path.size() - 1] = to
-	return world_path
+		return PackedVector2Array()  # no route for this kind: refuse
+	# land exactly on the clicked point instead of the last cell centre,
+	# but only when that final approach is itself clear — a beeline from
+	# the last breadcrumb through a solid cell was the last
+	# corner-clipping source (the arrival radius resolves the residual)
+	if not blocked(grid, cell_at(to)) \
+			and segment_clear(path[path.size() - 1], to, for_kind):
+		path[path.size() - 1] = to
+	return path
 
 
 ## Center-cell march along a segment — the same criterion the walker
 ## audits itself with, so the contract and its test agree.
-func _segment_clear(a: Vector2, b: Vector2, for_kind := "robot") -> bool:
-	var grid := nav_grid if for_kind == "robot" else vehicle_grid
+func segment_clear(a: Vector2, b: Vector2, for_kind := "robot") -> bool:
+	var grid := grid_for(for_kind)
 	if grid == null:
 		return true
 	var steps := int(a.distance_to(b) / 4.0) + 1
 	for i in range(1, steps + 1):
-		var p := a.lerp(b, float(i) / float(steps))
-		if grid.is_point_solid(Vector2i((p / 16.0).floor())):
+		if blocked(grid, cell_at(a.lerp(b, float(i) / float(steps)))):
 			return false
 	return true
 
 
+## Nearest open cell to `cell` (itself when open), or (-1,-1) when the
+## kind has no open cell within 9 rings.
 func _open_cell(cell: Vector2i, grid: AStarGrid2D) -> Vector2i:
 	var r := grid.region
 	cell = cell.clamp(r.position, r.position + r.size - Vector2i.ONE)
 	if not grid.is_point_solid(cell):
 		return cell
-	for radius in range(1, 10):
-		for dx in range(-radius, radius + 1):
-			for dy in range(-radius, radius + 1):
-				if maxi(absi(dx), absi(dy)) != radius:
-					continue
-				var c := cell + Vector2i(dx, dy)
-				if r.has_point(c) and not grid.is_point_solid(c):
-					return c
+	for candidate in _ring_cells(cell, 9, grid):
+		if not grid.is_point_solid(candidate):
+			return candidate
 	return Vector2i(-1, -1)

@@ -5,11 +5,13 @@ extends Object
 ## static funcs taking (ctx, rig), flags still routed from
 ## SelfTests.run() so the CLI surface does not change.
 
-## Known-solid-crossing baseline (seed-42 walker on the default test
-## map): corner-hugging beelines between cell-center waypoints clip
-## solid cells. Phase 1b fixes the beeline class — then drop this
-## tolerance to 0. Worse-than-baseline fails TODAY.
-const KNOWN_CROSSING_BASELINE := 16
+## Solid-crossing tolerance for the seed-42 walker on the default test
+## map: ZERO. It sat at 16 (then 10 observed) while A* handed back cell
+## CORNER waypoints — every breadcrumb was half a cell up-left of the
+## cell it stood for, so the beelines between them grazed walls. With
+## the cell-centre contract in NavWorld.make_grid the walker samples
+## clean (0/145), so any crossing at all is a real regression now.
+const KNOWN_CROSSING_BASELINE := 0
 
 
 ## Random-pair walking audit over the loaded map's nav grid: a robot

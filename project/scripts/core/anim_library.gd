@@ -496,7 +496,9 @@ static func hull_source(d: int) -> Dictionary:
 
 ## Load the texture for direction `deg` from a path format; when the
 ## art only exists for the mirrored direction, return a flipped copy.
-static func _dir_texture(path_fmt: String, deg: int) -> Texture2D:
+## PUBLIC: the shipped art covers {E, NE, N, SE} for hulls, turrets AND
+## ground decals, so every consumer of a per-facing path needs this.
+static func dir_texture(path_fmt: String, deg: int) -> Texture2D:
 	var direct := path_fmt % deg
 	if ResourceLoader.exists(direct):
 		return load(direct)

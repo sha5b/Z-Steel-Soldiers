@@ -85,11 +85,7 @@ static func _build_terrain(parent: Node, data: Dictionary, planet: String, w: in
 
 
 static func _build_nav_grid(data: Dictionary, w: int, h: int) -> AStarGrid2D:
-	var grid := AStarGrid2D.new()
-	grid.region = Rect2i(0, 0, w, h)
-	grid.cell_size = Vector2(TILE, TILE)
-	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_AT_LEAST_ONE_WALKABLE
-	grid.update()
+	var grid := NavWorld.make_grid(Rect2i(0, 0, w, h))
 	for y in h:
 		for x in w:
 			if data.passable != null and not bool(data.passable[y * w + x]):
@@ -132,19 +128,20 @@ static func _build_rocks(parent: Node, data: Dictionary, planet: String, grid: A
 
 
 ## Vehicle grid: same as robots but water is impassable (zod PF_WATER).
-## Built after rocks so rock cells block wheels too.
+## Built after rocks so rock cells block wheels too. The water mask is
+## indexed in LOCAL row-major order while cell ids are absolute — scene
+## maps whose painted area does not start at (0,0) need the region
+## origin added back (the old loop used the local index as the cell id,
+## which silently shifted every water cell on such a map).
 static func _build_vehicle_grid(grid: AStarGrid2D, data: Dictionary, w: int, h: int) -> AStarGrid2D:
-	var vgrid := AStarGrid2D.new()
-	vgrid.region = grid.region
-	vgrid.cell_size = grid.cell_size
-	vgrid.diagonal_mode = grid.diagonal_mode
-	vgrid.update()
+	var vgrid := NavWorld.make_grid(grid.region)
+	var origin: Vector2i = grid.region.position
 	for y in h:
 		for x in w:
-			var solid: bool = grid.is_point_solid(Vector2i(x, y)) \
-					or (data.water != null and bool(data.water[y * w + x]))
-			if solid:
-				vgrid.set_point_solid(Vector2i(x, y), true)
+			var cell := origin + Vector2i(x, y)
+			if grid.is_point_solid(cell) \
+					or (data.water != null and bool(data.water[y * w + x])):
+				vgrid.set_point_solid(cell, true)
 	NavWorld.current.vehicle_grid = vgrid
 	return vgrid
 
@@ -281,11 +278,7 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 
 	# nav grids from tileinfo: terrain decides passability and water
 	var info: Dictionary = _tileinfo(planet)
-	var grid := AStarGrid2D.new()
-	grid.region = Rect2i(min_c, Vector2i(w, h))
-	grid.cell_size = Vector2(TILE, TILE)
-	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_AT_LEAST_ONE_WALKABLE
-	grid.update()
+	var grid := NavWorld.make_grid(Rect2i(min_c, Vector2i(w, h)))
 	for y in h:
 		for x in w:
 			var cell := min_c + Vector2i(x, y)
@@ -294,7 +287,9 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 
 	# rocks block movement (they are plain sprites in the scene)
 	for rock in _tree_children(parent, "rocks"):
-		grid.set_point_solid(Vector2i((rock.global_position / TILE).floor()), true)
+		var rock_cell := NavWorld.cell_at(rock.global_position)
+		if grid.region.has_point(rock_cell):
+			grid.set_point_solid(rock_cell, true)
 
 	var vgrid := _build_vehicle_grid(grid,
 		{"water": _water_array(planet, painted, min_c, w, h)}, w, h)

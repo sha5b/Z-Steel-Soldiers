@@ -21,6 +21,13 @@ var net_id := 0  # stable per-match identity for multiplayer intents
 
 enum State { IDLE, MOVING, ENTERING, GESTURE, DEAD }
 
+## Boarding reach. CONTACT_REACH is the normal "walked right up to it"
+## distance; STRANDED_REACH is how far a finished walk may still be from
+## hardware parked on a cell nobody can stand on (a fort tower mount is
+## one or two cells inside the wall) before the order is abandoned.
+const CONTACT_REACH := 16.0
+const STRANDED_REACH := 52.0
+
 var state := State.IDLE
 var order: Order = null
 var selected := false
@@ -314,27 +321,12 @@ func _separation(delta: float) -> void:
 ## tick and MUST stay cheap (the first version walked every building's
 ## footprint and cost the whole frame budget).
 func _inside_building(p: Vector2) -> bool:
-	var grid := NavWorld.current.vehicle_grid if kind != "robot" else NavWorld.current.nav_grid
-	if grid == null:
-		return false
-	var pad: float = NavWorld.current.BODY_HALF.get(kind, 7.0)
-	for off in [Vector2.ZERO,
-			Vector2(-pad, 0), Vector2(pad, 0), Vector2(0, -pad), Vector2(0, pad),
-			Vector2(-pad, -pad), Vector2(pad, -pad), Vector2(-pad, pad), Vector2(pad, pad)]:
-		var cell := Vector2i(((p + off) / 16.0).floor())
-		if grid.region.has_point(cell) and grid.is_point_solid(cell):
-			return true
-	return false
+	return not NavWorld.current.body_clear(
+		p, NavWorld.current.BODY_HALF.get(kind, 7.0), kind)
 
 
 func _walkable(p: Vector2) -> bool:
-	var grid := NavWorld.current.vehicle_grid if kind != "robot" else NavWorld.current.nav_grid
-	if grid == null:
-		return true
-	var cell := Vector2i((p / 16.0).floor())
-	if not grid.region.has_point(cell):
-		return false
-	return not grid.is_point_solid(cell)
+	return not NavWorld.current.solid_at(p, kind)
 
 
 func _idle(delta: float) -> void:
@@ -606,12 +598,23 @@ func _order_anchor() -> Vector2:
 
 
 func _begin_move(world_pos: Vector2) -> void:
-	move_target = world_pos
 	waypoints = NavWorld.current.request_path(global_position, world_pos, kind)
 	if waypoints.is_empty():
 		move_target = Vector2.ZERO  # unreachable (e.g. water for vehicles)
 		state = State.IDLE
 	else:
+		# THE DESTINATION IS THE END OF THE ROUTE, not the requested point.
+		# request_path routes to the nearest cell the kind can actually
+		# occupy, and snaps its last breadcrumb onto `world_pos` only when
+		# that final approach is clear. Aiming move_target at the raw
+		# request instead made ANY order into a solid cell unarrivable:
+		# a robot sent to a fort (the anchor is the footprint CENTRE,
+		# which is wall) pressed into the gate's dead end forever, since
+		# _arrive never fired and _try_enter waits on move_target being
+		# cleared. Garrisoning then depended on the stuck watchdog, which
+		# never tripped because sliding in the corridor still counts as
+		# making ground.
+		move_target = waypoints[waypoints.size() - 1]
 		state = State.MOVING
 		if waypoints.size() > 1 and global_position.distance_to(waypoints[0]) < 10.0:
 			waypoints.remove_at(0)  # don't step back to the start cell centre
@@ -659,8 +662,22 @@ func _try_enter() -> void:
 		if move_target == Vector2.ZERO:
 			_building_order(enter_target)
 		return
-	if global_position.distance_to(enter_target.global_position) > 16.0:
-		return
+	# Hardware standing on a SOLID cell can never be reached at contact
+	# distance: fort tower guns mount inside the walls, and a hull can
+	# die wedged against a factory. request_path() then routes to the
+	# nearest OPEN cell instead and the robot arrives as close as the
+	# map allows — so once the walk is over (move_target cleared by
+	# _arrive), board from arm's length. Without this the robot sat in
+	# ENTERING forever: is_idle() false, so neither the player's auto-man
+	# nor the AI ever retasked it, and a sniped tower gun stayed derelict
+	# for the rest of the match.
+	var gap := global_position.distance_to(enter_target.global_position)
+	if gap > CONTACT_REACH:
+		if move_target != Vector2.ZERO:
+			return  # still walking
+		if gap > STRANDED_REACH:
+			_order_done()  # genuinely out of reach: be retaskable again
+			return
 	var v := enter_target
 	enter_target = null
 	if v is Vehicle2D and v.alive:
@@ -719,7 +736,13 @@ func _building_order(b: Building2D) -> void:
 	if b is FortBuilding and b.team == team and b.alive \
 			and global_position.distance_to(b.world_footprint().get_center()) < 56.0:
 		if b.garrison_robot(self):
-			queue_free()  # the garrison list remembers the stats we need
+			# ALIVE but carried: the fort holds the real node. It used to
+			# queue_free() here, which left the garrison array full of
+			# freed entries — the missile battery then fired forever with
+			# no crew, kill_garrison() became a no-op, garrison_cap
+			# counted ghosts, and the defenders vanished from the
+			# no-units rule that is supposed to count them.
+			_order_done()
 			return
 	_order_done()
 
@@ -730,7 +753,11 @@ func portrait_path() -> String:
 			# r270 = facing the camera (south, toward the viewer)
 			return "res://assets/z/robots/stand_%s_r270.png" % AnimLibrary.team_name(team)
 		"cannon", "vehicle":
-			return "%s/empty_r270.png" % ContentDB.def_for(kind, unit_name).asset_dir
+			# the original names hull art three different ways and only
+			# 3 of 11 hardware types ship `empty_r270` — probing that one
+			# path left 8 types with a blank selection portrait. ONE
+			# fallback walk, shared with the production panel's icons.
+			return ProductionPanel.hardware_art(kind, unit_name)
 	return ""
 
 

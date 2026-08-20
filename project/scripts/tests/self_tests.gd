@@ -25,7 +25,8 @@ static func should_run() -> bool:
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
-			"mp", "rally", "placement", "fortkill", "parity", "art", "mpmatch"]:
+			"mp", "rally", "placement", "fortkill", "parity", "art", "mpmatch",
+			"garrison"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -640,6 +641,8 @@ static func run(ctx: Node) -> void:
 		pr.finish()
 	if "--placement-test" in args:
 		await PlacementTests.run(ctx, TestRig.start("PLACEMENT"))
+	if "--garrison-test" in args:
+		await GarrisonTests.run(ctx, TestRig.start("GARRISON"))
 	if "--rally-test" in args:
 		# unmanned hardware must not take rally orders — the AI rallies
 		# every facility at an enemy fort, and empty vehicles used to

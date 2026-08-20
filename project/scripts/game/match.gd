@@ -221,7 +221,10 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventKey and event.pressed and event.keycode == KEY_M:
+	# dev-only: M reloads the scene on the next map. In an exported build
+	# a stray M threw the running match away with no confirmation.
+	if OS.is_debug_build() and event is InputEventKey and event.pressed \
+			and event.keycode == KEY_M:
 		_cycle_map()
 		return
 	# stance hotkeys: Q attack-move, E defend, R plain move, T toggles

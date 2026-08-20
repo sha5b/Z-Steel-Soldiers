@@ -128,6 +128,8 @@ func _ready() -> void:
 	# every building registers here: the elimination cascade and the
 	# no-units rule need forts AND factories/radar/repair alike
 	add_to_group(Groups.ALL_BUILDINGS)
+	if net_id == 0 and UnitRegistry.current:
+		net_id = UnitRegistry.current.next_building_net_id()
 	if is_fort:
 		add_to_group(Groups.BUILDINGS)
 	# producers register for the facility quick bar
@@ -140,7 +142,11 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	MatchState.current.unregister_facility(self)
+	# guarded like Unit2D._exit_tree: on scene teardown the match-scoped
+	# MatchState can already be gone, and an unguarded call crashes the
+	# match change instead of just skipping the bookkeeping
+	if MatchState.current:
+		MatchState.current.unregister_facility(self)
 
 
 func _build_sprite() -> void:

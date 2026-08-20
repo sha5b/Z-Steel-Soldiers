@@ -9,6 +9,25 @@ extends Control
 
 signal queue_requested(type_name: String)
 
+## Button footprints. The original HUD unit icons are landscape (roughly
+## 2:1 after cropping), so both slots are WIDER than tall — a square slot
+## letterboxes the icon down to a few pixels of height. The queue row
+## holds ProductionQueue.MAX_ITEMS of these across the panel's 240px of
+## inner width.
+const QUEUE_SLOT := Vector2(46, 30)
+const ROSTER_SLOT := Vector2(56, 60)
+const TAB_SLOT := Vector2(24, 24)
+## The 384x256 panel art minus these insets is the whole layout budget.
+## Everything below has to FIT: title + tabs + two roster rows + the
+## progress bar + the queue row. It used to come to 245 of 240 available,
+## so the VBox overran its bottom margin and the queue row sat on the
+## panel's bottom bevel, flush with the screen edge.
+const PANEL_INSET_X := 72
+const PANEL_INSET_Y := 8
+const TITLE_HEIGHT := 16
+const PROGRESS_SIZE := Vector2(180, 14)
+const ROW_SEPARATION := 4
+
 
 var _wired: Node = null
 var _title: TextureRect
@@ -28,17 +47,18 @@ func _ready() -> void:
 	OriginalPanel.attach(self, true)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 72)
-	margin.add_theme_constant_override("margin_right", 72)
-	margin.add_theme_constant_override("margin_top", 8)
-	margin.add_theme_constant_override("margin_bottom", 8)
+	margin.add_theme_constant_override("margin_left", PANEL_INSET_X)
+	margin.add_theme_constant_override("margin_right", PANEL_INSET_X)
+	margin.add_theme_constant_override("margin_top", PANEL_INSET_Y)
+	margin.add_theme_constant_override("margin_bottom", PANEL_INSET_Y)
 	add_child(margin)
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", ROW_SEPARATION)
 	margin.add_child(col)
 	_title = TextureRect.new()
 	_title.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
-	_title.custom_minimum_size = Vector2(0, 20)
+	_title.custom_minimum_size = Vector2(0, TITLE_HEIGHT)
 	col.add_child(_title)
 	# the ORIGINAL's R/V/G roster pages: a level-5 fort carries 18 items
 	# — one unfiltered grid overflows the 384x256 panel. Tabs filter the
@@ -54,7 +74,11 @@ func _ready() -> void:
 		tab.text = String(spec[0])
 		tab.tooltip_text = String(spec[2])
 		tab.toggle_mode = true
-		tab.custom_minimum_size = Vector2(24, 24)
+		tab.custom_minimum_size = TAB_SLOT
+		# slim plate: the default theme chrome adds 6px of content margin
+		# top AND bottom, which pushed a 24px tab out to 35 and blew the
+		# panel's height budget
+		_object_button_chrome(tab, 1.0)
 		var kind_token: String = String(spec[1])
 		tab.toggled.connect(func(on):
 			tab.modulate = Color(1.0, 0.85, 0.45) if on else Color.WHITE
@@ -68,18 +92,18 @@ func _ready() -> void:
 		tabs.add_child(tab)
 	_box = GridContainer.new()
 	(_box as GridContainer).columns = 4
-	_box.add_theme_constant_override("h_separation", 4)
-	_box.add_theme_constant_override("v_separation", 4)
+	_box.add_theme_constant_override("h_separation", ROW_SEPARATION)
+	_box.add_theme_constant_override("v_separation", ROW_SEPARATION)
 	col.add_child(_box)
 	_progress = ProgressBar.new()
-	_progress.custom_minimum_size = Vector2(180, 16)
+	_progress.custom_minimum_size = PROGRESS_SIZE
 	_progress.show_percentage = false
 	_progress.visible = false
 	_progress.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_entry_bar_chrome(_progress)
 	col.add_child(_progress)
 	_queue_row = HBoxContainer.new()
-	_queue_row.add_theme_constant_override("separation", 4)
+	_queue_row.add_theme_constant_override("separation", ROW_SEPARATION)
 	_queue_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(_queue_row)
 	SelectionManager.current.selection_changed.connect(_on_selection_changed)
@@ -148,13 +172,16 @@ func _update_queue(factory: Node) -> void:
 			c.queue_free()
 		for idx in q.size():
 			var btn := Button.new()
-			btn.custom_minimum_size = Vector2(40, 44)
-			btn.tooltip_text = "Right-click to cancel"
+			# WIDE slots (the icon art is ~2:1) with slim content margins:
+			# the default theme plate eats 10px each side, which is what
+			# starved the icon down to a sliver in the old 40x44 square
+			btn.custom_minimum_size = QUEUE_SLOT
+			btn.tooltip_text = "%s — right-click to cancel" % [
+				String(q[idx]).split(":")[-1].capitalize()]
+			_object_button_chrome(btn, 2.0)
 			var parts: PackedStringArray = String(q[idx]).split(":")
-			var icon_path := _icon_path(parts[0], parts[1], MatchState.current.player_team)
-			if ResourceLoader.exists(icon_path):
-				btn.icon = load(icon_path)
-				btn.expand_icon = true
+			btn.icon = icon_for(parts[0], parts[1], MatchState.current.player_team)
+			btn.expand_icon = btn.icon != null
 			var i := idx
 			btn.gui_input.connect(func(ev):
 				if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT:
@@ -215,7 +242,7 @@ func _build_buttons(factory: Node) -> void:
 		var type_name := parts[1]
 		var stats := ContentDB.def_for(kind, type_name)
 		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(56, 60)
+		btn.custom_minimum_size = ROSTER_SLOT
 		btn.tooltip_text = "%s (%s) L%d\nHP %d  DMG %d\n$%d" % [
 			type_name.capitalize(), kind, factory.level,
 			stats.hp, stats.damage, stats.cost]
@@ -223,10 +250,8 @@ func _build_buttons(factory: Node) -> void:
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		_object_button_chrome(btn)
-		var icon_path := _icon_path(kind, type_name, MatchState.current.player_team)
-		if ResourceLoader.exists(icon_path):
-			btn.icon = load(icon_path)
-			btn.expand_icon = true
+		btn.icon = icon_for(kind, type_name, MatchState.current.player_team)
+		btn.expand_icon = btn.icon != null
 		btn.pressed.connect(func(): queue_requested.emit(String(item)))
 		_box.add_child(btn)
 
@@ -251,27 +276,44 @@ func _entry_bar_chrome(bar: ProgressBar) -> void:
 
 
 ## zod `object_button` chrome (45x51 at 2x) behind each unit button.
-func _object_button_chrome(btn: Button) -> void:
+## `pad` is the CONTENT inset: the frame art still draws at its 6px
+## corners, but the icon gets nearly the whole plate. Without an explicit
+## content margin a StyleBoxTexture inherits its texture margins, so the
+## small queue slots lost 12 of their 48 pixels to invisible padding.
+func _object_button_chrome(btn: Button, pad := 6.0) -> void:
 	var path := "res://assets/z/ui/production/object_button.png"
 	if not ResourceLoader.exists(path):
 		return
+	var ppath := "res://assets/z/ui/production/object_button_pressed.png"
+	var normal := _plate(path, pad)
+	btn.add_theme_stylebox_override("normal", normal)
+	btn.add_theme_stylebox_override("hover", _plate(path, pad))
+	btn.add_theme_stylebox_override("pressed",
+		_plate(ppath if ResourceLoader.exists(ppath) else path, pad))
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+
+
+static func _plate(path: String, pad: float) -> StyleBoxTexture:
 	var box := StyleBoxTexture.new()
 	box.texture = load(path)
-	box.texture_margin_left = 6
-	box.texture_margin_right = 6
-	box.texture_margin_top = 6
-	box.texture_margin_bottom = 6
-	btn.add_theme_stylebox_override("normal", box)
-	var pressed := StyleBoxTexture.new()
-	var ppath := "res://assets/z/ui/production/object_button_pressed.png"
-	pressed.texture = load(ppath) if ResourceLoader.exists(ppath) else load(path)
-	pressed.texture_margin_left = 6
-	pressed.texture_margin_right = 6
-	pressed.texture_margin_top = 6
-	pressed.texture_margin_bottom = 6
-	btn.add_theme_stylebox_override("pressed", pressed)
-	btn.add_theme_stylebox_override("hover", box.duplicate())
-	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	for side in ["left", "right", "top", "bottom"]:
+		box.set("texture_margin_%s" % side, 6)
+		box.set("content_margin_%s" % side, pad)
+	return box
+
+
+## THE unit icon for every producer surface (roster grid, queue row,
+## facility quick bar). The original HUD icons ship on a fixed 96px-wide
+## canvas with the unit drawn small and off-centre inside it, so the raw
+## texture in an `expand_icon` Button scaled to the CANVAS: a grunt came
+## out ~20x7px, an unreadable smear — the "queue shows no icons" bug.
+## Cropping to the opaque region first (UiTheme.trimmed, the same fix
+## the menu art needed) recovers 2-3x the linear size. Cached per path.
+static func icon_for(kind: String, type_name: String, team := 1) -> Texture2D:
+	var path := _icon_path(kind, type_name, team)
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	return UiTheme.trimmed(path)
 
 
 static func _icon_path(kind: String, type_name: String, team := 1) -> String:
@@ -282,9 +324,25 @@ static func _icon_path(kind: String, type_name: String, team := 1) -> String:
 		return hud
 	if kind == "robot":
 		return "res://assets/z/robots_%s/fire_%s_r180_n00.png" % [type_name, tn]
-	# not every vehicle ships empty_r180 — walk the fallbacks
+	return hardware_art(kind, type_name)
+
+
+## First existing UNMANNED hull image for a vehicle/cannon type. The
+## original names this art three different ways — `empty_<team>_r###`,
+## `empty_<team>`, plain `empty` — and only 3 of the 11 hardware types
+## ship any one of them, so every caller has to walk the list. Shared by
+## the production icons and Unit2D.portrait_path (which probed a single
+## `empty_r270` and came up blank for 8 types).
+static func hardware_art(kind: String, type_name: String) -> String:
 	var dir := ContentDB.def_for(kind, type_name).asset_dir
-	for probe in ["%s/empty_r180.png" % dir, "%s/empty_null.png" % dir, "%s/empty.png" % dir]:
+	for probe in ["%s/empty_r270.png" % dir, "%s/empty_r180.png" % dir,
+			"%s/empty_null.png" % dir, "%s/empty.png" % dir]:
 		if ResourceLoader.exists(probe):
 			return probe
+	# team-painted hulls: any facing beats a blank slot
+	for tn in ["red", "blue", "green", "yellow", "null"]:
+		for probe in ["%s/empty_%s_r270.png" % [dir, tn],
+				"%s/empty_%s_r180.png" % [dir, tn], "%s/empty_%s.png" % [dir, tn]]:
+			if ResourceLoader.exists(probe):
+				return probe
 	return ""

@@ -52,20 +52,34 @@ func _ready() -> void:
 	slot_cannons.resize(cannon_slots().size())
 
 
+## Is tower mount `i` taken? A gun that DIED or was towed off frees its
+## mount; one that merely lost its crew (sniped) still physically sits
+## there and keeps the slot — a robot ordered onto it re-crews it
+## (Unit2D._try_enter boards stranded hardware from arm's length, since
+## tower cells are solid and cannot be stood on). ONE predicate for the
+## build gate and mount_product — the two carried different rules, so
+## the gate could refuse a cannon that mount_product would have placed.
+func _slot_taken(i: int, slots: Array) -> bool:
+	if i >= slot_cannons.size():
+		return false
+	var mounted = slot_cannons[i]
+	if mounted == null:
+		return false
+	if is_instance_valid(mounted) and mounted.alive \
+			and mounted.global_position.distance_to(slots[i]) < 48.0:
+		return true
+	slot_cannons[i] = null  # died or moved off: mount is free again
+	return false
+
+
 ## Free mount slots, counting cannons already mounted and cannons still
 ## in the production queue.
 func free_cannon_slots() -> int:
 	var slots := cannon_slots()
 	var free := slots.size()
-	for i in slot_cannons.size():
-		var mounted = slot_cannons[i]
-		if mounted == null:
-			continue
-		if is_instance_valid(mounted) and mounted.alive \
-				and mounted.global_position.distance_to(slots[i]) < 48.0:
+	for i in slots.size():
+		if _slot_taken(i, slots):
 			free -= 1
-		else:
-			slot_cannons[i] = null  # died or moved off: mount is free again
 	for item in queue.items:
 		if String(item).begins_with("cannon:"):
 			free -= 1
@@ -86,9 +100,10 @@ func mount_product(kind: String, type_name: String) -> bool:
 	if kind != "cannon":
 		return false
 	var slots := cannon_slots()
+	if slot_cannons.size() < slots.size():
+		slot_cannons.resize(slots.size())
 	for i in slots.size():
-		var mounted = slot_cannons[i] if i < slot_cannons.size() else null
-		if mounted != null and is_instance_valid(mounted) and mounted.alive:
+		if _slot_taken(i, slots):
 			continue
 		slot_cannons[i] = Spawner.spawn(get_parent(), "cannon", type_name,
 			owner_team, slots[i], true)

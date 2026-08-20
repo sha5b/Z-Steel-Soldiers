@@ -31,10 +31,15 @@ static func track(dir: int, pos: Vector2, jeep: bool) -> void:
 				break
 	if prefix == "":
 		return
-	var path := "%s/%s_r%03d_n%02d.png" % [TRACK_MARKS_DIR, prefix, dir * 45, randi() % 3]
-	if not ResourceLoader.exists(path):
+	# the original ships only {E, NE, N, SE} track art — W/NW/SW/S are
+	# mirrors of their partners. Probing the raw path meant HALF of all
+	# headings (r180..r315) silently laid no tracks at all.
+	var tex := AnimLibrary.dir_texture(
+		"%s/%s_r%%03d_n%02d.png" % [TRACK_MARKS_DIR, prefix, randi() % 3],
+		dir * 45)
+	if tex == null:
 		return
-	_spawn(map, load(path), pos, TRACK_FADE_SECONDS, "tracks", MAX_TRACKS)
+	_spawn(map, tex, pos, TRACK_FADE_SECONDS, "tracks", MAX_TRACKS)
 
 
 ## Blast crater at an explosion site — random variant of the planet's
