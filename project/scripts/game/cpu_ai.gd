@@ -236,7 +236,9 @@ func _maintenance(vehicles: Array[Node]) -> void:
 		elif b.team == team:
 			if b.is_repair_shop():
 				repair_shop = b
-			elif b.hp < b.max_hp:
+			elif b.hp < b.max_hp and not b.is_fort:
+				# forts are not crane-repairable — sending cranes to park
+				# on a damaged fort healed it faster than any assault
 				damaged_buildings.append(b)
 	for v in vehicles:
 		if v.enter_target != null:

@@ -195,8 +195,9 @@ func _build_layer() -> void:
 
 func _building_order(b: Building2D) -> void:
 	var dist := global_position.distance_to(b.world_footprint().get_center())
-	# bridges are communal infrastructure: any team's crane rebuilds them
-	if unit_name == "crane" and manned and b.hp < b.max_hp \
+	# bridges are communal infrastructure: any team's crane rebuilds them;
+	# forts are never crane-repairable (see Building2D.repair_by)
+	if unit_name == "crane" and manned and b.hp < b.max_hp and not b.is_fort \
 			and (b.team == team or b.is_bridge()) and dist < 60.0:
 		_start_crane_repair(b)
 		return

@@ -22,6 +22,11 @@ extends Resource
 @export var hit_chance := 1.0  # per-shot chance (original zsettings)
 @export var snipe_chance := 0.0  # driver kill while the target's lid is open
 @export var splash_radius := 0.0  # explosive splash; 0 = none
+## Small arms scale with the target: fraction of the target BUILDING's
+## max HP dealt per hit (original zsettings — grunt 0.0011, psycho
+## 0.0026, sniper 0.007, pyro 0.0105, laser 0.0178, jeep 0.0027).
+## 0 = flat `damage` against everything (explosives keep the flat scale).
+@export var building_frac := 0.0
 
 ## Weapon behaviour: "hitscan" (tracer), "laser" (beam), "shell"
 ## (travelling projectile + splash). Empty = auto: projectile def means

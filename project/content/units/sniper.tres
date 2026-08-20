@@ -17,4 +17,5 @@ cost = 80
 build_time = 148.0
 pop = 1
 hit_chance = 0.80
+building_frac = 0.007
 snipe_chance = 0.8

@@ -19,6 +19,12 @@ static func weapon_of(def: UnitDef) -> String:
 ## def's splash radius around the impact.
 static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 		target: Node2D, amount: int) -> void:
+	# small arms scale with the TARGET (original zsettings: damage is a
+	# fraction of the target's max HP — flat integers left robot armies
+	# needing 30-45x too long to burn down a fort; explosives already
+	# carry the original scale)
+	if target is Building2D and def.building_frac > 0.0:
+		amount = maxi(1, int(round(def.building_frac * (target as Building2D).max_hp)))
 	Fx.gunfire(def.sound)
 	Fx.play("muzzle", muzzle)
 	var weapon := weapon_of(def)

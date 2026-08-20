@@ -25,5 +25,6 @@ cost = 70
 build_time = 161.0
 pop = 1
 hit_chance = 0.70
+building_frac = 0.0105
 snipe_chance = 0.0
 projectile = SubResource("Resource_sub")

@@ -842,7 +842,12 @@ func _bridge_damage(amount: int) -> void:
 
 
 ## Crane repair: restores a destroyed bridge (or patches a damaged one).
+## Forts are never crane-repairable (original Z: cranes fix bridges, not
+## HQs — 1,750 HP/s of crane healing made forts practically unkillable
+## while the AI kept one on station).
 func repair_by(amount: int) -> void:
+	if is_fort:
+		return
 	if not is_bridge():
 		hp = mini(hp + amount, max_hp)
 		# the bar must grow back with the hull (and vanish at full

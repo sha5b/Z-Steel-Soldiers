@@ -25,7 +25,7 @@ static func should_run() -> bool:
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
-			"mp", "rally", "placement"]:
+			"mp", "rally", "placement", "fortkill"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -417,6 +417,40 @@ static func run(ctx: Node) -> void:
 			ctx.get_tree().quit()
 	if "--path-test" in args:
 		PathTests.walk_a_pair(ctx, TestRig.start("PATH"))
+	if "--fortkill-test" in args:
+		# forts must actually die: small arms scale with the target
+		# (original zsettings fractions — flat integers made a laser need
+		# 23 minutes) and cranes no longer out-heal any assault
+		var fk := TestRig.start("FORTKILL")
+		var fk_fort := FortBuilding.new()
+		fk_fort.setup(0, 2, "desert")
+		fk_fort.position = Vector2(650, 700)
+		ctx.add_child(fk_fort)
+		await ctx.get_tree().process_frame
+		# crane contract: repair_by is a no-op on forts (used to heal
+		# 1,750 HP/s with an AI crane parked on the pad)
+		var hp_before: int = fk_fort.hp
+		fk_fort.repair_by(700)
+		fk.check(fk_fort.hp == hp_before, "crane repair healed the fort")
+		# small-arms TTK: a laser (0.0178 of max HP per hit, 0.7 chance,
+		# ~0.4s cooldown) burns a full fort in original-order minutes,
+		# not hours
+		var gunner: Unit2D = Spawner.spawn(ctx, "robot", "laser", 1,
+			fk_fort.visual_center() + Vector2(0, 150)) as Unit2D
+		gunner.attack_move = true
+		gunner.move_to(fk_fort.visual_center() + Vector2(0, 110))
+		var ticks := 0
+		for i in 3000:  # 150 simulated seconds
+			gunner._process(0.05)
+			gunner._physics_process(0.05)
+			ticks = i
+			if not fk_fort.alive:
+				break
+		fk.check(not fk_fort.alive, "laser never burned the fort down (hp=%d/%d after %ds)"
+			% [fk_fort.hp, fk_fort.max_hp, int(ticks * 0.05)])
+		if gunner:
+			gunner.queue_free()
+		fk.finish()
 	if "--placement-test" in args:
 		await PlacementTests.run(ctx, TestRig.start("PLACEMENT"))
 	if "--rally-test" in args:
