@@ -2,9 +2,9 @@ class_name TopBar
 extends HBoxContainer
 ## Top bar: player money, zone ownership counts per team, match clock.
 ## Money and zone counts refresh on their signals (no per-frame polling);
-## only the clock ticks in _process.
+## the clock mirrors the SIM clock (MatchState.match_time — what drives
+## the tech ladder), not a UI-side accumulator that drifts from it.
 
-var elapsed := 0.0
 var _money: Label
 var _zones: Label
 var _clock: Label
@@ -24,9 +24,9 @@ func _ready() -> void:
 	_refresh_counts()
 
 
-func _process(delta: float) -> void:
-	elapsed += delta
-	_clock.text = "%d:%02d" % [int(elapsed) / 60, int(elapsed) % 60]
+func _process(_delta: float) -> void:
+	var t: int = int(MatchState.match_time)
+	_clock.text = "%d:%02d" % [t / 60, t % 60]
 
 
 func _refresh_counts() -> void:

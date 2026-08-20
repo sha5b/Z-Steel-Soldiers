@@ -13,7 +13,6 @@ const PANEL_BG := Color(0.05, 0.06, 0.05, 0.9)
 const PANEL_EDGE := Color(0.35, 0.38, 0.3)
 const ZONE_TINT_WEIGHT := 0.4
 const PAD := 2.0  # panel edge inset
-const ZONE_SYNC_SECONDS := 0.5
 
 var map_size := Vector2i(64, 86)
 
@@ -22,7 +21,6 @@ var _image: Image
 var _base: Image               # terrain colours straight from the sheet
 var _map_rect := Rect2()      # panel-space rect the map texture draws into
 var _owners: Array = []       # last-baked zone owners (change detection)
-var _sync_accum := 0.0
 
 
 func build(data: Dictionary, _tileset: Texture2D) -> void:
@@ -31,6 +29,9 @@ func build(data: Dictionary, _tileset: Texture2D) -> void:
 	_owners = []
 	_rebuild_image()
 	_recompute_map_rect()
+	# zone tints rebake on the capture signal — this used to poll every
+	# 0.5s to detect ownership changes
+	MatchState.zone_captured.connect(_refresh_owners)
 
 
 ## Zone ownership tint, baked into the texture pixels.
@@ -79,11 +80,7 @@ func _recompute_map_rect() -> void:
 	_map_rect = Rect2(inner.position + (inner.size - map_size_px) * 0.5, map_size_px)
 
 
-func _process(delta: float) -> void:
-	_sync_accum += delta
-	if _sync_accum >= ZONE_SYNC_SECONDS:
-		_sync_accum = 0.0
-		_refresh_owners()
+func _process(_delta: float) -> void:
 	queue_redraw()
 
 

@@ -63,7 +63,7 @@ func _on_speed_selected(index: int) -> void:
 
 
 func _on_idle_selected(index: int) -> void:
-	GameSettings.auto_idle = index == 1
+	GameSettings.set_auto_idle(index == 1)
 	GameSettings.apply()
 	GameSettings.save()
 

@@ -19,6 +19,17 @@ var sfx_volume := 0.8
 var auto_idle := true    # smart idle (grab-hand): robots auto-man empty hardware
 var player_name := "COMMANDER"  # shown in the multiplayer lobby
 
+signal auto_idle_changed(on: bool)
+
+
+## Single write path — settings screen, stance bar and the T hotkey all
+## go through it so listeners don't have to poll.
+func set_auto_idle(on: bool) -> void:
+	if auto_idle == on:
+		return
+	auto_idle = on
+	auto_idle_changed.emit(on)
+
 
 func _ready() -> void:
 	_ensure_bus(MUSIC_BUS)

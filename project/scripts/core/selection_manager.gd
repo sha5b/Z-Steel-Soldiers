@@ -3,6 +3,7 @@ extends Node
 
 signal selection_changed(units: Array)
 signal order_issued(world_position: Vector2)
+signal stance_changed
 signal drag_started
 signal drag_moved
 signal drag_ended
@@ -13,6 +14,15 @@ signal drag_ended
 ## post. Player UI intent lives with selection, not with the economy.
 enum OrderStance { MOVE, ATTACK_MOVE, DEFEND }
 var order_stance: OrderStance = OrderStance.MOVE
+
+
+## Single write path — hotkeys and the stance bar both go through it so
+## `stance_changed` always fires (the bar used to poll to stay honest).
+func set_stance(s: OrderStance) -> void:
+	if order_stance == s:
+		return
+	order_stance = s
+	stance_changed.emit()
 
 var selected: Array[Node] = []
 var drag_start := Vector2.ZERO

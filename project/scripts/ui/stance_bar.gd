@@ -26,7 +26,7 @@ func _ready() -> void:
 		var btn := _make_button(String(d[0]), String(d[1]))
 		var stance: int = d[2]
 		btn.pressed.connect(func():
-			SelectionManager.order_stance = stance
+			SelectionManager.set_stance(stance)
 			Fx.ui_click())
 		_buttons.append(btn)
 		add_child(btn)
@@ -34,19 +34,22 @@ func _ready() -> void:
 	_toggle.toggle_mode = true
 	_toggle.button_pressed = GameSettings.auto_idle
 	_toggle.toggled.connect(func(on: bool):
-		GameSettings.auto_idle = on
+		GameSettings.set_auto_idle(on)
 		Fx.ui_click())
 	add_child(_toggle)
+	# hotkeys change stance/idle outside the bar — signals keep the
+	# visuals honest (this used to poll every frame)
+	SelectionManager.stance_changed.connect(_sync_visuals)
+	GameSettings.auto_idle_changed.connect(func(on: bool):
+		_toggle.set_pressed_no_signal(on))
+	_sync_visuals()
 
 
-func _process(_delta: float) -> void:
-	# hotkeys change the stance outside the bar — keep visuals honest
+func _sync_visuals() -> void:
 	var active := _buttons[SelectionManager.order_stance]
 	for i in _buttons.size():
 		var selected: bool = _buttons[i] == active
 		_buttons[i].modulate = Color.WHITE if selected else Color(0.55, 0.55, 0.55)
-	if _toggle.button_pressed != GameSettings.auto_idle:
-		_toggle.set_pressed_no_signal(GameSettings.auto_idle)
 
 
 func _make_button(icon: String, tooltip: String) -> Button:
