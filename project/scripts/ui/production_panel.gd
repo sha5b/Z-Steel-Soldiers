@@ -1,3 +1,4 @@
+class_name ProductionPanel
 extends Control
 ## Production panel: shown when the player selects one of their factories.
 ## Robot factories (and the fort) offer every buildable robot from
@@ -98,16 +99,25 @@ func _on_selection_changed(_units: Array) -> void:
 				queue_requested.disconnect(_on_queue_requested)
 			# the queue row follows the producer — unwind the old wire or
 			# captured factories keep invoking _check_roster forever
-			if _wired.queue.changed.is_connected(_check_roster):
-				_wired.queue.changed.disconnect(_check_roster)
+			if _wired.queue.changed.is_connected(_on_queue_changed):
+				_wired.queue.changed.disconnect(_on_queue_changed)
 		_wired = factory
 		_queue_cache.clear()
 		if factory:
 			queue_requested.connect(_on_queue_requested)
-			factory.queue.changed.connect(_check_roster)
+			# ONE handler for enqueue/cancel/complete: the roster AND the
+			# queue row must both refresh (the row used to miss pure
+			# enqueues — the queue showed nothing until reselecting)
+			factory.queue.changed.connect(_on_queue_changed)
 			_check_roster()
 	if factory:
 		_update_queue(factory)
+
+
+func _on_queue_changed() -> void:
+	_check_roster()
+	if _wired and is_instance_valid(_wired):
+		_update_queue(_wired)
 
 
 ## Button row rebuild: on selection change and whenever the producer's

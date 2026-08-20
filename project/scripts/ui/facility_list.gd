@@ -2,8 +2,9 @@ extends VBoxContainer
 ## Right-edge quick bar listing every production facility the player owns
 ## (fort, robot/vehicle factories) — captured factories appear live.
 ## Click an entry to select that building, which opens the production
-## panel. Entries show the original factory labels and a fill bar for
-## whatever is currently building. Ownership changes (captures) refresh
+## panel. Entries show the original factory labels, a fill bar for
+## whatever is currently building, and SMALL ICONS of the queued items
+## along the bottom edge. Ownership changes (captures) refresh
 ## immediately; a slow fallback sweep covers producer deaths.
 
 const FALLBACK_SWEEP_SECONDS := 2.0
@@ -30,6 +31,8 @@ func _process(delta: float) -> void:
 			var bar: TextureProgressBar = _entries[node].get_node_or_null("ProgressBar")
 			if bar and is_instance_valid(node):
 				bar.value = node.progress() * 100.0
+			if is_instance_valid(node):
+				_update_strip(_entries[node], node)
 	# deaths and anything a capture didn't cover
 	_sweep_accum += delta
 	if _sweep_accum >= FALLBACK_SWEEP_SECONDS:
@@ -73,6 +76,45 @@ func _make_entry(node: Node) -> Button:
 		SelectionManager.current.toggle_select(node, false))
 	add_child(btn)
 	return btn
+
+
+## Mini queue preview: what this facility is building, as small icons
+## (up to the queue cap) along the entry's bottom edge. Diffed against
+## a cache so the 4 Hz refresh pass costs nothing when idle.
+func _update_strip(btn: Button, node: Node) -> void:
+	var q: Array = node.queue_items()
+	var key := ",".join(q)
+	if String(btn.get_meta("queue_key", "")) == key:
+		return
+	btn.set_meta("queue_key", key)
+	var strip: HBoxContainer = btn.get_node_or_null("QueueIcons")
+	if strip == null:
+		strip = HBoxContainer.new()
+		strip.name = "QueueIcons"
+		strip.add_theme_constant_override("separation", 1)
+		strip.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+		strip.offset_left = 4
+		strip.offset_top = -13
+		strip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		btn.add_child(strip)
+	for c in strip.get_children():
+		c.queue_free()
+	for item in q:
+		var parts: PackedStringArray = String(item).split(":")
+		if parts.size() != 2:
+			continue
+		var icon_path := ProductionPanel._icon_path(parts[0], parts[1],
+			MatchState.current.player_team)
+		if icon_path == "" or not ResourceLoader.exists(icon_path):
+			continue
+		var tex := TextureRect.new()
+		tex.texture = load(icon_path)
+		tex.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		tex.custom_minimum_size = Vector2(12, 12)
+		tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		strip.add_child(tex)
 
 
 func _update_entry(btn: Button, node: Node) -> void:

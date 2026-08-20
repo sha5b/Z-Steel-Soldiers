@@ -147,6 +147,32 @@ static func run(ctx: Node) -> void:
 			GameSettings.sfx_volume = g_sfx
 			GameSettings.apply()
 			GameSettings.save()
+			# production panel wiring regression: enqueuing WITHOUT
+			# reselecting must rebuild the queue row (the row used to
+			# miss pure enqueues until the player reselected the factory)
+			var panel: ProductionPanel = ctx.get_node_or_null(
+				"CanvasLayer/HUD/ProductionPanel")
+			var any_facility = null
+			for b2 in ctx.get_tree().get_nodes_in_group(Groups.FACILITIES):
+				if b2 is Building2D and b2.alive \
+						and b2.owner_team == MatchState.current.player_team:
+					any_facility = b2
+					break
+			if panel == null or any_facility == null:
+				fails.append("panel/facility missing for queue-wiring check")
+			else:
+				SelectionManager.current.clear_selection()
+				SelectionManager.current.toggle_select(any_facility, false)
+				await tree.process_frame
+				MatchState.current.set_money(MatchState.current.player_team, 500)
+				var before: int = panel._queue_row.get_child_count()
+				any_facility.queue_unit("robot:grunt", true)
+				await tree.process_frame
+				await tree.process_frame
+				var after: int = panel._queue_row.get_child_count()
+				if after <= before:
+					fails.append("queue row did not rebuild on enqueue (reselect bug)")
+				SelectionManager.current.clear_selection()
 			print("UI: %s" % (",".join(fails) if fails.size() > 0 else "all original-art kit present"))
 	if "--mp-test" in args:
 			# multiplayer milestone 1: LAN discovery over loopback, and the
