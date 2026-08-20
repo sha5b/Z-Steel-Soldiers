@@ -2004,8 +2004,8 @@ static func run(ctx: Node) -> void:
 		var test_proj := ProjectileDef.new()
 		test_proj.speed = 500.0
 		test_proj.impact = "impact"
-		Fx.shell(Vector2(600, 100), Vector2(700, 100), test_proj,
-			func(): hits[0] += 1)
+		ShellSolver.deliver(ctx, Vector2(600, 100), Vector2(700, 100),
+			test_proj, func(): hits[0] += 1)
 		var spawned: int = fx_root.get_child_count() - before
 		for i in 30:  # time_scale 4: the 0.2s shell flight lands in ~3
 			await Engine.get_main_loop().process_frame

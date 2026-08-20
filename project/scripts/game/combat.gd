@@ -51,7 +51,7 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 			# freed by the time the shell lands (lambdas capture by value)
 			var shooter_team: int = shooter.team
 			var tid := target.get_instance_id()
-			Fx.shell(muzzle, aim, def.projectile,
+			ShellSolver.deliver(shooter, muzzle, aim, def.projectile,
 				func():
 					if splash > 0.0:
 						Decals.crater(aim, splash > 36.0)
@@ -91,11 +91,7 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 				b.take_damage(_falloff(amount, d, radius))
 	for rock in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ROCKS):
 		if rock is Node2D and rock.global_position.distance_to(world_pos) <= radius:
-			var cell := Vector2i(((rock.global_position - Vector2(8, 8)) / 16.0).floor())
-			if NavWorld.current.nav_grid and NavWorld.current.nav_grid.is_point_solid(cell):
-				NavWorld.current.nav_grid.set_point_solid(cell, false)
-			if NavWorld.current.vehicle_grid and NavWorld.current.vehicle_grid.is_point_solid(cell):
-				NavWorld.current.vehicle_grid.set_point_solid(cell, false)
+			NavWorld.current.clear_rock(rock.global_position)
 			Fx.play("debris", rock.global_position)
 			rock.queue_free()
 

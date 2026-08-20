@@ -346,7 +346,7 @@ func _combat() -> void:
 		play_gesture("throw")
 		var g_impact: Vector2 = _target_point()  # the node is the fort's art TOP edge
 		Fx.gunfire("GRENLOBX")
-		Fx.shell(global_position, g_impact, GRENADE,
+		ShellSolver.deliver(self, global_position, g_impact, GRENADE,
 			func():
 				Combat.area_damage(g_impact, 30.0, 133, team, true))  # grenade_damage 40/240 r30, x0.08
 		return

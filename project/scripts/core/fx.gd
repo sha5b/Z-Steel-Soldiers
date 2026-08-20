@@ -33,7 +33,7 @@ func play(effect_name: String, world_pos: Vector2, extra_scale := 1.0) -> void:
 	player.position = world_pos
 	add_child(player)
 	if def.sound_set != "":
-		_play_set(def.sound_set)
+		play_set(def.sound_set)
 
 
 func explosion(world_pos: Vector2, big := false) -> void:
@@ -45,7 +45,7 @@ func explosion(world_pos: Vector2, big := false) -> void:
 func destroyed(world_pos: Vector2) -> void:
 	play("explosion_big", world_pos)
 	play("debris", world_pos + Vector2(0, -6))
-	_play_set("destroyed")
+	play_set("destroyed")
 	var timer := get_tree().create_timer(0.22)
 	timer.timeout.connect(func():
 		if is_instance_valid(self):
@@ -127,14 +127,15 @@ func _spawn_drifting(frames: SpriteFrames, world_pos: Vector2,
 	tween.chain().tween_callback(puff.queue_free)
 
 
-## Vehicle/cannon shell: damage lands when the shot arrives (dodgeable,
-## Z-style) via `on_hit` — bind target validation into the callback.
-func shell(from: Vector2, to: Vector2, proj: ProjectileDef, on_hit: Callable) -> void:
+## Vehicle/cannon shell visual — PURE PRESENTATION. Damage timing is
+## simulation and lives in ShellSolver.deliver (it used to ride in this
+## sprite's on_hit callback, so presentation owned gameplay timing).
+func shell(from: Vector2, to: Vector2, proj: ProjectileDef) -> void:
 	var shot := Projectile.new()
 	shot.speed = proj.speed
 	shot.impact_effect = proj.impact
 	shot.texture = proj.texture
-	shot.setup(from, to, on_hit)
+	shot.setup(from, to)
 	add_child(shot)
 
 
@@ -151,7 +152,7 @@ func cap_denied() -> void:
 
 
 func ui_click() -> void:
-	_play_set("click", -6.0)
+	play_set("click", -6.0)
 
 
 ## The commander's voice (original comp_* lines): announcement events
@@ -178,7 +179,7 @@ func announce(event: String) -> void:
 	_play_wav("comp_%s" % event, -2.0)
 
 
-func _play_set(set_name: String, volume_db := 0.0) -> void:
+func play_set(set_name: String, volume_db := 0.0) -> void:
 	var names: Array = SOUNDS.get(set_name, [])
 	if names.is_empty():
 		return

@@ -42,6 +42,16 @@ func walkable(cell: Vector2i, vehicle: bool) -> bool:
 	return grid != null and not grid.is_point_solid(cell)
 
 
+## A blast clears the rock at `rock_pos` — its cell opens on BOTH grids.
+## Navigation mutation stays behind this API (combat used to reach into
+## the grids directly).
+func clear_rock(rock_pos: Vector2) -> void:
+	var cell := Vector2i(((rock_pos - Vector2(8, 8)) / 16.0).floor())
+	for grid in [nav_grid, vehicle_grid]:
+		if grid != null and grid.is_point_solid(cell):
+			grid.set_point_solid(cell, false)
+
+
 ## True when a body of half-extent `pad` centred at `pos` touches only
 ## open cells of the kind's grid: center, edge midpoints and corners.
 ## Center-cell-only checks are how units ended up inside walls.

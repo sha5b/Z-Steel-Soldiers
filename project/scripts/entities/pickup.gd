@@ -43,5 +43,5 @@ func _collect(team: int) -> void:
 		_def = ContentDB.pickup_def(pickup_type)
 	if _def.upgrade_key != "":
 		MatchState.current.grant_upgrade(team, _def.upgrade_key)
-	Fx._play_set(_def.sound_set if _def.sound_set != "" else "pickup")
+	Fx.play_set(_def.sound_set if _def.sound_set != "" else "pickup")
 	queue_free()

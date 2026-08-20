@@ -1,10 +1,10 @@
 class_name Projectile
 extends Node2D
-## A travelling shot (shell, missile...). Flies from `from` to `to`, shows
-## an animated sprite when the named effect has frames on disk, otherwise
-## draws a short tracer line. On arrival it plays the impact effect and
-## calls `on_hit` — damage application is the caller's business.
-## Spawn through Fx.shell(...).
+## A travelling shot visual (shell, missile...). PURE PRESENTATION: flies
+## from `from` to `to`, shows an animated sprite when the named effect has
+## frames on disk, otherwise draws a short tracer line, and plays the
+## impact effect on arrival. Damage timing belongs to ShellSolver —
+## spawn the visual through Fx.shell(...).
 
 var speed := 260.0
 var impact_effect := "impact"
@@ -15,13 +15,11 @@ var _to := Vector2.ZERO
 var _dir := Vector2.RIGHT
 var _travelled := 0.0
 var _length := 0.0
-var _on_hit: Callable
 
 
-func setup(from: Vector2, to: Vector2, on_hit: Callable) -> void:
+func setup(from: Vector2, to: Vector2) -> void:
 	_from = from
 	_to = to
-	_on_hit = on_hit
 	_dir = (to - from).normalized()
 	_length = from.distance_to(to)
 	global_position = from
@@ -42,7 +40,6 @@ func _process(delta: float) -> void:
 	if _travelled >= _length:
 		global_position = _to
 		Fx.play(impact_effect, _to)
-		_on_hit.call_deferred()
 		queue_free()
 	else:
 		global_position = _from + _dir * _travelled

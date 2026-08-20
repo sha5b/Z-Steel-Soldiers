@@ -157,7 +157,7 @@ func _garrison_fire(delta: float) -> void:
 	Fx.gunfire("MOBIMIS")
 	var from := visual_center() + Vector2(0, -10)
 	var impact: Vector2 = best.global_position
-	Fx.shell(from, impact, GARRISON_MISSILE,
+	ShellSolver.deliver(self, from, impact, GARRISON_MISSILE,
 			func():
 				# ONE roll with falloff (combat.gd rule) — a direct hit
 				# plus splash double-charged the primary target
