@@ -74,11 +74,8 @@ func report_fort_destroyed(losing_team: int) -> void:
 	for u in UnitRegistry.current.all_units().duplicate():
 		if is_instance_valid(u) and u is Unit2D and u.team == losing_team and u.alive:
 			u.die()
-	for b in Engine.get_main_loop().root.get_tree() \
-			.get_nodes_in_group(Groups.ALL_BUILDINGS).duplicate():
-		if is_instance_valid(b) and b is Building2D \
-				and b.owner_team == losing_team and b.alive:
-			b.kill()
+	for b in BuildingRegistry.owned_by(losing_team):
+		b.kill()
 	for z in MatchState.current.zones.duplicate():
 		if z.owner_team == losing_team:
 			z.set_owner_team(0)
@@ -91,13 +88,7 @@ func report_fort_destroyed(losing_team: int) -> void:
 func check_no_units(team: int) -> void:
 	if over or team == 0 or team in _eliminated:
 		return
-	var has_fort := false
-	for b in Engine.get_main_loop().root.get_tree() \
-			.get_nodes_in_group(Groups.ALL_BUILDINGS):
-		if is_instance_valid(b) and b is Building2D and b.alive and b.is_fort \
-				and b.team == team:
-			has_fort = true
-			break
+	var has_fort := BuildingRegistry.has_alive_fort(team)
 	# carried units (garrisoned / riding an APC) exist too — a fort with
 	# defenders inside must not self-destruct out from under them
 	if has_fort and UnitRegistry.current.alive_of_team(team).is_empty():
@@ -117,10 +108,7 @@ func _settle_outcome(losing_team: int) -> void:
 		game_over.emit(winner)
 		return
 	# the player wins when every OTHER team has been eliminated
-	for b in Engine.get_main_loop().root.get_tree() \
-			.get_nodes_in_group(Groups.ALL_BUILDINGS):
-		if is_instance_valid(b) and b is Building2D and b.alive and b.is_fort \
-				and b.team != 0 and b.team != MatchState.current.player_team:
-			return  # another team still fights on
+	if BuildingRegistry.has_fort_outside([MatchState.current.player_team]):
+		return  # another team still fights on
 	over = true
 	game_over.emit(MatchState.current.player_team)

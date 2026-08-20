@@ -32,7 +32,41 @@ const DEATH_VARIANTS := ["die1", "die2", "die3", "die4", "die5", "melt"]
 ## One-shot contextual gestures (directional where the art is):
 ## point = order acknowledgement, pickup-* = crate collection,
 ## enter_apc = boarding hardware, throw/dodge available for combat flavor.
-const GESTURES := ["point", "pickup-up", "pickup-down", "enter_apc", "throw", "dodge"]
+## `escape_tank` is the crew bailing out of a hull (played by the
+## survivor a sniper or a dismount order puts back on the ground) and
+## the four `jump-*` leaps are what a dodge picks from by direction —
+## 176 frames of shipped art that no code path could reach.
+const GESTURES := ["point", "pickup-up", "pickup-down", "enter_apc", "throw", "dodge",
+	"escape_tank", "jump-up", "jump-down", "jump-left", "jump-right"]
+
+## The CREW of a manned hull, seen through the open hatch while the gun
+## fires (`tank_fire`: 8 directions, shared robot art — the pose is the
+## same whichever robot type drives). This is the other half of the
+## original's visible-crew mechanic: the hatch that opens here is the
+## same one a sniper shoots through (Vehicle2D.lid_open).
+static var _crew_cache := {}
+
+static func crew_frames(team: int) -> SpriteFrames:
+	var tn := team_name(team)
+	if _crew_cache.has(tn):
+		return _crew_cache[tn]
+	var frames := SpriteFrames.new()
+	for d in DIRECTIONS:
+		var name := "tank_fire_%d" % d
+		frames.add_animation(name)
+		frames.set_animation_speed(name, 8.0)
+		frames.set_animation_loop(name, true)
+		var frame := 0
+		while true:
+			var path := "%s/tank_fire_%s_r%03d_n%02d.png" % [ROBOTS_DIR, tn, d * 45, frame]
+			if not ResourceLoader.exists(path):
+				break
+			frames.add_frame(name, load(path))
+			frame += 1
+		if frame == 0:
+			frames.remove_animation(name)
+	_crew_cache[tn] = frames
+	return frames
 
 ## Convention folder for a unit type (robots_<t>/vehicles_<t>/cannons_<t>).
 ## Used where the ContentDB autoload isn't running (editor scene previews);
@@ -146,7 +180,11 @@ static func robot_frames(unit_type: String, team: int) -> SpriteFrames:
 
 
 ## Tries `<anim>_<team>_r<deg>_n<frame>` per direction (registered as
-## `<anim>_<d>`), falling back to plain numbered art under `<anim>_0`.
+## `<anim>_<d>`), then the SINGLE-FRAME directional shape
+## `<anim>_<team>_r<deg>` — `point` is stored that way, exactly like
+## `stand`, so the order-acknowledgement gesture resolved to nothing at
+## all and play_gesture("point") was a silent no-op. Falls back to plain
+## numbered art under `<anim>_0`.
 static func _add_directional_or_numbered(frames: SpriteFrames, anim: String, tn: String) -> void:
 	for d in DIRECTIONS:
 		var alias := "%s_%d" % [anim, d]
@@ -162,6 +200,11 @@ static func _add_directional_or_numbered(frames: SpriteFrames, anim: String, tn:
 				break
 			frames.add_frame(alias, load(path))
 			frame += 1
+		if frame == 0:
+			var single := "%s/%s_%s_r%03d.png" % [ROBOTS_DIR, anim, tn, d * 45]
+			if ResourceLoader.exists(single):
+				frames.add_frame(alias, load(single))
+				frame += 1
 		if frame == 0:
 			frames.remove_animation(alias)
 	_add_numbered(frames, anim, tn, "%s_0" % anim, 6.0, false)

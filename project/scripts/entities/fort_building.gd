@@ -132,7 +132,7 @@ func garrison_robot(robot: Unit2D) -> bool:
 	robot.set_selected(false)
 	robot.visible = false
 	robot.velocity = Vector2.ZERO
-	robot.move_target = Vector2.ZERO
+	robot.clear_move_target()
 	robot.waypoints = PackedVector2Array()
 	robot.remove_from_group(Groups.SELECTABLE)
 	robot.remove_from_group(Groups.UNITS)

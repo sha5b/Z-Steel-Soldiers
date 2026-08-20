@@ -134,8 +134,31 @@ func _dump_ground_nodes() -> void:
 		print("DUMP ", node.name, " pos=", wpos.round(), " alive=", node.get("alive"), " ", tex)
 
 
+## Birds fly ACROSS and leave, so the sky is topped up on a timer
+## instead of spawning three at match start and never again.
+const BIRD_RESPAWN_SECONDS := 14.0
+
+
+func _top_up_birds() -> void:
+	var flying := 0
+	for c in get_children():
+		if c is Bird:
+			flying += 1
+	if flying < Bird.COUNT_PER_MAP:
+		Bird.spawn(self, MatchState.current.planet)
+
+
 ## A few ambient critters wander every map (original hut animals).
 func _spawn_ambient_life() -> void:
+	if Bird.art_exists(MatchState.current.planet):
+		for i in Bird.COUNT_PER_MAP:
+			Bird.spawn(self, MatchState.current.planet)
+		var flock := Timer.new()
+		flock.name = "BirdTimer"
+		flock.wait_time = BIRD_RESPAWN_SECONDS
+		flock.autostart = true
+		flock.timeout.connect(_top_up_birds)
+		add_child(flock)
 	for i in Animal.COUNT_PER_MAP:
 		var species := Animal.random_species(MatchState.current.planet)
 		if species == "":
@@ -251,6 +274,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_X:
 				Commands.eject()  # get garrisoned/crewed units back out
 				return
+		# CONTROL GROUPS: Ctrl+digit assigns the selection to a slot,
+		# digit recalls it, and a second recall inside GROUP_JUMP_SECONDS
+		# jumps the camera to the squad. 1-9 then 0 = ten slots.
+		var slot := _group_slot(event.keycode)
+		if slot >= 0:
+			_control_group(slot, event.ctrl_pressed)
+			return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		var pause := get_node_or_null("CanvasLayer/PauseMenu")
 		if pause and not GameState.over:
@@ -273,6 +303,43 @@ func _unhandled_input(event: InputEvent) -> void:
 			SelectionManager.current.issue_order(SelectionManager.current.screen_to_world(event.position))
 	elif event is InputEventMouseMotion and SelectionManager.current.is_dragging:
 		SelectionManager.current.move_drag(event.position)
+
+
+## Digit keys to control-group slots: 1-9 -> 0-8, 0 -> 9. Anything else
+## is -1 (not a group key).
+static func _group_slot(keycode: int) -> int:
+	if keycode >= KEY_1 and keycode <= KEY_9:
+		return keycode - KEY_1
+	if keycode == KEY_0:
+		return 9
+	return -1
+
+
+## Second press of the same slot inside this window centres the camera.
+const GROUP_JUMP_SECONDS := 0.45
+var _last_group_slot := -1
+var _last_group_time := 0.0
+
+
+func _control_group(slot: int, assign: bool) -> void:
+	var sel := SelectionManager.current
+	if assign:
+		var stored := sel.assign_group(slot)
+		print("GROUP %d: assigned %d unit(s)" % [slot + 1, stored])
+		Fx.ui_click()
+		return
+	var recalled := sel.select_group(slot)
+	var now := float(Time.get_ticks_msec()) / 1000.0
+	var double_tap := _last_group_slot == slot \
+			and now - _last_group_time < GROUP_JUMP_SECONDS
+	_last_group_slot = slot
+	_last_group_time = now
+	if recalled > 0:
+		Fx.ui_click()
+		if double_tap:
+			var centre := sel.group_center(slot)
+			if centre != Vector2.INF:
+				camera.position = centre
 
 
 func _pick_select(screen_pos: Vector2) -> void:

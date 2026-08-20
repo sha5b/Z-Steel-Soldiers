@@ -14,9 +14,7 @@ const SOUNDS := {
 	"explosion": ["EXP1", "EXP2"],
 	"destroyed": ["OBJDEST3", "EXP2"],
 	"impact": ["RICOCH1"],
-	# GRENADE.wav was never converted from the GOG dump — the
-	# grenade-launcher shot stands in so pickups aren't silent
-	"pickup": ["GRENLOBX"],
+	"pickup": ["GRENADE"],
 	"click": ["CLICK1L", "CLICK5L", "CLICK6L"],
 }
 const GUNSHOT_VOLUME_DB := -10.0
@@ -55,6 +53,49 @@ func destroyed(world_pos: Vector2) -> void:
 
 func impact(world_pos: Vector2) -> void:
 	play("impact", world_pos)
+
+
+## Rubble in the PLANET's own colours. The pack ships a debris set per
+## planet and per rubble size (256 frames); every planet used to share
+## one generic grey `debris` burst. Falls back to that burst for a
+## planet whose sets are not converted.
+const ROCK_DEBRIS_SIZES := ["large0", "large1", "mid0", "mid1", "small"]
+var _debris_pools := {}  # "<prefix>_<planet>" -> Array[effect id]
+
+
+func rock_debris(world_pos: Vector2) -> void:
+	play(_debris_pick("rock_debris", ROCK_DEBRIS_SIZES), world_pos)
+
+
+## A blown bridge sheds its own rubble (one set per planet).
+func bridge_debris(world_pos: Vector2) -> void:
+	play(_debris_pick("bridge_debris", [""]), world_pos)
+
+
+func _debris_pick(prefix: String, sizes: Array) -> String:
+	var planet: String = MatchState.current.planet if MatchState.current else "desert"
+	var key := "%s_%s" % [prefix, planet]
+	if not _debris_pools.has(key):
+		var pool: Array = []
+		for size in sizes:
+			var id := key if size == "" else "%s_%s" % [key, size]
+			if DirAccess.dir_exists_absolute("res://assets/z/effects/%s" % id):
+				pool.append(id)
+		_debris_pools[key] = pool
+	var pool: Array = _debris_pools[key]
+	return String(pool.pick_random()) if not pool.is_empty() else "debris"
+
+
+## The UNLABELLED half of the robot voice bank (bark_23..75 = the pack's
+## ROB23-75; ROB01-22 are the selected_*/acknowledge_* lines, matched by
+## content hash). Nothing in the pack documents what these 53 lines say,
+## so they play as ambient chatter and are NEVER used as a semantic cue.
+const CHATTER_FIRST := 23
+const CHATTER_LAST := 75
+
+
+func chatter() -> void:
+	_play_wav("bark_%02d" % (randi_range(CHATTER_FIRST, CHATTER_LAST)), -9.0)
 
 
 ## Robot small-arms fire: instant hit, visual tracer only.
@@ -173,6 +214,12 @@ const MAX_VOICES := 12  # simultaneous one-shot players (audio slot cap)
 var _announce_gates := {}
 
 
+## Fires for every announcement that passes the throttle — the HUD
+## plaque (AnnouncePlaque) shows the original's printed message for the
+## events that ship one.
+signal announced(event: String)
+
+
 func announce(event: String) -> void:
 	if event == "":
 		return
@@ -180,6 +227,7 @@ func announce(event: String) -> void:
 	if until > Time.get_ticks_msec():
 		return
 	_announce_gates[event] = Time.get_ticks_msec() + int(ANNOUNCE_THROTTLE.get(event, 10000))
+	announced.emit(event)
 	if event == "youre_losing":
 		_play_wav("comp_youre_losing_%02d" % (randi() % 10), -2.0)
 		return

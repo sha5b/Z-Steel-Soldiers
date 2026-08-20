@@ -25,20 +25,6 @@ signal unit_died(unit: Unit2D)
 
 var _all: Array[Unit2D] = []
 var _next_net_id := 1  # per-match, spawn order — peers agree by map data
-var _next_building_net_id := 1  # buildings ready in MAP order on every peer
-
-
-## Stable per-match id for a BUILDING. Buildings are not part of the unit
-## roster, but multiplayer intents (queue, rally, crane/repair targets)
-## address them by net id exactly like units do — and Building2D.net_id
-## was declared and never assigned, so every facility intent travelled
-## as id 0 and MatchRelay resolved it to whichever building happened to
-## be first in the group. Buildings ready in map order on every peer,
-## so a plain counter agrees across the wire.
-func next_building_net_id() -> int:
-	var id := _next_building_net_id
-	_next_building_net_id += 1
-	return id
 
 
 ## Called from Unit2D._ready — every spawn path is covered.

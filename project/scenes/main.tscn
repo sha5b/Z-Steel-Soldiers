@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/match.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/game/rts_camera2d.gd" id="2"]
@@ -12,6 +12,9 @@
 [ext_resource type="PackedScene" path="res://scenes/pause_menu.tscn" id="8"]
 [ext_resource type="Script" path="res://scripts/core/nav_world.gd" id="10"]
 [ext_resource type="Script" path="res://scripts/game/unit_registry.gd" id="11"]
+[ext_resource type="Script" path="res://scripts/game/building_registry.gd" id="14"]
+[ext_resource type="Script" path="res://scripts/ui/announce_plaque.gd" id="15"]
+[ext_resource type="Script" path="res://scripts/ui/selected_object.gd" id="16"]
 [ext_resource type="Script" path="res://scripts/core/selection_manager.gd" id="12"]
 [ext_resource type="Script" path="res://scripts/core/match_state.gd" id="13"]
 
@@ -24,6 +27,9 @@ script = ExtResource("10")
 
 [node name="UnitRegistry" type="Node" parent="."]
 script = ExtResource("11")
+
+[node name="BuildingRegistry" type="Node" parent="."]
+script = ExtResource("14")
 
 [node name="SelectionManager" type="Node" parent="."]
 script = ExtResource("12")
@@ -62,6 +68,16 @@ offset_right = 220.0
 offset_bottom = 38.0
 grow_horizontal = 2
 
+[node name="AnnouncePlaque" type="Control" parent="CanvasLayer/HUD"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_top = 44.0
+offset_bottom = 74.0
+grow_horizontal = 2
+mouse_filter = 2
+script = ExtResource("15")
+
 [node name="MiniMap" type="Control" parent="CanvasLayer/HUD"]
 anchors_preset = 2
 anchor_top = 1.0
@@ -84,6 +100,21 @@ offset_bottom = -8.0
 grow_vertical = 0
 theme_override_constants/separation = 4
 script = ExtResource("9")
+
+[node name="SelectedObject" type="Control" parent="CanvasLayer/HUD"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -102.0
+offset_top = -142.0
+offset_right = -8.0
+offset_bottom = -50.0
+grow_horizontal = 0
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("16")
 
 [node name="SelectionBar" type="HBoxContainer" parent="CanvasLayer/HUD"]
 script = ExtResource("7")

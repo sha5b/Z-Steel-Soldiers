@@ -22,6 +22,29 @@ var type: Type = Type.MOVE
 var position := Vector2.ZERO  # MOVE / MOVE_ATTACK destination
 var target: Node2D = null     # everything else
 var run := false
+## Order-confirmation art shown at the destination (PathIndicator).
+## "" = derive from the type; Commands overrides it where the CLICK says
+## more than the type does (walking onto a crate is a plain move).
+var confirm := ""
+
+
+## Which neutral cursor set confirms this order. The original ships one
+## per order kind; a move is `placed`.
+func confirm_marker() -> String:
+	if confirm != "":
+		return confirm
+	match type:
+		Type.ATTACK:
+			return "attacked"
+		Type.MAN_VEHICLE:
+			return "cannoned" if target != null and target.get("kind") == "cannon" \
+					else "entered"
+		Type.BOARD_APC, Type.GARRISON:
+			return "entered"
+		Type.REPAIR_BUILDING, Type.CRANE_REPAIR:
+			return "repaired"
+		_:
+			return "placed"
 
 
 static func move(world_pos: Vector2, sprint := false) -> Order:

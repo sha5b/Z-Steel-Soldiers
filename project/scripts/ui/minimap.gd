@@ -115,10 +115,9 @@ func _draw() -> void:
 
 
 func _player_has_radar() -> bool:
-	# "all_buildings": radar sits in none of the narrower groups
-	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
-		if b is Building2D and b.alive and b.building_id == 2 \
-				and b.owner_team == MatchState.current.player_team:
+	# EVERY building: radar sits in none of the narrower groups
+	for b in BuildingRegistry.owned_by(MatchState.current.player_team):
+		if b.building_id == 2:
 			return true
 	return false
 

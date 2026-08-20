@@ -81,10 +81,13 @@ static func _build_terrain(parent: Node, data: Dictionary, planet: String, w: in
 	tileset.add_source(source)
 	tilemap.tile_set = tileset
 	parent.add_child(tilemap)
+	var animator := _terrain_animator(parent, tilemap, planet)
 	for y in h:
 		for x in w:
 			var index: int = data.tiles[y * w + x]  # row-major (GetTile: y=index/width)
 			tilemap.set_cell(Vector2i(x, y), 0, Vector2i(index % 20, index / 20))
+			if animator != null:
+				animator.register(Vector2i(x, y), index)
 
 
 static func _build_nav_grid(data: Dictionary, w: int, h: int) -> AStarGrid2D:
@@ -337,11 +340,14 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 	var tiles := PackedInt32Array()
 	tiles.resize(w * h)
 	var painted := {}
+	var animator := _terrain_animator(parent, terrain, planet)
 	for cell in used:
 		var atlas: Vector2i = terrain.get_cell_atlas_coords(cell)
 		var index: int = atlas.y * 20 + atlas.x
 		tiles[(cell.y - min_c.y) * w + (cell.x - min_c.x)] = index
 		painted[cell] = index
+		if animator != null:
+			animator.register(cell, index)
 
 	# nav grids from tileinfo: terrain decides passability and water
 	var info: Dictionary = _tileinfo(planet)
@@ -441,6 +447,22 @@ static func _clear_bridge(bridge: Building2D, def: BuildingDef,
 			if vgrid.region.has_point(cell):
 				vgrid.set_point_solid(cell, false)
 			bridge.bridge_cells.append(cell)
+
+
+## Animated terrain for a planet that has any: water/lava/grate tiles
+## step along the effect rings in the tileinfo table (TerrainAnimator).
+## Returns null for a planet with no animated tiles (jungle) so the
+## caller's per-cell registration costs nothing.
+static func _terrain_animator(parent: Node, layer: TileMapLayer,
+		planet: String) -> TerrainAnimator:
+	var anim := TerrainAnimator.new()
+	anim.name = "TerrainAnimator"
+	anim.setup(layer, _tileinfo(planet))
+	if not anim.has_effects():
+		anim.free()
+		return null
+	parent.add_child(anim)
+	return anim
 
 
 static func _tileinfo(planet: String) -> Dictionary:

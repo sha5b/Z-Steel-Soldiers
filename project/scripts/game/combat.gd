@@ -97,21 +97,17 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 	for u in UnitRegistry.current.in_radius(world_pos, radius):
 		if u.team != shooter_team:
 			u.take_damage(_falloff(amount, u.global_position.distance_to(world_pos), radius))
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
-		if b is Node2D and b is Building2D and b.alive \
-				and b.team != shooter_team:
-			# distance to the RECT, not the centre — a shell bursting on
-			# a big factory's wall must not measure to the building middle
-			# (<= like the unit/rock probes)
-			var fp: Rect2 = b.world_footprint()
-			var cp := world_pos.clamp(fp.position, fp.position + fp.size)
-			var d: float = cp.distance_to(world_pos)
-			if d <= radius:
-				b.take_damage(_falloff(amount, d, radius), cp)
+	# distance measures to the footprint RECT, not the centre — a shell
+	# bursting on a big factory's wall must not measure to the building
+	# middle (BuildingRegistry.blast_targets owns that clamp)
+	for hit in BuildingRegistry.blast_targets(world_pos, radius, shooter_team):
+		var b: Building2D = hit.building
+		var cp: Vector2 = hit.at
+		b.take_damage(_falloff(amount, cp.distance_to(world_pos), radius), cp)
 	for rock in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ROCKS):
 		if rock is Node2D and rock.global_position.distance_to(world_pos) <= radius:
 			NavWorld.current.clear_rock(rock.global_position)
-			Fx.play("debris", rock.global_position)
+			Fx.rock_debris(rock.global_position)
 			rock.queue_free()
 
 

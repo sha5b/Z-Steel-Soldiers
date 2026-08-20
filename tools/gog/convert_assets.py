@@ -118,9 +118,6 @@ def main() -> None:
     for old in PROJ.glob("sounds/explosion_0*.wav"):
         old.unlink()
         removed += 1
-    if (PROJ / "sounds" / "GRENADE.wav").exists():
-        (PROJ / "sounds" / "GRENADE.wav").unlink()  # replaced by GRENADE.RAW
-        removed += 1
     print(f"superseded zod sfx removed: {removed}")
 
 

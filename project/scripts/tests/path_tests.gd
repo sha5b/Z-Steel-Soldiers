@@ -66,7 +66,7 @@ static func walkers_arrive(ctx: Node, rig: TestRig) -> void:
 			steps = i
 			w._process(0.05)
 			w._physics_process(0.05)
-			if w.move_target == Vector2.ZERO:
+			if not w.has_move_target():
 				break
 		var left: float = w.global_position.distance_to(to)
 		if left > 24.0:
@@ -138,15 +138,15 @@ static func walk_a_pair(ctx: Node, rig: TestRig) -> void:
 			if grid.is_point_solid(cell):
 				crossed_solid += 1
 			total += 1
-		if walker.move_target == Vector2.ZERO:
+		if not walker.has_move_target():
 			break
 	var dist: float = walker.position.distance_to(goal)
 	rig.check(crossed_solid <= KNOWN_CROSSING_BASELINE,
 		"walker crossed solid cells %d/%d samples (baseline %d)" % [
 			crossed_solid, total, KNOWN_CROSSING_BASELINE])
-	rig.check(walker.move_target == Vector2.ZERO,
+	rig.check(not walker.has_move_target(),
 		"walker never arrived (dist=%.1f)" % dist)
 	walker.queue_free()
 	rig.finish("solid_cells=%d waypoints=%d crossed_solid=%d/%d arrived=%s dist=%.1f" % [
 		solid, walker.waypoints.size(), crossed_solid, total,
-		walker.move_target == Vector2.ZERO, dist])
+		not walker.has_move_target(), dist])

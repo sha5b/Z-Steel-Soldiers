@@ -17,9 +17,23 @@ extends Resource
 @export var solid := true  # blocks movement
 ## Solid cells in ART tiles, relative to the art's top-left tile (art
 ## renders 1:1, one art tile = one 16px world tile). (0,0,0,0) = the
-## whole art rect. Values transcribed from the original engine's
-## SetMapImpassables (bfort.cpp/bradar.cpp) — forts leave their side
-## platforms and gate walkable, the radar its entrance cell.
+## whole art rect — which is WRONG for anything whose art carries ground,
+## shadow or an entrance, so every building type sets this.
+##
+## The fort and radar values are transcribed from the original engine's
+## SetMapImpassables (bfort.cpp/bradar.cpp). The repair shop and the two
+## factories are DERIVED FROM THE ART instead — those tables were never
+## transcribed and the original source for them is not in the asset
+## pack, so their whole art rect used to be solid:
+##   - the factories' art is 80x80 with its RIGHTMOST 16px column a cast
+##     shadow (`base_shadow.png` is that same 16x80 strip) — a shadow is
+##     not a wall, so the solid rect is 4 tiles wide, not 5
+##   - the dark mouth at the foot of each factory is the exit, with the
+##     map's own dirt painted into it: robots leave through one cell,
+##     vehicles up a two-cell driveway
+##   - the repair shop's bay mouth is open so a damaged vehicle can park
+##     ON the pad instead of pressing against its wall
+## All three are dead-end pockets, so nothing paths THROUGH a building.
 @export var solid_tiles := Rect2i()
 ## Cells INSIDE solid_tiles left walkable (art-tile coords).
 @export var open_tiles: PackedVector2Array = PackedVector2Array()

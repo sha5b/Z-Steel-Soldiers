@@ -43,7 +43,14 @@ var voice_cooldown := 0.0
 var _last_dir := 0
 var _fire_timer := 0.0
 var _target: Node2D = null
-var move_target := Vector2.ZERO
+## Where this unit is walking. Vector2.INF means NO ORDER — the same
+## explicit sentinel defend_post and rally_point use. It used to be
+## Vector2.ZERO, which is a REAL position: a unit sent to the world
+## origin was indistinguishable from a unit with nothing to do, and
+## every "is it moving?" test in the codebase was that comparison.
+## Read it through has_move_target(); write it through _begin_move /
+## clear_move_target().
+var move_target := Vector2.INF
 var waypoints := PackedVector2Array()
 var enter_target: Node2D = null
 var _idle_time := 0.0
@@ -147,8 +154,19 @@ var _repaths := 0
 ## the fort gate): when it strives but makes no ground, re-route from
 ## where it actually stands; after three re-routes, give the order up —
 ## a cancelled move beats a permanently jammed army.
+## Does this unit have a destination? (See move_target — never compare
+## it to a position yourself.)
+func has_move_target() -> bool:
+	return move_target != Vector2.INF
+
+
+## Drop the destination: arrival, cancellation, boarding, death.
+func clear_move_target() -> void:
+	move_target = Vector2.INF
+
+
 func _progress_watchdog(delta: float) -> void:
-	if velocity.length_squared() < 4.0 or move_target == Vector2.ZERO:
+	if velocity.length_squared() < 4.0 or not has_move_target():
 		_stuck_timer = 0.0
 		return
 	if global_position.distance_to(_last_pos) < 0.5:
@@ -172,7 +190,7 @@ func _progress_watchdog(delta: float) -> void:
 ## defend posts and clearing orders for hardware). Per-type differences
 ## live in the hook methods below.
 func _steer(delta: float) -> void:
-	if move_target != Vector2.ZERO:
+	if has_move_target():
 		var next: Vector2 = waypoints[0] if not waypoints.is_empty() else move_target
 		var offset := next - global_position
 		if offset.length() <= (6.0 if not waypoints.is_empty() else 8.0):
@@ -182,7 +200,7 @@ func _steer(delta: float) -> void:
 				_arrive()
 		else:
 			velocity = offset.normalized() * speed * _run_multiplier(delta)
-	if move_target == Vector2.ZERO:
+	if not has_move_target():
 		_run_flag = false
 	run_stamina = minf(1.0, run_stamina + delta * 0.08)
 	if velocity.length_squared() > 1.0:
@@ -192,7 +210,7 @@ func _steer(delta: float) -> void:
 		# the final leg has no waypoint — offset_to_next_waypoint is INF
 		# there, so capture it separately
 		var final_before: float = global_position.distance_to(move_target) \
-				if move_target != Vector2.ZERO else INF
+				if has_move_target() else INF
 		# REAL collision (modern engine, no grid-only limits): the slide
 		# follows the A* route and pushes back off building walls — the
 		# corner-cutting that steered units through solid cells is gone
@@ -214,7 +232,7 @@ func _steer(delta: float) -> void:
 			if not waypoints.is_empty():
 				if global_position.distance_to(waypoints[0]) > dist_before:
 					waypoints.remove_at(0)
-			elif move_target != Vector2.ZERO \
+			elif has_move_target() \
 					and global_position.distance_to(move_target) > final_before:
 				# same for the FINAL leg: without this a fast unit
 				# ping-pongs around the 4px arrival radius forever
@@ -267,7 +285,7 @@ func _on_arrived_extras() -> void:
 ## land IDLE; an order with a target (ENTERING) keeps waiting on
 ## _try_enter to act.
 func _arrive() -> void:
-	move_target = Vector2.ZERO
+	clear_move_target()
 	velocity = Vector2.ZERO
 	# an ATTACK order outlives arrival: _chase re-routes while the target
 	# lives, and only its death ends the order
@@ -333,6 +351,10 @@ func _walkable(p: Vector2) -> bool:
 	return not NavWorld.current.solid_at(p, kind)
 
 
+## How often an idle robot says something (per idle-flavour trigger).
+const CHATTER_CHANCE := 0.12
+
+
 func _idle(delta: float) -> void:
 	if kind != "robot":
 		return
@@ -346,6 +368,11 @@ func _idle(delta: float) -> void:
 	if _idle_time > randf_range(5.0, 12.0):
 		_flavoring = true
 		_idle_time = 0.0
+		# the robots BANTER when they have nothing to do (the pack's
+		# unlabelled voice bank — Fx.chatter, player team only so the
+		# map's far corners stay quiet)
+		if team == MatchState.current.player_team and randf() < CHATTER_CHANCE:
+			Fx.chatter()
 		var flavor: String = AnimLibrary.IDLE_FLAVORS.pick_random()
 		var anim := "%s_%d" % [flavor, _last_dir]
 		if not sprite.sprite_frames or not sprite.sprite_frames.has_animation(anim):
@@ -375,7 +402,7 @@ func play_gesture(gesture: String) -> void:
 
 
 func _combat() -> void:
-	if attack_move and move_target != Vector2.ZERO:
+	if attack_move and has_move_target():
 		# AGRO order: halt and engage anything in range, resume after
 		var probe := _find_target()
 		if probe != null:
@@ -440,19 +467,8 @@ func _find_target_within(eff_range: float) -> Node2D:
 		global_position, eff_range, team)
 	var best_d: float = global_position.distance_to(best.global_position) \
 			if best != null else eff_range
-	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
-		# dead buildings stay registered (elimination cascade) and test
-		# maps remove nodes without freeing — 'is' on a freed instance
-		# is a hard crash, so filter validity first
-		if not is_instance_valid(b) or not (b is Building2D):
-			continue
-		if b.alive and not b.is_bridge() \
-				and b.team != 0 and b.team != team:
-			var d: float = global_position.distance_squared_to(b.visual_center())
-			if d < best_d * best_d:
-				best_d = sqrt(d)
-				best = b
-	return best
+	var structure := BuildingRegistry.nearest_enemy(global_position, best_d, team)
+	return structure if structure != null else best
 
 
 ## Robot weapons: per-shot HIT CHANCE (original zsettings), SNIPING —
@@ -496,13 +512,30 @@ func take_damage(amount: int) -> void:
 		# a solid hit scrambles the robot aside (original: DodgeMissile —
 		# ratio-based: raw damage thresholds died with the 10000-scale
 		# rebalance, grunt hits are 1 and laser hits are 14)
-		play_gesture("dodge")
 		# validated scramble: the old center-cell check teleported robots
 		# INTO building walls, where move_and_slide pinned them for good
 		var spot := NavWorld.current.find_free_spot(global_position
 			+ Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0)), kind)
+		# the LEAP matches where it lands: the original ships four
+		# directional jump-* animations for exactly this (they were in no
+		# animation table at all, so a dodge always played the plain
+		# `dodge` frames)
+		play_gesture(_leap_gesture(spot - global_position if spot != Vector2.INF
+			else Vector2.ZERO))
 		if spot != Vector2.INF:
 			global_position = spot
+
+
+## Which dodge animation a scramble plays: the leap the art shows in
+## that direction, or the plain `dodge` frames when it goes nowhere.
+## Screen space, so up/down beat left/right only when the move is mostly
+## vertical.
+static func _leap_gesture(delta_pos: Vector2) -> String:
+	if delta_pos.length() < 2.0:
+		return "dodge"
+	if absf(delta_pos.y) > absf(delta_pos.x):
+		return "jump-down" if delta_pos.y > 0.0 else "jump-up"
+	return "jump-right" if delta_pos.x > 0.0 else "jump-left"
 
 
 func die() -> void:
@@ -623,7 +656,7 @@ func _order_anchor() -> Vector2:
 func _begin_move(world_pos: Vector2) -> void:
 	waypoints = NavWorld.current.request_path(global_position, world_pos, kind)
 	if waypoints.is_empty():
-		move_target = Vector2.ZERO  # unreachable (e.g. water for vehicles)
+		clear_move_target()  # unreachable (e.g. water for vehicles)
 		state = State.IDLE
 	else:
 		# THE DESTINATION IS THE END OF THE ROUTE, not the requested point.
@@ -644,7 +677,8 @@ func _begin_move(world_pos: Vector2) -> void:
 	if team == MatchState.current.player_team:
 		play_gesture("point")
 		_play_voice("acknowledge")
-		PathIndicator.show_path(get_parent(), waypoints)
+		PathIndicator.show_path(get_parent(), waypoints,
+			order.confirm_marker() if order != null else "placed")
 
 
 ## Order finished or superseded — one clear point instead of scattered
@@ -655,7 +689,7 @@ func _order_done() -> void:
 	enter_target = null
 	attack_target = null
 	_chase_anchor = Vector2.INF
-	move_target = Vector2.ZERO
+	clear_move_target()
 	order = null
 	state = State.IDLE
 	attack_move = false
@@ -674,7 +708,7 @@ func _try_enter() -> void:
 	if enter_target != null and (not is_instance_valid(enter_target) \
 			or not enter_target.alive):
 		enter_target = null
-		move_target = Vector2.ZERO
+		clear_move_target()
 		waypoints = PackedVector2Array()
 		velocity = Vector2.ZERO
 		_order_done()
@@ -684,7 +718,7 @@ func _try_enter() -> void:
 	if enter_target is Building2D:
 		# _steer clears move_target on arrival while enter_target keeps
 		# the ENTERING state alive — that is the arrival signal here
-		if move_target == Vector2.ZERO:
+		if not has_move_target():
 			_building_order(enter_target)
 		return
 	# Hardware standing on a SOLID cell can never be reached at contact
@@ -698,7 +732,7 @@ func _try_enter() -> void:
 	# for the rest of the match.
 	var gap := global_position.distance_to(enter_target.global_position)
 	if gap > CONTACT_REACH:
-		if move_target != Vector2.ZERO:
+		if has_move_target():
 			return  # still walking
 		if gap > STRANDED_REACH:
 			_order_done()  # genuinely out of reach: be retaskable again
@@ -708,7 +742,7 @@ func _try_enter() -> void:
 	if v is Vehicle2D and v.alive:
 		if not v.manned and _entering == null:
 			SelectionManager.current.drop_from_selection(self)
-			move_target = Vector2.ZERO
+			clear_move_target()
 			velocity = Vector2.ZERO
 			_entering = v
 			_enter_timer = 0.0
@@ -738,13 +772,13 @@ func _chase(_delta: float) -> void:
 	var reach := range_px * sprite_scale
 	if global_position.distance_to(aim) <= reach:
 		# in range: stop and shoot. _combat locks onto attack_target.
-		move_target = Vector2.ZERO
+		clear_move_target()
 		waypoints = PackedVector2Array()
 		velocity = Vector2.ZERO
 		_chase_anchor = aim
 		return
 	if _chase_anchor == Vector2.INF or aim.distance_to(_chase_anchor) > CHASE_REPATH \
-			or move_target == Vector2.ZERO:
+			or not has_move_target():
 		_chase_repath()
 
 
@@ -756,7 +790,7 @@ func _chase_repath() -> void:
 	_chase_anchor = aim
 	var was := state
 	_begin_move(aim)
-	if move_target == Vector2.ZERO:
+	if not has_move_target():
 		# unreachable (water, walled in): keep the order but do not spin
 		state = was
 	else:
@@ -787,7 +821,7 @@ func _smart_idle(delta: float) -> void:
 	# zone the unit could not actually take (a live fort holds its
 	# ground), which reads as a unit standing still doing nothing while
 	# refusing new commands.
-	if move_target != Vector2.ZERO or order != null or state != State.IDLE \
+	if has_move_target() or order != null or state != State.IDLE \
 			or _entering != null or enter_target != null or attack_target != null:
 		_idle_seconds = 0.0
 		return

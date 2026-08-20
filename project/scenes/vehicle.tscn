@@ -19,6 +19,10 @@ texture_filter = 1
 [node name="Turret" type="AnimatedSprite2D" parent="."]
 texture_filter = 1
 
+[node name="Crew" type="AnimatedSprite2D" parent="."]
+visible = false
+texture_filter = 1
+
 [node name="Doors" type="AnimatedSprite2D" parent="."]
 visible = false
 texture_filter = 1

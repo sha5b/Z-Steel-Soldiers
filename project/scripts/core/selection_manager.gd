@@ -41,6 +41,13 @@ func set_stance(s: OrderStance) -> void:
 	stance_changed.emit()
 
 var selected: Array[Node] = []
+
+## CONTROL GROUPS (Ctrl+digit assigns, digit recalls; 1-9 then 0 = ten
+## slots). Groups hold unit references, so a member that dies or is
+## freed simply drops out on the next recall — no bookkeeping on death.
+const GROUP_COUNT := 10
+var _groups := {}  # slot 0..9 -> Array[Node]
+
 var drag_start := Vector2.ZERO
 var drag_current := Vector2.ZERO
 var is_dragging := false
@@ -104,6 +111,52 @@ func select_area(world_rect: Rect2) -> void:
 			selected.append(unit)
 	_cleanup()
 	selection_changed.emit(selected)
+
+
+## Store the live selection in a slot; returns how many units went in.
+## Assigning an empty selection CLEARS the slot (same as every RTS).
+func assign_group(slot: int) -> int:
+	if slot < 0 or slot >= GROUP_COUNT:
+		return 0
+	_cleanup()
+	_groups[slot] = selected.duplicate()
+	return selected.size()
+
+
+## Recall a slot as the whole selection. Dead and freed members are
+## dropped here (and written back), so a wiped group recalls as nothing
+## instead of resurrecting stale references.
+func select_group(slot: int) -> int:
+	var members := group_members(slot)
+	clear_selection()
+	for u in members:
+		selected.append(u)
+	_cleanup()
+	selection_changed.emit(selected)
+	return selected.size()
+
+
+## The slot's surviving members (also prunes the stored list).
+func group_members(slot: int) -> Array[Node]:
+	var out: Array[Node] = []
+	for u in _groups.get(slot, []):
+		if is_instance_valid(u) and u is Unit2D and u.alive and not u.carried:
+			out.append(u)
+	if _groups.has(slot):
+		_groups[slot] = out
+	return out
+
+
+## Where a group stands, for the camera jump on a second recall press.
+## Vector2.INF when the slot is empty.
+func group_center(slot: int) -> Vector2:
+	var members := group_members(slot)
+	if members.is_empty():
+		return Vector2.INF
+	var sum := Vector2.ZERO
+	for u in members:
+		sum += u.global_position
+	return sum / float(members.size())
 
 
 func issue_order(world_position: Vector2) -> void:

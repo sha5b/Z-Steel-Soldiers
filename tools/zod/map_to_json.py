@@ -38,12 +38,21 @@ TILEINFO_FIELDS = struct.Struct("<6BHBhB")
 
 
 def load_tileinfo(tileinfo_path: Path) -> list[dict]:
+    """The whole record per tile. `effect`/`next_tile` are what makes
+    terrain animate (see tools/zod/tileinfo_to_json.py and
+    TerrainAnimator); the last three fields are an UNVERIFIED layout
+    guess and nothing reads them yet."""
     raw = tileinfo_path.read_bytes()
     out = []
     for off in range(0, len(raw), TILEINFO_FIELDS.size):
-        w, p, u, r, e, we, nxt, _tracks, _crater, _starter = \
+        w, p, u, r, e, we, nxt, tracks, crater, starter = \
             TILEINFO_FIELDS.unpack_from(raw, off)
-        out.append({"water": bool(w), "passable": bool(p), "road": bool(r)})
+        out.append({
+            "water": bool(w), "passable": bool(p), "usable": bool(u),
+            "road": bool(r), "effect": bool(e), "water_effect": bool(we),
+            "next_tile": nxt if e else 0, "tank_tracks": bool(tracks),
+            "crater_type": crater, "starter": bool(starter),
+        })
     return out
 
 

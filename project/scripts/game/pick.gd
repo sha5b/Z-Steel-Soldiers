@@ -22,10 +22,7 @@ static func at(world: Vector2) -> Node2D:
 	for p in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.PICKUPS):
 		if p is Node2D and (world - p.global_position).length() < 8.0:
 			return p
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
-		if b is Building2D and b.alive and b.art_world_rect().has_point(world):
-			return b
-	return null
+	return BuildingRegistry.at_point(world)
 
 
 ## Selection priority: the player's producers and fort FIRST (selecting

@@ -62,7 +62,7 @@ static func run(ctx: Node, rig: TestRig) -> void:
 	var walker: Unit2D = Spawner.spawn(ctx, "robot", "grunt", team, start) as Unit2D
 	await ctx.get_tree().physics_frame
 	walker.issue_order(Order.for_target(fort))
-	rig.check(not walker.waypoints.is_empty() or walker.move_target != Vector2.ZERO,
+	rig.check(not walker.waypoints.is_empty() or walker.has_move_target(),
 		"fort order produced no route at all from %s" % start)
 	var walk_frames := 0
 	for i in SETTLE_FRAMES:

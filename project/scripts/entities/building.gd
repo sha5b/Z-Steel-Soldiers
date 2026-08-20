@@ -128,8 +128,12 @@ func _ready() -> void:
 	# every building registers here: the elimination cascade and the
 	# no-units rule need forts AND factories/radar/repair alike
 	add_to_group(Groups.ALL_BUILDINGS)
-	if net_id == 0 and UnitRegistry.current:
-		net_id = UnitRegistry.current.next_building_net_id()
+	# the typed roster every building query walks (the group stays for
+	# scene-level tooling and for the no-registry fallback)
+	if BuildingRegistry.current:
+		BuildingRegistry.current.track(self)
+		if net_id == 0:
+			net_id = BuildingRegistry.current.next_net_id()
 	if is_fort:
 		add_to_group(Groups.BUILDINGS)
 	# producers register for the facility quick bar
@@ -147,6 +151,8 @@ func _exit_tree() -> void:
 	# match change instead of just skipping the bookkeeping
 	if MatchState.current:
 		MatchState.current.unregister_facility(self)
+	if BuildingRegistry.current:
+		BuildingRegistry.current.forget(self)
 
 
 func _build_sprite() -> void:
@@ -202,6 +208,7 @@ func _build_sprite() -> void:
 			set_flag_team(team)
 
 	_build_overlays()
+	_build_level_plate(ts)
 
 	if is_fort:
 		# the ORIGINAL team-coloured bar art, cropped right-to-left as
@@ -224,6 +231,44 @@ func _build_sprite() -> void:
 		_hp_bar.position = Vector2(-8.0, -30.0 if is_fort else -ts.y * 0.5 - 10)
 		_hp_bar.visible = false  # shown while selected or damaged
 		add_child(_hp_bar)
+
+
+## The building's LEVEL, readable. Levels 0-5 are fully implemented (they
+## gate the build roster and the build speed) and the number was shown
+## NOWHERE — the original stamps it on the structure with the 6x7 digit
+## glyphs the pack ships as `level_1..6`. Producers only: a bridge or a
+## radar has no roster to unlock.
+const LEVEL_DIGITS := "res://assets/z/ui/hud/level_%d.bmp"
+var _level_plate: Sprite2D = null
+
+
+func _build_level_plate(art_size: Vector2) -> void:
+	var bdef := ContentDB.building_def(building_id)
+	if bdef == null or not (bdef.produces or is_fort) or is_bridge():
+		return
+	var path := LEVEL_DIGITS % (clampi(level, 0, 5) + 1)
+	if not ResourceLoader.exists(path):
+		return
+	_level_plate = Sprite2D.new()
+	_level_plate.name = "LevelPlate"
+	_level_plate.texture = load(path)
+	_level_plate.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_level_plate.centered = false
+	# bottom-left of the art, clear of the ground split line and drawn
+	# over the structure (the sprite sits at the art's top-left - 8,-8)
+	_level_plate.position = Vector2(-6.0, art_size.y - 8.0 - 9.0)
+	_level_plate.z_index = 1
+	add_child(_level_plate)
+
+
+## Level changes with an upgrade — the plate follows.
+func set_level(new_level: int) -> void:
+	level = clampi(new_level, 0, 5)
+	if _level_plate == null:
+		return
+	var path := LEVEL_DIGITS % (level + 1)
+	if ResourceLoader.exists(path):
+		_level_plate.texture = load(path)
 
 
 ## GROUND/STRUCTURE SPLIT. A building's art is one image that also
@@ -517,7 +562,7 @@ func to_dict() -> Dictionary:
 
 func apply_dict(d: Dictionary) -> void:
 	if d.has("level"):
-		level = clampi(int(d.level), level, 5)
+		set_level(maxi(int(d.level), level))  # keeps the level plate honest
 	if bool(d.get("has_rally", false)):
 		set_rally(Vector2(float(d.get("rally_x", 0.0)), float(d.get("rally_y", 0.0))))
 	for item in d.get("queue", []):
@@ -697,7 +742,7 @@ func try_start_repair(unit: Node2D) -> bool:
 		Fx.announce("starting_repair")
 	unit.visible = false
 	unit.velocity = Vector2.ZERO
-	unit.move_target = Vector2.ZERO
+	unit.clear_move_target()
 	unit.waypoints = PackedVector2Array()
 	unit.remove_from_group(Groups.SELECTABLE)
 	unit.remove_from_group(Groups.UNITS)
@@ -833,6 +878,12 @@ func _bridge_damage(amount: int, at := Vector2.INF) -> void:
 		return
 	hp = 0
 	Fx.destroyed(world_footprint().get_center())
+	# the span's own rubble, in the planet's colours: a few pieces along
+	# the deck instead of one puff at the middle
+	for i in mini(bridge_cells.size(), 4):
+		var piece: Vector2i = bridge_cells[
+			(i * maxi(bridge_cells.size() / 4, 1)) % bridge_cells.size()]
+		Fx.bridge_debris(Vector2(piece) * 16.0 + Vector2(8, 8))
 	for cell in bridge_cells:
 		if NavWorld.current.nav_grid:
 			NavWorld.current.nav_grid.set_point_solid(cell, true)

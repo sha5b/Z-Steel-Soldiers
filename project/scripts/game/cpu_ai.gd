@@ -490,7 +490,7 @@ func _prune_claims() -> void:
 			or z.owner_team == team  # captured — release the claim
 		if not stale and u.carried:
 			stale = true  # riding an APC: not holding anything
-		if not stale and u.move_target == Vector2.ZERO \
+		if not stale and not u.has_move_target() \
 				and u.global_position.distance_to(_zone_center(z)) > 48.0:
 			stale = true  # idle but never got there — order failed
 		if stale:

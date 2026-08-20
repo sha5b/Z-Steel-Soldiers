@@ -19,6 +19,7 @@ static func dispatch(world_position: Vector2) -> void:
 	var apc := _find_apc(world_position)
 	var target_building := _find_interactable_building(world_position)
 	var own_fort := _find_own_fort(world_position)
+	var crate := _find_pickup(world_position)
 	var movers: Array[Node] = []
 	for u in SelectionManager.current.selected:
 		if is_instance_valid(u) and u is Unit2D and u.alive:
@@ -63,13 +64,19 @@ static func dispatch(world_position: Vector2) -> void:
 		var ring := maxi(int(sqrt(float(movers.size()))), 1)
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0
 		var dest := world_position + offset
+		var move_order: Order = null
 		match stance:
 			SelectionManager.OrderStance.ATTACK_MOVE:
-				_order(u, Order.move_attack(dest, sprint))
+				move_order = Order.move_attack(dest, sprint)
 			SelectionManager.OrderStance.DEFEND:
-				_order(u, Order.move_defend(dest, sprint))
+				move_order = Order.move_defend(dest, sprint)
 			_:
-				_order(u, Order.move(dest, sprint))
+				move_order = Order.move(dest, sprint)
+		# clicking a CRATE is still a move (walking over it picks it up),
+		# but the confirmation says what the click meant
+		if u.kind == "robot" and crate != null and is_instance_valid(crate):
+			move_order.confirm = "grabbed"
+		_order(u, move_order)
 
 
 ## THE dismount action (X, or the panel's EXIT button): hand back
@@ -83,16 +90,22 @@ static func eject() -> int:
 	for node in SelectionManager.current.selected.duplicate():
 		if not is_instance_valid(node):
 			continue
+		var gave := 0
 		if node is FortBuilding and node.team == MatchState.current.player_team:
-			out += (node as FortBuilding).release_garrison()
+			gave = (node as FortBuilding).release_garrison()
 		elif node is Vehicle2D and node.team == MatchState.current.player_team:
 			var v := node as Vehicle2D
 			if v.is_apc() and not v.cargo.is_empty():
-				out += v.cargo.size()
+				gave = v.cargo.size()
 				v.unload()  # passengers first: the driver keeps the hull
 			elif v.manned:
-				out += 1
+				gave = 1
 				v.eject_driver()
+		out += gave
+		if gave > 0 and node is Node2D:
+			# the original's EXITED marker, on the thing that gave them back
+			PathIndicator.show_marker(MatchState.current.map_root,
+				(node as Node2D).global_position, "exited")
 	if out == 0:
 		Fx.cap_denied()  # nothing to give back — say so instead of nothing
 	return out
@@ -104,6 +117,15 @@ static func _order(u: Node2D, o: Order) -> void:
 	u.issue_order(o)
 	Net.relay_order(u, o)
 
+
+
+## A crate under the click point (crates are collected by walking over
+## them — this only decides which confirmation art the order shows).
+static func _find_pickup(world_position: Vector2) -> Node2D:
+	for p in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.PICKUPS):
+		if p is Node2D and p.global_position.distance_to(world_position) < 12.0:
+			return p
+	return null
 
 
 static func _find_apc(world_position: Vector2) -> Vehicle2D:
@@ -125,13 +147,9 @@ static func _find_empty_vehicle(world_position: Vector2) -> Node2D:
 ## Buildings units can be ordered onto: own repair shop (damaged
 ## vehicles heal there) and own damaged buildings/bridges (crane work).
 static func _find_interactable_building(world_position: Vector2) -> Building2D:
-	# "all_buildings": the repair shop sits in none of the narrower
-	# groups — scanning "buildings"/"facilities" never found it
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
-		if b is Building2D and b.alive \
-				and b.art_world_rect().has_point(world_position):
-			return b
-	return null
+	# EVERY building, not just the narrower groups — the repair shop sits
+	# in none of them and scanning "buildings"/"facilities" never found it
+	return BuildingRegistry.at_point(world_position)
 
 
 ## An ENEMY unit or building under the click point (the same Pick

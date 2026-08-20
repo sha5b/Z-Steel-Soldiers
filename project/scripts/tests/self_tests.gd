@@ -26,7 +26,7 @@ static func should_run() -> bool:
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
 			"mp", "rally", "placement", "fortkill", "parity", "art", "mpmatch",
-			"garrison"]:
+			"garrison", "terrain", "group"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -385,7 +385,7 @@ static func run(ctx: Node) -> void:
 					for i in 60:
 						client_api.poll()
 						await tree.process_frame
-						if robot.move_target != Vector2.ZERO:
+						if robot.has_move_target():
 							moved = true
 							break
 					mm.check(moved, "order intent never applied")
@@ -397,7 +397,7 @@ static func run(ctx: Node) -> void:
 						"run": false, "target": 0})
 					for i in 10:
 						await tree.process_frame
-					mm.check(other.move_target == Vector2.ZERO,
+					mm.check(not other.has_move_target(),
 						"unowned team intent was applied")
 					# RALLY round trip on the client's own fort
 					var fort: FortBuilding = null
@@ -532,7 +532,7 @@ static func run(ctx: Node) -> void:
 			var moved := 0
 			var roster := {"robots": 0, "idle": 0, "vehicles": 0, "facilities": 0}
 			for u2 in tree.get_nodes_in_group(Groups.UNITS):
-				if u2 is Node2D and u2.team == 2 and u2.move_target != Vector2.ZERO:
+				if u2 is Node2D and u2.team == 2 and u2.has_move_target():
 					moved += 1
 			for u2 in UnitRegistry.current.world_units():
 				if u2 is Unit2D and u2.alive and not u2.carried and u2.team == 2:
@@ -552,7 +552,7 @@ static func run(ctx: Node) -> void:
 			ai._think()
 			var moved_after := 0
 			for u2 in tree.get_nodes_in_group(Groups.UNITS):
-				if u2 is Node2D and u2.team == 2 and u2.move_target != Vector2.ZERO:
+				if u2 is Node2D and u2.team == 2 and u2.has_move_target():
 					moved_after += 1
 			print("AI: enemy robots with orders %d -> %d" % [moved, moved_after])
 			# sustained observation: the full loop (income -> production ->
@@ -637,6 +637,53 @@ static func run(ctx: Node) -> void:
 		fk.finish()
 	if "--art-test" in args:
 		ArtTests.run(ctx, TestRig.start("ART"))
+	if "--terrain-test" in args:
+		TerrainTests.run(ctx, TestRig.start("TERRAIN"))
+	if "--group-test" in args:
+		# CONTROL GROUPS: Ctrl+digit assigns, digit recalls, dead members
+		# drop out on recall (there was no digit binding at all)
+		var gr := TestRig.start("GROUP")
+		for spec in [[KEY_1, 0], [KEY_9, 8], [KEY_0, 9], [KEY_A, -1],
+				[KEY_SHIFT, -1]]:
+			gr.check(ctx._group_slot(int(spec[0])) == int(spec[1]),
+				"keycode %d -> slot %d want %d" % [spec[0],
+					ctx._group_slot(int(spec[0])), spec[1]])
+		var team: int = MatchState.current.player_team
+		var squad: Array[Unit2D] = []
+		var anchor := NavWorld.current.find_free_spot(Vector2(700, 700), "robot")
+		for i in 3:
+			var u: Unit2D = Spawner.spawn(ctx, "robot", "grunt", team,
+				NavWorld.current.find_free_spot(
+					anchor + Vector2(24 * i, 0), "robot")) as Unit2D
+			squad.append(u)
+		var sel := SelectionManager.current
+		sel.clear_selection()
+		for u in squad:
+			sel.toggle_select(u, true)
+		gr.check(sel.assign_group(0) == 3,
+			"assigned %d of 3" % sel.assign_group(0))
+		sel.clear_selection()
+		gr.check(sel.selected.is_empty(), "selection not cleared")
+		gr.check(sel.select_group(0) == 3,
+			"recalled %d of 3" % sel.selected.size())
+		gr.check(sel.group_center(0).distance_to(anchor) < 64.0,
+			"group centre %s far from the squad at %s" % [
+				sel.group_center(0), anchor])
+		# a dead member must not come back
+		squad[0].die()
+		gr.check(sel.select_group(0) == 2,
+			"recalled %d after a death, want 2" % sel.selected.size())
+		# out-of-range slots are ignored, not stored
+		gr.check(sel.assign_group(SelectionManager.GROUP_COUNT) == 0,
+			"slot %d accepted" % SelectionManager.GROUP_COUNT)
+		# assigning nothing clears the slot
+		sel.clear_selection()
+		sel.assign_group(0)
+		gr.check(sel.select_group(0) == 0, "empty assign kept the old group")
+		for u in squad:
+			if is_instance_valid(u):
+				u.queue_free()
+		gr.finish()
 	if "--parity-test" in args:
 		# ONE movement engine: robot and vehicle must arrive the SAME way
 		# — order cleared, state IDLE, DEFEND post armed (vehicle arrivals
@@ -651,9 +698,9 @@ static func run(ctx: Node) -> void:
 			for i in 600:
 				u._process(0.05)
 				u._physics_process(0.05)
-				if u.move_target == Vector2.ZERO:
+				if not u.has_move_target():
 					break
-			pr.check(u.move_target == Vector2.ZERO,
+			pr.check(not u.has_move_target(),
 				"%s never arrived (at %s)" % [spec[1], u.global_position])
 			pr.check(u.defend_post != Vector2.INF,
 				"%s arrival did not arm the defend post" % spec[1])
@@ -697,7 +744,7 @@ static func run(ctx: Node) -> void:
 		rr.check(product != null, "no vehicle produced")
 		if product != null:
 			rr.check(not product.manned, "product spawned crewed")
-			rr.check(product.move_target == Vector2.ZERO,
+			rr.check(not product.has_move_target(),
 				"unmanned product took the rally order")
 			rr.check(product.global_position.distance_to(rally) > 300.0,
 				"unmanned product drove itself toward the rally")
@@ -715,7 +762,7 @@ static func run(ctx: Node) -> void:
 			for i in 400:
 				product._process(0.05)
 				product._physics_process(0.05)
-				if product.move_target == Vector2.ZERO:
+				if not product.has_move_target():
 					break
 			rr.check(product.global_position.distance_to(rally) < 60.0,
 				"manned vehicle ignored the move order")
@@ -975,7 +1022,7 @@ static func run(ctx: Node) -> void:
 				if hunter.attack_target != runner:
 					oproblems.append("ATTACK order dropped a live target")
 				elif hunter.move_target == first_goal \
-						and hunter.move_target != Vector2.ZERO:
+						and hunter.has_move_target():
 					oproblems.append("ATTACK kept routing to the stale position")
 				# and it ends when the target dies
 				runner.hp = 1
@@ -2075,12 +2122,12 @@ static func run(ctx: Node) -> void:
 		for i in 400:
 			apc2._process(0.05)
 			apc2._physics_process(0.05)
-			if apc2.move_target == Vector2.ZERO:
+			if not apc2.has_move_target():
 				break
 		var unloaded_near: bool = robot1.visible and not robot1.carried \
 			and robot1.global_position.distance_to(apc2.global_position) < 60.0
 		print("APC: loaded=%s hidden=%s arrived=%s unloaded_near=%s" % [
-			loaded, hidden, apc2.move_target == Vector2.ZERO, unloaded_near])
+			loaded, hidden, not apc2.has_move_target(), unloaded_near])
 	if "--save-test" in args:
 		MatchState.current.set_money(1, 321)
 		MatchState.current.zones[0].set_owner_team(1)
@@ -2247,7 +2294,16 @@ static func run(ctx: Node) -> void:
 		# base — units in front draw over it, units behind under it) and
 		# the footprint equals the def's solid cell rect
 		var geo_fails: PackedStringArray = []
-		for spec in [[0, "fort_front"], [2, "radar"], [3, "repair"]]:
+		# every non-bridge type declares its solid cells: an empty table
+		# means "the whole art rect", and a building's art carries ground,
+		# cast shadow and entrances that are not walls (the factories and
+		# the repair shop shipped with no table at all)
+		for id in [0, 1, 2, 3, 4, 5]:
+			var sdef := ContentDB.building_def(id)
+			if sdef.solid_tiles.size.x <= 0 or sdef.solid_tiles.size.y <= 0:
+				geo_fails.append("%s declares no solid_tiles" % sdef.bname)
+		for spec in [[0, "fort_front"], [1, "fort_back"], [2, "radar"],
+				[3, "repair"], [4, "robot_factory"], [5, "vehicle_factory"]]:
 			var bdef := ContentDB.building_def(spec[0])
 			var gb: Building2D = bdef.behaviour.new()
 			gb.setup(spec[0], 1, "desert")
@@ -2270,6 +2326,17 @@ static func run(ctx: Node) -> void:
 			var want_rect: Rect2i = bdef.solid_tiles \
 				if bdef.solid_tiles.size.x > 0 and bdef.solid_tiles.size.y > 0 \
 				else Rect2i(Vector2i.ZERO, Vector2i((ts / 16.0).ceil()))
+			# the solid rect must sit INSIDE the art (a table that runs
+			# past the sprite blocks open ground nothing stands on)
+			var art_tiles := Vector2i((ts / 16.0).ceil())
+			if want_rect.position.x < 0 or want_rect.position.y < 0 \
+					or want_rect.end.x > art_tiles.x or want_rect.end.y > art_tiles.y:
+				geo_fails.append("%s solid rect %s outside art %s" % [
+					spec[1], want_rect, art_tiles])
+			for t in bdef.open_tiles:
+				if not want_rect.has_point(Vector2i(t)):  # open cells are art-relative
+					geo_fails.append("%s open cell %s outside solid rect" % [
+						spec[1], t])
 			var cells := gb.footprint_cells()
 			var fp := gb.world_footprint()
 			if cells.size() != want_rect.get_area() - bdef.open_tiles.size():

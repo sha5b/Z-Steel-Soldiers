@@ -99,11 +99,11 @@ static func run(ctx: Node, rig: TestRig) -> void:
 				bad += 1
 				if first_bad == Vector2.ZERO:
 					first_bad = walker.global_position
-		if walker.move_target == Vector2.ZERO:
+		if not walker.has_move_target():
 			break
 	rig.check(bad == 0, "physics walker center entered solids %d/%d samples, first at %s" % [
 		bad, samples, first_bad])
-	rig.check(walker.move_target == Vector2.ZERO, "physics walker never arrived (stuck at %s)" % [
+	rig.check(not walker.has_move_target(), "physics walker never arrived (stuck at %s)" % [
 		walker.global_position])
 	walker.queue_free()
 	TestLevers.direct_step = true  # restore the harness default

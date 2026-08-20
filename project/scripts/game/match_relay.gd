@@ -63,12 +63,7 @@ static func _unit(id: int) -> Unit2D:
 
 
 static func _building(id: int) -> Building2D:
-	if Engine.get_main_loop().root == null:
-		return null
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
-		if b is Building2D and b.net_id == id:
-			return b
-	return null
+	return BuildingRegistry.by_net_id(id)
 
 
 static func _entity(id: int) -> Node2D:

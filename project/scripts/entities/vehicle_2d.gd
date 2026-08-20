@@ -29,6 +29,10 @@ var _asset_dir := ""
 # selection ring) — per-type scenes set identity and turret offsets
 @onready var _wheels: AnimatedSprite2D = get_node_or_null("Wheels")
 @onready var _layer: AnimatedSprite2D = get_node_or_null("Turret")
+## The crew in the open hatch (see AnimLibrary.crew_frames): shown only
+## while the gun has the lid open, which is the same window a sniper
+## shoots through.
+@onready var _crew: AnimatedSprite2D = get_node_or_null("Crew")
 @onready var _doors: AnimatedSprite2D = get_node_or_null("Doors")
 @onready var _hook: AnimatedSprite2D = get_node_or_null("Hook")
 @onready var _cones: AnimatedSprite2D = get_node_or_null("Cones")
@@ -72,7 +76,7 @@ func load_robot(robot: Unit2D) -> bool:
 	robot.set_selected(false)
 	robot.visible = false
 	robot.velocity = Vector2.ZERO
-	robot.move_target = Vector2.ZERO
+	robot.clear_move_target()
 	robot.waypoints = PackedVector2Array()
 	# out of the world until unloaded: not selectable, not targetable,
 	# doesn't hold zones or trip pickups
@@ -225,7 +229,7 @@ func _start_crane_repair(b: Building2D) -> void:
 	_repairing_building = b
 	_repair_tick_time = 0.0
 	enter_target = null
-	move_target = Vector2.ZERO
+	clear_move_target()
 	waypoints = PackedVector2Array()
 	velocity = Vector2.ZERO
 	_play_body()
@@ -293,6 +297,7 @@ func _process(delta: float) -> void:
 		_chase(delta)
 	_try_enter()
 	_update_layer(delta)
+	_update_crew()
 	_damage_fx(delta)
 	_crane_repair_tick(delta)
 	ring.queue_redraw()
@@ -398,7 +403,7 @@ func _find_target() -> Node2D:
 
 
 func _combat() -> void:
-	if attack_move and move_target != Vector2.ZERO and manned:
+	if attack_move and has_move_target() and manned:
 		var probe := _find_target()
 		if probe != null:
 			velocity = Vector2.ZERO
@@ -535,6 +540,27 @@ func _update_layer(delta: float) -> void:
 		_hook.position = hook_pos
 
 
+## The crew pops up while the hatch is open and drops back inside when
+## it shuts. Cannons keep their own gunner art (place/fire), so only
+## driven hulls show a crew.
+func _update_crew() -> void:
+	if _crew == null:
+		return
+	var show_crew := manned and alive and lid_open and kind == "vehicle"
+	_crew.visible = show_crew
+	if not show_crew:
+		return
+	if _crew.sprite_frames == null:
+		_crew.sprite_frames = AnimLibrary.crew_frames(team)
+		_crew.position = Vector2(0, -2)  # head above the hull deck
+	var anim := "tank_fire_%d" % _last_dir
+	if _crew.sprite_frames.has_animation(anim):
+		if _crew.animation != anim or not _crew.is_playing():
+			_crew.play(anim)
+	else:
+		_crew.visible = false
+
+
 func _update_layer_transform() -> void:
 	var hull_d := _last_dir
 	var pos := Vector2.ZERO
@@ -616,13 +642,18 @@ func eject_driver() -> void:
 					spot) as Unit2D
 				if survivor:
 					survivor.hp = maxi(1, int(survivor.max_hp / 3.0))
+					# the original's bail-out: the crew is SEEN leaving
+					survivor.play_gesture("escape_tank")
 	manned = false
 	team = 0
 	driver_type = ""
+	if _crew:
+		_crew.visible = false
+		_crew.sprite_frames = null  # rebuilt in the next crew's colours
 	# no crew, no orders: the hull stops where the driver died instead of
 	# finishing the last rally on its own
 	order = null
-	move_target = Vector2.ZERO
+	clear_move_target()
 	waypoints = PackedVector2Array()
 	velocity = Vector2.ZERO
 	state = State.IDLE
@@ -637,6 +668,8 @@ func eject_driver() -> void:
 func enter(robot: Unit2D) -> void:
 	manned = true
 	team = robot.team
+	if _crew:
+		_crew.sprite_frames = null  # this crew's own team colours
 	driver_type = robot.unit_name
 	hp = maxi(hp, max_hp)  # fresh crew repairs
 	_damaged = false

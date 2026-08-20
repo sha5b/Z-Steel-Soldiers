@@ -10,12 +10,117 @@ const TILE := 16
 const PLANETS := ["desert", "arctic", "city", "jungle", "volcanic"]
 
 
-static func run(_ctx: Node, rig: TestRig) -> void:
+static func run(ctx: Node, rig: TestRig) -> void:
 	_audit_buildings(rig)
 	_audit_units(rig)
 	_audit_projectiles(rig)
 	_audit_world_scale(rig)
+	_audit_robot_anims(rig)
+	_audit_wired_art(ctx, rig)
 	rig.finish()
+
+
+## The art that WAS in the pack with nothing referencing it. Each check
+## is the seam the feature reads through, so a missing copy fails here
+## instead of silently taking a fallback branch in play.
+static func _audit_wired_art(ctx: Node, rig: TestRig) -> void:
+	# per-planet rubble: rocks and bridges no longer share one grey puff
+	for planet in PLANETS:
+		var rock := 0
+		for size in Fx.ROCK_DEBRIS_SIZES:
+			if DirAccess.dir_exists_absolute(
+					"res://assets/z/effects/rock_debris_%s_%s" % [planet, size]):
+				rock += 1
+		rig.check(rock >= 4, "%s: %d rock debris sets, want 4+" % [planet, rock])
+		rig.check(DirAccess.dir_exists_absolute(
+				"res://assets/z/effects/bridge_debris_%s" % planet),
+			"%s: no bridge debris set" % planet)
+	# order-confirmation markers: one per order kind, all NEUTRAL art
+	for marker in ["placed", "attacked", "entered", "cannoned", "repaired",
+			"grabbed", "grenaded", "exited"]:
+		rig.check(ResourceLoader.exists(
+				"res://assets/z/ui/cursor/%s_n00.png" % marker),
+			"confirmation marker '%s' not converted" % marker)
+	for spec in [[Order.Type.MOVE, "placed"], [Order.Type.ATTACK, "attacked"],
+			[Order.Type.BOARD_APC, "entered"], [Order.Type.GARRISON, "entered"],
+			[Order.Type.REPAIR_BUILDING, "repaired"],
+			[Order.Type.CRANE_REPAIR, "repaired"]]:
+		var o := Order.new()
+		o.type = spec[0]
+		rig.check(o.confirm_marker() == String(spec[1]),
+			"order %d confirms with %s, want %s" % [spec[0],
+				o.confirm_marker(), spec[1]])
+	# announcement plaques for the events that ship one
+	for event in ["fort_under_attack", "robot_manufactured",
+			"vehicle_manufactured", "gun_manufactured"]:
+		rig.check(AnnouncePlaque.plaque_path(event) != "",
+			"no announcement plaque for '%s'" % event)
+	var plaque: AnnouncePlaque = ctx.get_node_or_null(
+		"CanvasLayer/HUD/AnnouncePlaque")
+	rig.check(plaque != null, "HUD carries no AnnouncePlaque")
+	if plaque != null:
+		rig.check(plaque.show_event("fort_under_attack"),
+			"plaque refused a shipped event")
+		rig.check(not plaque.show_event("no_such_event"),
+			"plaque accepted an event with no art")
+	# selected-object panel: a name plate for EVERY buildable type
+	for kind in ["robot", "vehicle", "cannon"]:
+		for type_name in ContentDB.buildable(kind):
+			rig.check(SelectedObject.plate_path(String(type_name), 1) != "",
+				"%s '%s' has no name plate" % [kind, type_name])
+	# ambient birds, per planet
+	for planet in PLANETS:
+		rig.check(Bird.art_exists(planet), "%s ships no bird art" % planet)
+	# the unlabelled voice bank
+	var barks := 0
+	for n in range(Fx.CHATTER_FIRST, Fx.CHATTER_LAST + 1):
+		if ResourceLoader.exists("res://assets/z/sounds/bark_%02d.wav" % n):
+			barks += 1
+	rig.check(barks == Fx.CHATTER_LAST - Fx.CHATTER_FIRST + 1,
+		"%d of %d chatter barks converted" % [barks,
+			Fx.CHATTER_LAST - Fx.CHATTER_FIRST + 1])
+	# the building LEVEL digit, on every producer
+	for id in [0, 4, 5]:
+		var bdef := ContentDB.building_def(id)
+		var b: Building2D = bdef.behaviour.new()
+		b.setup(id, 1, "desert", 3)
+		ctx.add_child(b)
+		rig.check(b.get_node_or_null("LevelPlate") != null,
+			"%s shows no level digit" % bdef.bname)
+		b.queue_free()
+
+
+## Every animation the code ASKS FOR must be in the frame set — a name
+## the art does not carry is a silent no-op (176 frames of escape_tank /
+## tank_fire / jump-* sat in the pack referenced by nothing).
+static func _audit_robot_anims(rig: TestRig) -> void:
+	var frames := AnimLibrary.robot_frames("grunt", 1)
+	for gesture in AnimLibrary.GESTURES:
+		var found := false
+		for d in AnimLibrary.DIRECTIONS:
+			if frames.has_animation("%s_%d" % [gesture, d]) \
+					and frames.get_frame_count("%s_%d" % [gesture, d]) > 0:
+				found = true
+				break
+		rig.check(found, "gesture '%s' has no frames" % gesture)
+	# the dodge picks its leap by direction — every branch must resolve
+	for spec in [[Vector2(0, 20), "jump-down"], [Vector2(0, -20), "jump-up"],
+			[Vector2(20, 0), "jump-right"], [Vector2(-20, 0), "jump-left"],
+			[Vector2.ZERO, "dodge"]]:
+		rig.check(Unit2D._leap_gesture(spec[0]) == String(spec[1]),
+			"leap for %s = %s want %s" % [spec[0],
+				Unit2D._leap_gesture(spec[0]), spec[1]])
+	# the visible crew in the open hatch: 8 directions, per team
+	for team in [1, 2, 3, 4]:
+		var crew := AnimLibrary.crew_frames(team)
+		var dirs := 0
+		for d in AnimLibrary.DIRECTIONS:
+			if crew.has_animation("tank_fire_%d" % d) \
+					and crew.get_frame_count("tank_fire_%d" % d) > 0:
+				dirs += 1
+		rig.check(dirs == AnimLibrary.DIRECTIONS,
+			"team %d crew art covers %d of %d directions"
+			% [team, dirs, AnimLibrary.DIRECTIONS])
 
 
 ## SCALE CONTRACT: world-space art renders at NATIVE size — no unit
