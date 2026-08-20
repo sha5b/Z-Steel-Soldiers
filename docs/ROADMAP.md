@@ -49,8 +49,13 @@ shipped 2026-08 — see the bottom section.
   loopback
 - Verified open bugs live in `docs/BUGS.md` (root-caused, with
   file:line evidence) — keep that file current instead of the roadmap
-- Original GUI chrome (production menu art exists, unused), water
-  animation, craters, unit shadows
+- Remaining polish (2026-08-20 sweep): control-group hotkeys, ambient
+  birds, the EXIT_C eject cursor, original production-menu chrome, HUD
+  selected-object trio, robot portraits on the selection bar.
+  Shipped in that sweep instead: pop-cap meter (top bar), missile
+  target-leading (original EstimateMissileTarget feel), robot order
+  acknowledgement barks.
+- Closed as impossible from the assets: water animation, unit shadows
 - Full soundtrack needs one run of `tools/zod/render_midi.sh`
   (fluidsynth + soundfont required)
 - Weapon classes/splash, veterancy, destructible rocks/bridges

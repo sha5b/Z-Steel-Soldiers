@@ -7,6 +7,7 @@ extends HBoxContainer
 
 var _money: Label
 var _zones: Label
+var _pop: Label
 var _clock: Label
 var _upgrades: HBoxContainer
 
@@ -15,6 +16,7 @@ func _ready() -> void:
 	add_theme_constant_override("separation", 24)
 	_money = _label("credits 200")
 	_zones = _label("zones -")
+	_pop = _label("pop -")
 	_clock = _label("0:00")
 	_upgrades = HBoxContainer.new()
 	_upgrades.add_theme_constant_override("separation", 4)
@@ -42,6 +44,9 @@ func _refresh_counts() -> void:
 		if t != MatchState.current.player_team:
 			theirs += counts[t]
 	_zones.text = "zones %d of %d - them %d" % [mine, total, theirs]
+	_pop.text = "pops %d/%d" % [MatchState.current.unit_pop(
+		MatchState.current.player_team), MatchState.current.unit_cap(
+		MatchState.current.player_team)]
 	_sync_upgrades()
 
 

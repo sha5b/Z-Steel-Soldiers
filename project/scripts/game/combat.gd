@@ -32,6 +32,13 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 	# visual terminates at the building's visual centre, like shells
 	var aim: Vector2 = (target.visual_center()
 			if target is Building2D else target.global_position)
+	# LEAD moving targets (original EstimateMissileTarget): project the
+	# target's velocity over the approximate flight time — a fully-led
+	# aim would land where they WILL be; the 0.8 factor keeps fast
+	# units partially dodgeable, like the original felt
+	if def.projectile != null and target is Unit2D:
+		aim += (target as Unit2D).velocity \
+				* (muzzle.distance_to(aim) / maxf(def.projectile.speed, 1.0)) * 0.8
 	if randf() > def.hit_chance:
 		# missed: the shot flies past
 		var past: Vector2 = aim \

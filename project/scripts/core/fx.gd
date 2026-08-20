@@ -140,6 +140,13 @@ func shell(from: Vector2, to: Vector2, proj: ProjectileDef) -> void:
 
 
 ## Weapon fire sound from a unit def's `sound` key (GOG RAW conversions).
+## Robot order acknowledgement (the original's ROB barks) — one voice
+## per DISPATCH (Commands calls it once per click), voice-capped like
+## every other speech.
+func acknowledge() -> void:
+	_play_wav("acknowledge_%02d" % (randi() % 10), -4.0)
+
+
 func gunfire(sound_name: String) -> void:
 	if sound_name == "":
 		return

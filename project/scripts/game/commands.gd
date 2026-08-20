@@ -22,6 +22,9 @@ static func dispatch(world_position: Vector2) -> void:
 	for u in SelectionManager.current.selected:
 		if is_instance_valid(u) and u is Unit2D and u.alive:
 			movers.append(u)
+	# the player's robots bark an acknowledgement — once per dispatch
+	if movers.size() > 0:
+		Fx.acknowledge()
 	# the stance (Q/E/R hotkeys or the stance bar) decides what a move
 	# order does; shift sprints the order (the entity never reads Input
 	# itself)
