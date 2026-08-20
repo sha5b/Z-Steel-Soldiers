@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/match.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/game/rts_camera2d.gd" id="2"]
@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://scripts/core/nav_world.gd" id="10"]
 [ext_resource type="Script" path="res://scripts/game/unit_registry.gd" id="11"]
 [ext_resource type="Script" path="res://scripts/core/selection_manager.gd" id="12"]
+[ext_resource type="Script" path="res://scripts/core/match_state.gd" id="13"]
 
 [node name="Main" type="Node2D"]
 y_sort_enabled = true
@@ -26,6 +27,9 @@ script = ExtResource("11")
 
 [node name="SelectionManager" type="Node" parent="."]
 script = ExtResource("12")
+
+[node name="MatchState" type="Node" parent="."]
+script = ExtResource("13")
 
 [node name="RtsCamera2D" type="Camera2D" parent="."]
 script = ExtResource("2")

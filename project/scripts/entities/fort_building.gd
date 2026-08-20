@@ -93,7 +93,7 @@ func spawn_produced(item: String) -> void:
 				continue
 			slot_cannons[i] = Spawner.spawn(get_parent(), "cannon", parts[1],
 				owner_team, slots[i], true)
-			if owner_team == MatchState.player_team:
+			if owner_team == MatchState.current.player_team:
 				Fx.announce("gun_manufactured")
 			return
 	super(item)  # no free mount after all: fall back to spawning beside

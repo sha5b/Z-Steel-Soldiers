@@ -1,7 +1,7 @@
 class_name Decals
 extends Object
 ## Ground decals from the original art: tank/jeep track marks and blast
-## craters. Decals attach to the map root (MatchState.map_root) and sort
+## craters. Decals attach to the map root (MatchState.current.map_root) and sort
 ## at their top edge, so units standing on them draw over them. Tracks
 ## fade after a while; craters persist under a cap.
 
@@ -17,10 +17,10 @@ const TRACK_SPACING := 7.0  # world px of travel between marks (stamps are 8px a
 ## only shipped for desert; tanks have per-planet sheets (city and
 ## everything else fall back to the shared one).
 static func track(dir: int, pos: Vector2, jeep: bool) -> void:
-	var map := MatchState.map_root
+	var map := MatchState.current.map_root
 	if map == null:
 		return
-	var planet := MatchState.planet
+	var planet := MatchState.current.planet
 	var prefix := ""
 	if jeep:
 		prefix = "jeep_track_desert"
@@ -40,13 +40,13 @@ static func track(dir: int, pos: Vector2, jeep: bool) -> void:
 ## Blast crater at an explosion site — random variant of the planet's
 ## art, static (no fade, just the cap).
 static func crater(pos: Vector2, big := true) -> void:
-	var map := MatchState.map_root
+	var map := MatchState.current.map_root
 	if map == null:
 		return
 	var size := "large" if big else "small"
 	var variants := []
 	for t in 4:
-		var prefix := "crater_%s_%s_t%02d" % [size, MatchState.planet, t]
+		var prefix := "crater_%s_%s_t%02d" % [size, MatchState.current.planet, t]
 		if ResourceLoader.exists("%s/%s_n00.png" % [CRATERS_DIR, prefix]):
 			variants.append(prefix)
 	if variants.is_empty():

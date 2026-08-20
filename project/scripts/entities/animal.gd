@@ -48,7 +48,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if _state == "dead" or MatchState.map_root == null:
+	if _state == "dead" or MatchState.current.map_root == null:
 		return
 	_timer -= delta
 	if _state == "idle":

@@ -562,7 +562,7 @@ func _begin_move(world_pos: Vector2) -> void:
 		state = State.MOVING
 		if waypoints.size() > 1 and global_position.distance_to(waypoints[0]) < 10.0:
 			waypoints.remove_at(0)  # don't step back to the start cell centre
-	if team == MatchState.player_team:
+	if team == MatchState.current.player_team:
 		play_gesture("point")
 		_play_voice("acknowledge")
 		PathIndicator.show_path(get_parent(), waypoints)
@@ -642,7 +642,7 @@ func _smart_idle() -> void:
 				and global_position.distance_to(v.global_position) < AUTO_RADIUS:
 			issue_order(Order.for_target(v))  # a real order walks there
 			return
-	for z: Zone in MatchState.zones:
+	for z: Zone in MatchState.current.zones:
 		if z.owner_team == team:
 			continue
 		var center := z.world_rect().get_center()
@@ -711,7 +711,7 @@ func set_selected(value: bool) -> void:
 	selected = value
 	ring.visible = value or hp < max_hp
 	ring.queue_redraw()
-	if value and team == MatchState.player_team and alive and not carried:
+	if value and team == MatchState.current.player_team and alive and not carried:
 		_play_voice("selected")
 
 

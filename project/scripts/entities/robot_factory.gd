@@ -21,7 +21,7 @@ func _process(delta: float) -> void:
 		return  # a ruin produces nothing
 	# factory belongs to whoever owns the zone it stands in
 	var center := world_footprint().get_center()
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		if z.world_rect().has_point(center):
 			owner_team = z.owner_team
 			break

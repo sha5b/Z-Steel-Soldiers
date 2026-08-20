@@ -7,5 +7,5 @@ extends Resource
 @export var id := "grenades"
 @export var texture: Texture2D = null
 @export var sound_set := ""  # Fx sound-set key ("" = default pickup click)
-@export var upgrade_key := ""  # MatchState.grant_upgrade key ("" = none)
+@export var upgrade_key := ""  # MatchState.current.grant_upgrade key ("" = none)
 @export var grenades := 0  # throwable grenades given to the collector

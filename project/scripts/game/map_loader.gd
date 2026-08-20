@@ -17,7 +17,7 @@ const PLANET_TILESETS := {
 
 static func load_map(parent: Node, map_path: String) -> Dictionary:
 	# decals (tracks/craters) and ambient animals anchor to the match root
-	MatchState.map_root = parent
+	MatchState.current.map_root = parent
 	if map_path.ends_with(".tscn"):
 		return load_map_scene(parent, map_path)
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(map_path))
@@ -54,9 +54,9 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 	_init_zone_owners(parent)
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
-		MatchState.grant_ledger(t)
+		MatchState.current.grant_ledger(t)
 	for t in ai_teams:
-		if t != MatchState.player_team:
+		if t != MatchState.current.player_team:
 			var ai := CpuAi.new(t)
 			ai.name = "CpuAi_T%d" % t
 			parent.add_child(ai)
@@ -322,16 +322,16 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 	_init_zone_owners(parent)
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
-		MatchState.grant_ledger(t)
+		MatchState.current.grant_ledger(t)
 	for t in ai_teams:
-		if t != MatchState.player_team:
+		if t != MatchState.current.player_team:
 			var ai := CpuAi.new(t)
 			ai.name = "CpuAi_T%d" % t
 			parent.add_child(ai)
 
 	return {
 		"width": w, "height": h, "terrain": planet, "tiles": tiles,
-		"zones": MatchState.zones.size(),
+		"zones": MatchState.current.zones.size(),
 		"objects": map.get_child_count(),
 	}
 
@@ -348,7 +348,7 @@ static func _init_zone_owners(root: Node) -> void:
 	for fort in buildings:
 		if not fort.is_fort or fort.team == 0:
 			continue
-		for z in MatchState.zones:
+		for z in MatchState.current.zones:
 			if not z.world_rect().has_point(fort.visual_center()):
 				continue
 			z.set_owner_team(fort.team)

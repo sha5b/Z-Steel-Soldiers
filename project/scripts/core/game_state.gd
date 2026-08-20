@@ -9,15 +9,20 @@ var over := false
 var next_map := ""
 var current_map := ""
 var pending_load: Dictionary = {}  # applied by the map after spawning
+## The launch config for the match being started — the fresh match scene
+## applies it to its own MatchState (player_team etc. are per-instance
+## now, so they cannot be written before the scene exists).
+var pending_config: MatchConfig = null
 var _eliminated: Array[int] = []
 
 
 func reset_for_new_map() -> void:
 	over = false
 	_eliminated.clear()
-	MatchState.reset()
 	# match-scoped subsystems are per-instance now — a fresh scene starts
 	# clean; only an old instance (mid scene change) needs resetting
+	if MatchState.current:
+		MatchState.current.reset()
 	if NavWorld.current:
 		NavWorld.current.reset()
 	if SelectionManager.current:
@@ -37,7 +42,7 @@ func prepare_match(cfg: MatchConfig) -> void:
 	reset_for_new_map()
 	next_map = cfg.map_path
 	pending_load = cfg.save_data
-	MatchState.player_team = cfg.player_team
+	pending_config = cfg
 
 
 ## Save IO lives in the SaveSystem autoload; GameState keeps the match
@@ -74,7 +79,7 @@ func report_fort_destroyed(losing_team: int) -> void:
 		if is_instance_valid(b) and b is Building2D \
 				and b.owner_team == losing_team and b.alive:
 			b.kill()
-	for z in MatchState.zones.duplicate():
+	for z in MatchState.current.zones.duplicate():
 		if z.owner_team == losing_team:
 			z.set_owner_team(0)
 	_settle_outcome(losing_team)
@@ -102,10 +107,10 @@ func check_no_units(team: int) -> void:
 func _settle_outcome(losing_team: int) -> void:
 	if over:
 		return
-	if losing_team == MatchState.player_team:
+	if losing_team == MatchState.current.player_team:
 		over = true
 		var winner := 2
-		for t in MatchState.money:
+		for t in MatchState.current.money:
 			if t != losing_team and not t in _eliminated:
 				winner = t
 				break
@@ -115,7 +120,7 @@ func _settle_outcome(losing_team: int) -> void:
 	for b in Engine.get_main_loop().root.get_tree() \
 			.get_nodes_in_group("all_buildings"):
 		if is_instance_valid(b) and b is Building2D and b.alive and b.is_fort \
-				and b.team != 0 and b.team != MatchState.player_team:
+				and b.team != 0 and b.team != MatchState.current.player_team:
 			return  # another team still fights on
 	over = true
-	game_over.emit(MatchState.player_team)
+	game_over.emit(MatchState.current.player_team)

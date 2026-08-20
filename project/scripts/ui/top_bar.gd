@@ -2,7 +2,7 @@ class_name TopBar
 extends HBoxContainer
 ## Top bar: player money, zone ownership counts per team, match clock.
 ## Money and zone counts refresh on their signals (no per-frame polling);
-## the clock mirrors the SIM clock (MatchState.match_time — what drives
+## the clock mirrors the SIM clock (MatchState.current.match_time — what drives
 ## the tech ladder), not a UI-side accumulator that drifts from it.
 
 var _money: Label
@@ -19,27 +19,27 @@ func _ready() -> void:
 	_upgrades = HBoxContainer.new()
 	_upgrades.add_theme_constant_override("separation", 4)
 	add_child(_upgrades)
-	MatchState.money_changed.connect(func(_team, _amount): _refresh_counts())
-	MatchState.zone_captured.connect(func(_team): _refresh_counts())
+	MatchState.current.money_changed.connect(func(_team, _amount): _refresh_counts())
+	MatchState.current.zone_captured.connect(func(_team): _refresh_counts())
 	_refresh_counts()
 
 
 func _process(_delta: float) -> void:
-	var t: int = int(MatchState.match_time)
+	var t: int = int(MatchState.current.match_time)
 	_clock.text = "%d:%02d" % [t / 60, t % 60]
 
 
 func _refresh_counts() -> void:
-	_money.text = "credits %d" % MatchState.player_money()
+	_money.text = "credits %d" % MatchState.current.player_money()
 	var counts := {}
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		if z.owner_team != 0:
 			counts[z.owner_team] = counts.get(z.owner_team, 0) + 1
-	var mine: int = counts.get(MatchState.player_team, 0)
-	var total: int = MatchState.zones.size()
+	var mine: int = counts.get(MatchState.current.player_team, 0)
+	var total: int = MatchState.current.zones.size()
 	var theirs := 0
 	for t in counts:
-		if t != MatchState.player_team:
+		if t != MatchState.current.player_team:
 			theirs += counts[t]
 	_zones.text = "zones %d of %d - them %d" % [mine, total, theirs]
 	_sync_upgrades()
@@ -48,9 +48,9 @@ func _refresh_counts() -> void:
 ## Original grenade/rocket crate icons while the upgrade is held.
 func _sync_upgrades() -> void:
 	var wanted := ""
-	if MatchState.has_upgrade(MatchState.player_team, "grenades"):
+	if MatchState.current.has_upgrade(MatchState.current.player_team, "grenades"):
 		wanted += "g"
-	if MatchState.has_upgrade(MatchState.player_team, "rockets"):
+	if MatchState.current.has_upgrade(MatchState.current.player_team, "rockets"):
 		wanted += "r"
 	if _upgrades.get_meta("shown", "") == wanted:
 		return
@@ -61,7 +61,7 @@ func _sync_upgrades() -> void:
 		# only grenade art ships in the original HUD; rockets are the
 		# same crate line, shown with its icon
 		var icon_path := "res://assets/z/ui/hud/icon_grenade_%s.png" % [
-			AnimLibrary.team_name(MatchState.player_team)]
+			AnimLibrary.team_name(MatchState.current.player_team)]
 		if ResourceLoader.exists(icon_path):
 			var tex := TextureRect.new()
 			tex.texture = load(icon_path)

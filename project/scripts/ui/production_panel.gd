@@ -87,8 +87,8 @@ func _ready() -> void:
 	_queue_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(_queue_row)
 	SelectionManager.current.selection_changed.connect(_on_selection_changed)
-	MatchState.zone_captured.connect(func(_t): _check_roster())
-	MatchState.tech_level_changed.connect(_check_roster)
+	MatchState.current.zone_captured.connect(func(_t): _check_roster())
+	MatchState.current.tech_level_changed.connect(_check_roster)
 	hide()
 
 
@@ -146,7 +146,7 @@ func _update_queue(factory: Node) -> void:
 			btn.custom_minimum_size = Vector2(40, 44)
 			btn.tooltip_text = "Right-click to cancel"
 			var parts: PackedStringArray = String(q[idx]).split(":")
-			var icon_path := _icon_path(parts[0], parts[1], MatchState.player_team)
+			var icon_path := _icon_path(parts[0], parts[1], MatchState.current.player_team)
 			if ResourceLoader.exists(icon_path):
 				btn.icon = load(icon_path)
 				btn.expand_icon = true
@@ -162,11 +162,11 @@ func _selected_factory() -> Node:
 	for node in SelectionManager.current.selected:
 		if not is_instance_valid(node) or not node.alive:
 			continue
-		if node is RobotFactory and node.owner_team == MatchState.player_team:
+		if node is RobotFactory and node.owner_team == MatchState.current.player_team:
 			return node
-		if node is VehicleFactory and node.owner_team == MatchState.player_team:
+		if node is VehicleFactory and node.owner_team == MatchState.current.player_team:
 			return node
-		if node is FortBuilding and node.team == MatchState.player_team:
+		if node is FortBuilding and node.team == MatchState.current.player_team:
 			return node
 	return null
 
@@ -210,7 +210,7 @@ func _build_buttons(factory: Node) -> void:
 		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 		_object_button_chrome(btn)
-		var icon_path := _icon_path(kind, type_name, MatchState.player_team)
+		var icon_path := _icon_path(kind, type_name, MatchState.current.player_team)
 		if ResourceLoader.exists(icon_path):
 			btn.icon = load(icon_path)
 			btn.expand_icon = true

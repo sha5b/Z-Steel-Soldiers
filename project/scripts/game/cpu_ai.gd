@@ -55,7 +55,7 @@ func _process(delta: float) -> void:
 	if GameState.over:
 		return
 	_accum += delta
-	if _accum < THINK_SECONDS[clampi(MatchState.ai_difficulty, 0, 2)]:
+	if _accum < THINK_SECONDS[clampi(MatchState.current.ai_difficulty, 0, 2)]:
 		return
 	_accum = 0.0
 	_think()
@@ -101,9 +101,9 @@ func _think() -> void:
 ## the army growing; vehicles wait for a bank buffer; cannons round out
 ## defences when cash is flowing.
 func _produce() -> void:
-	var diff := clampi(MatchState.ai_difficulty, 0, 2)
-	var money := int(MatchState.money.get(team, 0))
-	var army_pop := MatchState.unit_pop(team)
+	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
+	var money := int(MatchState.current.money.get(team, 0))
+	var army_pop := MatchState.current.unit_pop(team)
 	for f in get_tree().get_nodes_in_group("facilities"):
 		if not f.alive or f.team == 0 or f.team != team:
 			continue
@@ -162,13 +162,13 @@ func _defend(robots: Array[Node], vehicles: Array[Node]) -> void:
 			if fort and u.global_position.distance_to(fort.visual_center()) < DEFEND_RADIUS:
 				threats.append(u)
 				continue
-			for z in MatchState.zones:
+			for z in MatchState.current.zones:
 				if z.owner_team == team and z.world_rect().has_point(u.global_position):
 					threats.append(u)
 					break
 	if threats.is_empty():
 		return
-	var responders := 1 + clampi(MatchState.ai_difficulty, 0, 2)
+	var responders := 1 + clampi(MatchState.current.ai_difficulty, 0, 2)
 	var defenders := _idle_of(robots) + _idle_of(vehicles)
 	for threat in threats:
 		if defenders.is_empty() or not is_instance_valid(threat):
@@ -190,7 +190,7 @@ func _defend(robots: Array[Node], vehicles: Array[Node]) -> void:
 func _man_hardware(robots: Array[Node], empty_hardware: Array[Node]) -> void:
 	if empty_hardware.is_empty():
 		return
-	var radius: float = MAN_RADIUS[clampi(MatchState.ai_difficulty, 0, 2)]
+	var radius: float = MAN_RADIUS[clampi(MatchState.current.ai_difficulty, 0, 2)]
 	for r in robots:
 		if r.enter_target != null and is_instance_valid(r.enter_target):
 			empty_hardware.erase(r.enter_target)  # already walking to it
@@ -269,14 +269,14 @@ func _capture_zones(robots: Array[Node], vehicles: Array[Node]) -> void:
 	if _attack_mode:
 		return  # the push supersedes spreading
 	var not_ours: Array[Node] = []
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		if z.owner_team != team:
 			not_ours.append(z)
 	if not_ours.is_empty():
 		return
-	var diff := clampi(MatchState.ai_difficulty, 0, 2)
+	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
 	# more claims on bigger maps, fewer on easy
-	var max_claims: int = clampi(MatchState.zones.size() / 3, 2, MAX_CLAIMS[diff])
+	var max_claims: int = clampi(MatchState.current.zones.size() / 3, 2, MAX_CLAIMS[diff])
 	var idle := _idle_of(robots) + _idle_of(vehicles)
 	for u in idle:
 		if _zone_claims.size() >= max_claims:
@@ -317,7 +317,7 @@ func _capture_zones(robots: Array[Node], vehicles: Array[Node]) -> void:
 ## Remember zones that flipped away from us — they stay juicy targets.
 func _track_lost_zones() -> void:
 	var now_owned: Dictionary = {}
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		if z.owner_team == team:
 			now_owned[z] = true
 	for z in _owned_snapshot:
@@ -337,16 +337,16 @@ func _track_lost_zones() -> void:
 ## attack-moves, so the push fights its way in instead of marching
 ## past every defender.
 func _attack(robots: Array[Node], vehicles: Array[Node], enemy_army: int) -> void:
-	var diff := clampi(MatchState.ai_difficulty, 0, 2)
+	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
 	var army := robots.size() + vehicles.size()
 	var zones_left := 0
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		if z.owner_team != team:
 			zones_left += 1
 	if not _attack_mode:
 		# threshold scales with map size: 8 zones -> 3 units, 24+ -> full
 		var threshold: int = clampi(
-			int(float(ATTACK_UNITS[diff]) * MatchState.zones.size() / 24.0),
+			int(float(ATTACK_UNITS[diff]) * MatchState.current.zones.size() / 24.0),
 			3, ATTACK_UNITS[diff])
 		var outnumber := army >= enemy_army + 4
 		if army < threshold and zones_left > 1 and not outnumber:
@@ -385,7 +385,7 @@ func _refresh_attack_focus(focus: Vector2) -> Vector2:
 ## Where to strike: enemy factories deny production and pay for
 ## themselves; the fort ends the game. Harder AIs mix both more often.
 func _attack_destination() -> Vector2:
-	var diff := clampi(MatchState.ai_difficulty, 0, 2)
+	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
 	var fort := _own_fort()
 	var from: Vector2 = fort.visual_center() if fort else Vector2.ZERO
 	var want_factory := randf() < 0.5 + 0.15 * diff
@@ -430,7 +430,7 @@ func _update_rallies() -> void:
 func _nearest_takeable(from: Vector2) -> Vector2:
 	var best := Vector2.INF
 	var best_d := INF
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		if z.owner_team == team or _blacklisted(z):
 			continue
 		var d: float = from.distance_squared_to(_zone_center(z))
@@ -490,7 +490,7 @@ func _zone_has_building(z: Node) -> bool:
 ## Frontier test: the zone's rect (grown a little) touches one we own.
 func _zone_touches_owned(z: Node) -> bool:
 	var grown: Rect2 = z.world_rect().grow(32.0)
-	for other in MatchState.zones:
+	for other in MatchState.current.zones:
 		if other != z and other.owner_team == team \
 				and grown.intersects(other.world_rect()):
 			return true

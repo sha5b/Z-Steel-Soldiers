@@ -24,7 +24,7 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_CENTER_RIGHT)
 	custom_minimum_size = Vector2(118, 0)
 	add_theme_constant_override("separation", 3)
-	MatchState.zone_captured.connect(func(_team): _sync())
+	MatchState.current.zone_captured.connect(func(_team): _sync())
 	_sync()
 
 
@@ -47,7 +47,7 @@ func _sync() -> void:
 	var alive := {}
 	for c in get_tree().get_nodes_in_group("facilities"):
 		if c is Node2D and is_instance_valid(c) and c.alive \
-				and c.owner_team == MatchState.player_team:
+				and c.owner_team == MatchState.current.player_team:
 			alive[c] = true
 	for node in _entries.keys():
 		if not alive.has(node):

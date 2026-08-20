@@ -31,12 +31,12 @@ func build(data: Dictionary, _tileset: Texture2D) -> void:
 	_recompute_map_rect()
 	# zone tints rebake on the capture signal — this used to poll every
 	# 0.5s to detect ownership changes
-	MatchState.zone_captured.connect(_refresh_owners)
+	MatchState.current.zone_captured.connect(_refresh_owners)
 
 
 ## Zone ownership tint, baked into the texture pixels.
 func _bake_zone_tints() -> void:
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		var zone: Zone = z as Zone
 		if zone == null:
 			continue
@@ -50,7 +50,7 @@ func _bake_zone_tints() -> void:
 
 func _refresh_owners() -> void:
 	var owners := []
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		owners.append(z.owner_team)
 	if owners == _owners:
 		return
@@ -98,7 +98,7 @@ func _draw() -> void:
 	# enemy intel needs a radar station (original Z) — own units always show
 	var radar = _player_has_radar()
 	for u in UnitRegistry.current.world_units():
-		if u.team != MatchState.player_team and not radar:
+		if u.team != MatchState.current.player_team and not radar:
 			continue
 		_blip(u.global_position, Teams.minimap_color(u.team), 2.0)
 	# camera viewport in world space (works under stretch + zoom)
@@ -113,7 +113,7 @@ func _player_has_radar() -> bool:
 	# "all_buildings": radar sits in none of the narrower groups
 	for b in get_tree().get_nodes_in_group("all_buildings"):
 		if b is Building2D and b.alive and b.building_id == 2 \
-				and b.owner_team == MatchState.player_team:
+				and b.owner_team == MatchState.current.player_team:
 			return true
 	return false
 

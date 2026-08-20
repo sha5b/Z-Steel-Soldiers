@@ -30,7 +30,7 @@ func _ready() -> void:
 
 
 func show_for(winning_team: int) -> void:
-	MusicPlayer.play_stinger(winning_team == MatchState.player_team)
-	label.text = "VICTORY!" if winning_team == MatchState.player_team else "DEFEAT"
-	next_mission.visible = Campaign.active and winning_team == MatchState.player_team
+	MusicPlayer.play_stinger(winning_team == MatchState.current.player_team)
+	label.text = "VICTORY!" if winning_team == MatchState.current.player_team else "DEFEAT"
+	next_mission.visible = Campaign.active and winning_team == MatchState.current.player_team
 	visible = true

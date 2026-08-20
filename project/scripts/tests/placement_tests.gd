@@ -20,7 +20,7 @@ static func run(ctx: Node, rig: TestRig) -> void:
 	# fixture: a vehicle factory (5x5 solid art) on open ground near the
 	# map's second zone — same spot the factory tests use
 	var vf := VehicleFactory.new()
-	var z: Node2D = MatchState.zones[1]
+	var z: Node2D = MatchState.current.zones[1]
 	vf.position = z.position + z.world_rect().get_center() - Vector2(24, 24)
 	ctx.add_child(vf)
 	await ctx.get_tree().physics_frame  # _ready paints walls + solids

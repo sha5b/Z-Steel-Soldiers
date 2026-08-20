@@ -64,15 +64,15 @@ func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
 	# repair work: crane over damaged hardware, damaged vehicle over a
 	# repair shop (zod can_repair / can_be_repaired)
 	if has_crane and hover is Unit2D and hover.kind == "vehicle" \
-			and hover.team == MatchState.player_team and hover.hp < hover.max_hp:
+			and hover.team == MatchState.current.player_team and hover.hp < hover.max_hp:
 		return "repair"
 	if damaged_vehicle and hover is Building2D and hover.is_repair_shop() \
-			and hover.owner_team == MatchState.player_team:
+			and hover.owner_team == MatchState.current.player_team:
 		return "repair"
 	# item drops
 	if hover is Pickup:
 		return "grab"
-	if hover.team != MatchState.player_team:
+	if hover.team != MatchState.current.player_team:
 		# mannable hardware (neutral vehicles/cannons)
 		if hover is Vehicle2D and hover.team == 0:
 			return "enter"
@@ -102,7 +102,7 @@ func _hover_object(world: Vector2) -> Node2D:
 
 
 func _show(type: String) -> void:
-	var team := AnimLibrary.team_name(MatchState.player_team)
+	var team := AnimLibrary.team_name(MatchState.current.player_team)
 	if team != _team:
 		_team = team
 		_frames.clear()

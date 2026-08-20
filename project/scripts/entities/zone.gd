@@ -32,7 +32,7 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		queue_redraw()
 		return
-	MatchState.register_zone(self)
+	MatchState.current.register_zone(self)
 	_build_visuals()
 
 
@@ -214,11 +214,11 @@ static func _marker_tex(owner: int, water: bool) -> Texture2D:
 
 
 func set_owner_team(team: int) -> void:
-	if owner_team == MatchState.player_team and team != MatchState.player_team:
+	if owner_team == MatchState.current.player_team and team != MatchState.current.player_team:
 		Fx.announce("territory_lost")
 	owner_team = team
 	captured.emit(team)
-	MatchState.notify_zone_captured(team)
+	MatchState.current.notify_zone_captured(team)
 	if _flag:
 		_flag.sprite_frames = AnimLibrary.flag_frames(team)
 		if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):

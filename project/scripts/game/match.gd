@@ -13,9 +13,13 @@ var _map_index := 0
 
 func _ready() -> void:
 	Engine.time_scale = GameSettings.game_speed()  # options-screen speed
-	# match-scoped subsystems (NavWorld, UnitRegistry, SelectionManager)
-	# are SCENE CHILDREN above — they ready before the HUD connects and
-	# die with the scene (state per match; two matches can coexist)
+	# match-scoped subsystems (NavWorld, UnitRegistry, SelectionManager,
+	# MatchState) are SCENE CHILDREN above — they ready before the HUD
+	# connects and die with the scene (state per match; two matches can
+	# coexist in one tree)
+	if GameState.pending_config:
+		MatchState.current.player_team = GameState.pending_config.player_team
+	MatchState.current.ai_difficulty = GameSettings.difficulty
 	# the ORIGINAL's animated, context-swapping team cursor, drawn in the
 	# stretched canvas so it scales with the window (a 16px OS cursor
 	# reads as a speck on a maximized window); the OS pointer hides for
@@ -37,7 +41,7 @@ func _ready() -> void:
 	if data.is_empty():
 		push_error("empty map")
 		return
-	MatchState.planet = String(data.get("terrain", "desert"))
+	MatchState.current.planet = String(data.get("terrain", "desert"))
 	_spawn_ambient_life()
 	if not GameState.pending_load.is_empty():
 		_apply_load()
@@ -45,7 +49,7 @@ func _ready() -> void:
 	# start on the player's fort when the map has one (group scan: scene
 	# maps nest everything one level deeper, under the ZMap instance)
 	for b in get_tree().get_nodes_in_group("buildings"):
-		if b is FortBuilding and b.team == MatchState.player_team:
+		if b is FortBuilding and b.team == MatchState.current.player_team:
 			camera.position = b.visual_center()
 			break
 	camera.bounds = Rect2(0.0, 0.0, float(data.width) * 16.0, float(data.height) * 16.0)
@@ -67,7 +71,7 @@ func _ready() -> void:
 					terrain_cells = child.get_node("Terrain").get_used_cells().size()
 		print("MAP OK: %dx%d terrain-cells=%d zones=%d units=%d" % [
 			data.width, data.height, terrain_cells,
-			MatchState.zones.size(),
+			MatchState.current.zones.size(),
 			get_tree().get_nodes_in_group("units").size()])
 		await SelfTests.run(self)
 		# the suite is value-driven and fast — don't idle the match out
@@ -133,7 +137,7 @@ func _dump_ground_nodes() -> void:
 ## A few ambient critters wander every map (original hut animals).
 func _spawn_ambient_life() -> void:
 	for i in Animal.COUNT_PER_MAP:
-		var species := Animal.random_species(MatchState.planet)
+		var species := Animal.random_species(MatchState.current.planet)
 		if species == "":
 			return
 		var pos := Vector2(
@@ -151,15 +155,15 @@ func _spawn_ambient_life() -> void:
 func _apply_load() -> void:
 	var save: Dictionary = GameState.pending_load
 	GameState.pending_load = {}
-	MatchState.money.clear()
+	MatchState.current.money.clear()
 	for team in save.get("money", {}):
-		MatchState.set_money(int(team), int(save.money[team]))
+		MatchState.current.set_money(int(team), int(save.money[team]))
 	for team in save.get("upgrades", {}):
-		MatchState.upgrades[int(team)] = save.upgrades[team]
+		MatchState.current.upgrades[int(team)] = save.upgrades[team]
 	var owners: Array = save.get("zone_owners", [])
 	if not owners.is_empty() and owners[0] is Dictionary:
 		# zone rects are stable map data — match by rect, never by order
-		for zone in MatchState.zones:
+		for zone in MatchState.current.zones:
 			for entry in owners:
 				if int(entry.get("x", -1)) == zone.zone_rect.position.x \
 						and int(entry.get("y", -1)) == zone.zone_rect.position.y \
@@ -169,8 +173,8 @@ func _apply_load() -> void:
 					break
 	else:
 		# legacy saves stored a positional int array
-		for i in mini(owners.size(), MatchState.zones.size()):
-			MatchState.zones[i].set_owner_team(int(owners[i]))
+		for i in mini(owners.size(), MatchState.current.zones.size()):
+			MatchState.current.zones[i].set_owner_team(int(owners[i]))
 	# replace spawned units with the saved roster
 	for u in get_tree().get_nodes_in_group("units"):
 		u.queue_free()
@@ -270,19 +274,19 @@ func _pick_select(screen_pos: Vector2) -> void:
 	# player factories and fort first (selecting opens the production
 	# panel) — group scans, so scene maps (nested under ZMap) work too
 	for c in get_tree().get_nodes_in_group("facilities"):
-		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == MatchState.player_team \
+		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == MatchState.current.player_team \
 				and c.art_world_rect().has_point(world):
 			SelectionManager.current.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
 	for c in get_tree().get_nodes_in_group("buildings"):
-		if c is FortBuilding and c.team == MatchState.player_team \
+		if c is FortBuilding and c.team == MatchState.current.player_team \
 				and c.art_world_rect().has_point(world):
 			SelectionManager.current.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
 	var best: Node2D = null
 	for unit in get_tree().get_nodes_in_group("selectable"):
 		if unit is Unit2D and unit.alive and not unit.carried \
-				and unit.team == MatchState.player_team \
+				and unit.team == MatchState.current.player_team \
 				and unit.global_position.distance_to(world) < 8.0:
 			if best == null or unit.global_position.distance_squared_to(world) < best.global_position.distance_squared_to(world):
 				best = unit

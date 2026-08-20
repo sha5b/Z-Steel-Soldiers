@@ -98,7 +98,7 @@ func select_area(world_rect: Rect2) -> void:
 	for unit in get_tree().get_nodes_in_group("selectable"):
 		# own units only — enemy hardware is never selectable/orderable
 		if not (unit is Unit2D) or not unit.alive or unit.carried \
-				or unit.team != MatchState.player_team:
+				or unit.team != MatchState.current.player_team:
 			continue
 		if world_rect.has_point(unit.global_position) and unit not in selected:
 			selected.append(unit)

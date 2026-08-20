@@ -84,10 +84,10 @@ func produce_seconds(item := "") -> float:
 func build_time_mult() -> float:
 	var owner := team if team != 0 else owner_team
 	var owned := 0
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		if z.owner_team == owner:
 			owned += 1
-	var ownage := float(owned) / float(maxi(MatchState.zones.size(), 1))
+	var ownage := float(owned) / float(maxi(MatchState.current.zones.size(), 1))
 	var damage_penalty := 1.0 + 1.25 * (1.0 - float(hp) / float(max_hp))
 	return maxf((1.0 - 0.5 * ownage) * damage_penalty, 0.1)
 
@@ -122,12 +122,12 @@ func queue_unit(item: String, silent := false) -> bool:
 	var stats := ContentDB.def_for(kind, type_name)
 	if not _pop_allows(kind, stats, silent):
 		return false
-	if not MatchState.spend(owner_team, stats.cost):
+	if not MatchState.current.spend(owner_team, stats.cost):
 		return false
 	if not queue.enqueue(item):
-		MatchState.deposit(owner_team, stats.cost)  # queue full: refund
+		MatchState.current.deposit(owner_team, stats.cost)  # queue full: refund
 		return false
-	if owner_team == MatchState.player_team and queue.items.size() == 1:
+	if owner_team == MatchState.current.player_team and queue.items.size() == 1:
 		Fx.announce("starting_manufacture")
 	return true
 
@@ -136,10 +136,10 @@ func cancel_at(index: int) -> void:
 	var item := queue.cancel_at(index)
 	if item == "" or owner_team == 0:
 		return
-	if owner_team == MatchState.player_team:
+	if owner_team == MatchState.current.player_team:
 		Fx.announce("manufacturing_canceled")
 	var stats := ContentDB.def_for(item.split(":")[0], item.split(":")[1])
-	MatchState.deposit(owner_team, stats.cost)
+	MatchState.current.deposit(owner_team, stats.cost)
 
 
 ## A capture scraps the old owner's queue — payment is upfront and
@@ -149,7 +149,7 @@ func _refund_queue() -> void:
 		return
 	for item in queue.items:
 		var parts: PackedStringArray = item.split(":")
-		MatchState.deposit(team, ContentDB.def_for(parts[0], parts[1]).cost)
+		MatchState.current.deposit(team, ContentDB.def_for(parts[0], parts[1]).cost)
 
 
 ## Cap gate: alive + queued + this unit must fit under the team cap.
@@ -161,7 +161,7 @@ func _pop_allows(kind: String, stats: UnitDef, silent := false) -> bool:
 		var parts: PackedStringArray = item.split(":")
 		queued += ContentDB.def_for(parts[0], parts[1]).pop
 	var cost := stats.pop
-	if MatchState.unit_pop(team_id) + queued + cost > MatchState.unit_cap(team_id):
+	if MatchState.current.unit_pop(team_id) + queued + cost > MatchState.current.unit_cap(team_id):
 		if not silent:
 			Fx.cap_denied()
 		return false
@@ -180,7 +180,7 @@ func spawn_produced(item: String) -> void:
 	var parts := item.split(":")
 	var kind := parts[0]
 	var type_name := parts[1]
-	if owner_team == MatchState.player_team:
+	if owner_team == MatchState.current.player_team:
 		Fx.announce("robot_manufactured" if kind == "robot"
 			else "vehicle_manufactured" if kind == "vehicle"
 			else "gun_manufactured")
@@ -224,13 +224,13 @@ func _ready() -> void:
 	var bdef := ContentDB.building_def(building_id)
 	if (bdef != null and bdef.produces) or is_fort:
 		add_to_group("facilities")
-		MatchState.register_facility(self)
+		MatchState.current.register_facility(self)
 	if not is_bridge():
 		apply_footprint()
 
 
 func _exit_tree() -> void:
-	MatchState.unregister_facility(self)
+	MatchState.current.unregister_facility(self)
 
 
 func _build_sprite() -> void:
@@ -668,14 +668,14 @@ func _process(delta: float) -> void:
 	# non-fort buildings (radar, repair) follow their zone's owner so the
 	# flag recolors on capture; factories override with their own loop
 	var center := world_footprint().get_center()
-	for z in MatchState.zones:
+	for z in MatchState.current.zones:
 		if z.world_rect().has_point(center):
 			if z.owner_team != owner_team:
-				var was_player := owner_team == MatchState.player_team
+				var was_player := owner_team == MatchState.current.player_team
 				owner_team = z.owner_team
 				team = owner_team
 				update_flag(owner_team)
-				if not was_player and owner_team == MatchState.player_team \
+				if not was_player and owner_team == MatchState.current.player_team \
 						and building_id == 2:
 					Fx.announce("radar_activated")
 			break
@@ -708,7 +708,7 @@ func try_start_repair(unit: Node2D) -> bool:
 		return false
 	repair_unit = unit
 	_repair_time = 0.0
-	if owner_team == MatchState.player_team:
+	if owner_team == MatchState.current.player_team:
 		Fx.announce("starting_repair")
 	unit.visible = false
 	unit.velocity = Vector2.ZERO
@@ -736,7 +736,7 @@ func _repair_tick(delta: float) -> void:
 		var done: Node2D = repair_unit
 		repair_unit = null
 		done.hp = done.max_hp
-		if owner_team == MatchState.player_team:
+		if owner_team == MatchState.current.player_team:
 			Fx.announce("vehicle_repaired")
 		done.visible = true
 		done.carried = false
@@ -758,7 +758,7 @@ func take_damage(amount: int) -> void:
 		_bridge_damage(amount)
 		return
 	hp -= amount
-	if is_fort and team == MatchState.player_team:
+	if is_fort and team == MatchState.current.player_team:
 		Fx.announce("fort_under_attack")  # forts only — factories have
 		# their own distinct original voice lines
 	# rapid-fire attackers restart this every hit — only start a new
@@ -772,7 +772,7 @@ func take_damage(amount: int) -> void:
 		_hp_bar.region_rect.size.x = maxf(6.0,
 			62.0 * clampf(float(hp) / float(max_hp), 0.0, 1.0))
 		_hp_bar.visible = true
-	if is_fort and team == MatchState.player_team and hp > 0 \
+	if is_fort and team == MatchState.current.player_team and hp > 0 \
 			and float(hp) / float(max_hp) < 0.35:
 		Fx.announce("youre_losing")
 	if hp <= 0:

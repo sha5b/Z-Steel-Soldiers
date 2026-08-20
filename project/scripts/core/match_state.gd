@@ -1,7 +1,23 @@
+class_name MatchState
 extends Node
-## Autoload (MatchState): the match economy and its rules — team money
-## and zone income, upgrades with their damage multipliers, population
-## caps, AI difficulty, and the zone registry that feeds income.
+## The match economy and its rules — team money and zone income,
+## upgrades, population caps, AI difficulty, and the zone registry that
+## feeds income. A CHILD OF THE MATCH SCENE (not an autoload): each
+## match owns its economy and dies with it — see NavWorld for the
+## locator pattern. Launch config (player_team, difficulty) reaches the
+## fresh instance through GameState.pending_config (applied by match.gd).
+
+## The active match's economy (set on _ready, cleared on exit).
+static var current: MatchState
+
+
+func _ready() -> void:
+	current = self
+
+
+func _exit_tree() -> void:
+	if current == self:
+		current = null
 
 signal money_changed(team: int, amount: int)
 signal zone_captured(team: int)

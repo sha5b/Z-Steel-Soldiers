@@ -12,7 +12,7 @@ const PATH := "user://settings.cfg"
 const MUSIC_BUS := "ZMusic"
 const SFX_BUS := "ZSfx"
 
-var difficulty := 1      # 0 easy, 1 normal, 2 hard -> MatchState.ai_difficulty
+var difficulty := 1      # 0 easy, 1 normal, 2 hard -> MatchState.current.ai_difficulty
 var speed_index := 2     # SPEEDS index; 2 = original speed
 var music_volume := 0.8  # linear 0..1
 var sfx_volume := 0.8
@@ -72,7 +72,8 @@ func save() -> void:
 
 ## Push every option to wherever it is consumed. Safe to call repeatedly.
 func apply() -> void:
-	MatchState.ai_difficulty = difficulty
+	if MatchState.current:
+		MatchState.current.ai_difficulty = difficulty
 	AudioServer.set_bus_volume_db(
 		AudioServer.get_bus_index(MUSIC_BUS), linear_to_db(music_volume))
 	AudioServer.set_bus_volume_db(

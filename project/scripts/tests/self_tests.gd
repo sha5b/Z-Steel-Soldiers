@@ -283,27 +283,27 @@ static func run(ctx: Node) -> void:
 	if "--capture-test" in args:
 		var u: Unit2D = null
 		for unit in tree.get_nodes_in_group("units"):
-			if unit.team == MatchState.player_team:
+			if unit.team == MatchState.current.player_team:
 				u = unit
 				break
-		var z: Node2D = MatchState.zones[0]
+		var z: Node2D = MatchState.current.zones[0]
 		u.position = z.position + z.world_rect().get_center()
 		for i in 30:
 			z._process(0.1)
-			MatchState._process(1.0)
-			print("CAPTURE: owner=%d money=%d" % [z.owner_team, MatchState.player_money()])
+			MatchState.current._process(1.0)
+			print("CAPTURE: owner=%d money=%d" % [z.owner_team, MatchState.current.player_money()])
 			# a zone with a LIVE enemy fort never flips — the fort is the
 			# win objective, its garrison holds the ground
 			var enemy_fort: Building2D = null
 			for b in tree.get_nodes_in_group("buildings"):
 				if b is FortBuilding and b.alive \
-						and b.team != 0 and b.team != MatchState.player_team:
+						and b.team != 0 and b.team != MatchState.current.player_team:
 					enemy_fort = b
 					break
 			var fort_holds := true
 			if enemy_fort != null:
 				var held: Node2D = null
-				for zh in MatchState.zones:
+				for zh in MatchState.current.zones:
 					if enemy_fort.art_world_rect().intersection(
 							zh.world_rect()).get_area() > 0:
 						held = zh
@@ -333,17 +333,17 @@ static func run(ctx: Node) -> void:
 	if "--factory-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		var f := RobotFactory.new()
-		var z2: Node2D = MatchState.zones[1]
+		var z2: Node2D = MatchState.current.zones[1]
 		f.position = z2.position + z2.world_rect().get_center() - Vector2(24, 24)
 		ctx.add_child(f)
-		z2.owner_team = MatchState.player_team
+		z2.owner_team = MatchState.current.player_team
 		# pretend the factory was already ours — otherwise the first
 		# _process treats the zone capture as new and scraps the queue
-		f.owner_team = MatchState.player_team
-		f.team = MatchState.player_team
+		f.owner_team = MatchState.current.player_team
+		f.team = MatchState.current.player_team
 		var before := tree.get_nodes_in_group("units").size()
-		var money_before := MatchState.player_money()
-		MatchState.set_money(MatchState.player_team, 500)
+		var money_before := MatchState.current.player_money()
+		MatchState.current.set_money(MatchState.current.player_team, 500)
 		for i in 3:
 			f.queue_unit("robot:grunt")
 		for i in 30:
@@ -357,7 +357,7 @@ static func run(ctx: Node) -> void:
 		var ruin_spawned := tree.get_nodes_in_group("units").size() - units_at_death
 		print("FACTORY: units %d -> %d money %d -> %d queue=%d ruin_spawned=%d" % [
 			before, tree.get_nodes_in_group("units").size(),
-			money_before, MatchState.player_money(), f.queue.items.size(), ruin_spawned])
+			money_before, MatchState.current.player_money(), f.queue.items.size(), ruin_spawned])
 	if "--ai-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		var ai := ctx.get_node_or_null("CpuAi_T2")
@@ -380,8 +380,8 @@ static func run(ctx: Node) -> void:
 					roster.facilities += 1
 			print("AI ROSTER: robots=%d idle=%d vehicles=%d facilities=%d money=%d zones_owned=%d" % [
 				roster.robots, roster.idle, roster.vehicles, roster.facilities,
-				int(MatchState.money.get(2, 0)),
-				MatchState.zones.filter(func(z): return z.owner_team == 2).size()])
+				int(MatchState.current.money.get(2, 0)),
+				MatchState.current.zones.filter(func(z): return z.owner_team == 2).size()])
 			ai._think()
 			var moved_after := 0
 			for u2 in tree.get_nodes_in_group("units"):
@@ -412,8 +412,8 @@ static func run(ctx: Node) -> void:
 						q2 += b2.queue.items.size()
 				print("AI SIM t+%ds: robots=%d vehicles=%d unmanned=%d zones=%d money=%d facilities=%d queued=%d attacking=%s" % [
 					(step + 1) * 20, r2, v2, unmanned2,
-					MatchState.zones.filter(func(z): return z.owner_team == 2).size(),
-					int(MatchState.money.get(2, 0)), f2, q2, ai._attack_mode])
+					MatchState.current.zones.filter(func(z): return z.owner_team == 2).size(),
+					int(MatchState.current.money.get(2, 0)), f2, q2, ai._attack_mode])
 			ctx.get_tree().quit()
 	if "--path-test" in args:
 		PathTests.walk_a_pair(ctx, TestRig.start("PATH"))
@@ -461,13 +461,13 @@ static func run(ctx: Node) -> void:
 		GameSettings.auto_idle = false  # deterministic: no ambient grabs
 		var rr := TestRig.start("RALLY")
 		var vf := VehicleFactory.new()
-		var vz: Node2D = MatchState.zones[1]
+		var vz: Node2D = MatchState.current.zones[1]
 		vf.position = vz.position + vz.world_rect().get_center() - Vector2(24, 24)
 		ctx.add_child(vf)
-		vz.owner_team = MatchState.player_team
-		vf.owner_team = MatchState.player_team
-		vf.team = MatchState.player_team
-		MatchState.set_money(MatchState.player_team, 500)
+		vz.owner_team = MatchState.current.player_team
+		vf.owner_team = MatchState.current.player_team
+		vf.team = MatchState.current.player_team
+		MatchState.current.set_money(MatchState.current.player_team, 500)
 		var rally := vf.global_position + Vector2(500, 0)
 		vf.set_rally(rally)
 		vf.queue_unit("vehicle:jeep", true)
@@ -489,7 +489,7 @@ static func run(ctx: Node) -> void:
 			rr.check(product.global_position.distance_to(rally) > 300.0,
 				"unmanned product drove itself toward the rally")
 			var driver: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
-				MatchState.player_team,
+				MatchState.current.player_team,
 				product.global_position + Vector2(0, -24)) as Unit2D
 			driver.issue_order(Order.for_target(product))
 			for i in 300:
@@ -641,7 +641,7 @@ static func run(ctx: Node) -> void:
 		ctx.add_child(crate)
 		var pfort: FortBuilding = null
 		for c in ctx.get_children():
-			if c is FortBuilding and c.team == MatchState.player_team:
+			if c is FortBuilding and c.team == MatchState.current.player_team:
 				pfort = c
 				break
 		await tree.process_frame
@@ -663,7 +663,7 @@ static func run(ctx: Node) -> void:
 		if got_plain != "cursor":
 			cproblems.append("plain got %s" % got_plain)
 		for fam in ["cursor", "place", "attack", "grab", "enter", "repair", "nono", "cannon"]:
-			var team := AnimLibrary.team_name(MatchState.player_team)
+			var team := AnimLibrary.team_name(MatchState.current.player_team)
 			if not ResourceLoader.exists("res://assets/z/ui/cursor/%s_%s_n00.png" % [fam, team]) \
 					and fam != "cursor":
 				cproblems.append("art %s_%s" % [fam, team])
@@ -855,7 +855,7 @@ static func run(ctx: Node) -> void:
 		# (zod OMapObject::DoRender) — 2x turned clutter into giant smears;
 		# zone marker stamps are texture-sized (team 8x4, neutral 4x4) and
 		# the draw must stay texture-driven or the neutral one smears
-		var map_root := MatchState.map_root
+		var map_root := MatchState.current.map_root
 		if map_root != null:
 			for sc in map_root.get_children():
 				if not String(sc.name).begins_with("Scenery_"):
@@ -997,7 +997,7 @@ static func run(ctx: Node) -> void:
 				fort_teams[b.team] = true
 		for t in fort_teams:
 			var owned := 0
-			for z in MatchState.zones:
+			for z in MatchState.current.zones:
 				if z.owner_team == t:
 					owned += 1
 			if owned < 1:
@@ -1121,14 +1121,14 @@ static func run(ctx: Node) -> void:
 			lproblems.append("robot factory L0 roster wrong")
 		# original BuildTimeModified: -50% at full zone control, +125% at
 		# near-death, LEVEL never speeds builds up
-		fort_l0.team = MatchState.player_team
+		fort_l0.team = MatchState.current.player_team
 		fort_l0.owner_team = fort_l0.team
 		fort_l0.hp = fort_l0.max_hp
 		var zones_owned_l := 0
-		for z6 in MatchState.zones:
+		for z6 in MatchState.current.zones:
 			if z6.owner_team == fort_l0.team:
 				zones_owned_l += 1
-		var want_mult := 1.0 - 0.5 * float(zones_owned_l) / float(maxi(MatchState.zones.size(), 1))
+		var want_mult := 1.0 - 0.5 * float(zones_owned_l) / float(maxi(MatchState.current.zones.size(), 1))
 		if not is_equal_approx(fort_l0.build_time_mult(), want_mult):
 			lproblems.append("build time mult wrong")
 		fort_l0.queue_free()
@@ -1138,16 +1138,16 @@ static func run(ctx: Node) -> void:
 		# gatling spawns as an unmanned cannon
 		var fort_lv: FortBuilding = null
 		for c4 in ctx.get_children():
-			if c4 is FortBuilding and c4.team == MatchState.player_team:
+			if c4 is FortBuilding and c4.team == MatchState.current.player_team:
 				fort_lv = c4
 				break
 		if fort_lv:
 			fort_lv.level = 5
-			MatchState.set_money(MatchState.player_team, 9999)
+			MatchState.current.set_money(MatchState.current.player_team, 9999)
 			# the sandbox roster can start above the base cap — hand the
 			# player some zones for headroom before producing
-			for z5 in MatchState.zones:
-				z5.owner_team = MatchState.player_team
+			for z5 in MatchState.current.zones:
+				z5.owner_team = MatchState.current.player_team
 			var units_before := tree.get_nodes_in_group("units").size()
 			if not fort_lv.queue_unit("vehicle:jeep"):
 				lproblems.append("fort refused to build a jeep")
@@ -1174,7 +1174,7 @@ static func run(ctx: Node) -> void:
 		# restored by the crane
 		var rproblems: Array[String] = []
 		var shop: Building2D = Building2D.new()
-		shop.setup(3, MatchState.player_team, "desert", 0)
+		shop.setup(3, MatchState.current.player_team, "desert", 0)
 		shop.position = Vector2(600, 600)
 		ctx.add_child(shop)
 		# the shop must be discoverable through the order pipeline —
@@ -1182,12 +1182,12 @@ static func run(ctx: Node) -> void:
 		if Commands._find_interactable_building(
 				shop.art_world_rect().get_center()) != shop:
 			rproblems.append("repair shop not discoverable by commands")
-		for z in MatchState.zones:
+		for z in MatchState.current.zones:
 			if z.world_rect().has_point(Vector2(632, 624)) \
 					or z.world_rect().has_point(Vector2(732, 624)):
-				z.set_owner_team(MatchState.player_team)
+				z.set_owner_team(MatchState.current.player_team)
 		var wrecked_jeep: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
-		wrecked_jeep.setup_vehicle("vehicle", "jeep", MatchState.player_team)
+		wrecked_jeep.setup_vehicle("vehicle", "jeep", MatchState.current.player_team)
 		wrecked_jeep.position = Vector2(630, 640)
 		ctx.add_child(wrecked_jeep)
 		wrecked_jeep.take_damage(50)
@@ -1202,13 +1202,13 @@ static func run(ctx: Node) -> void:
 			rproblems.append("jeep never left the shop")
 		# crane repairs a damaged radar
 		var radar2: Building2D = Building2D.new()
-		radar2.setup(2, MatchState.player_team, "desert", 0)
+		radar2.setup(2, MatchState.current.player_team, "desert", 0)
 		radar2.position = Vector2(700, 600)
 		ctx.add_child(radar2)
 		radar2.max_hp = 500
 		radar2.hp = 200
 		var crane2: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
-		crane2.setup_vehicle("vehicle", "crane", MatchState.player_team)
+		crane2.setup_vehicle("vehicle", "crane", MatchState.current.player_team)
 		crane2.position = Vector2(700, 640)
 		ctx.add_child(crane2)
 		crane2.issue_order(Order.for_target(radar2))
@@ -1347,13 +1347,13 @@ static func run(ctx: Node) -> void:
 		# --- garrison: robots inside make the fort shoot missiles ---
 		var fort_g: FortBuilding = null
 		for c6 in ctx.get_children():
-			if c6 is FortBuilding and c6.team == MatchState.player_team:
+			if c6 is FortBuilding and c6.team == MatchState.current.player_team:
 				fort_g = c6
 				break
 		if fort_g:
 			var rb: Unit2D = load("res://scenes/unit.tscn").instantiate()
 			rb.unit_name = "grunt"
-			rb.team = MatchState.player_team
+			rb.team = MatchState.current.player_team
 			rb.position = fort_g.visual_center()
 			ctx.add_child(rb)
 			if not fort_g.garrison_robot(rb):
@@ -1383,13 +1383,13 @@ static func run(ctx: Node) -> void:
 		# take zones — not just charge the enemy fort
 		var ai2: CpuAi = null
 		for c2 in ctx.get_children():
-			if c2 is CpuAi and c2.team != MatchState.player_team:
+			if c2 is CpuAi and c2.team != MatchState.current.player_team:
 				ai2 = c2
 				break
 		if ai2 == null:
 			print("TACTICS: no cpu ai found")
 		else:
-			MatchState.set_money(ai2.team, 2000)
+			MatchState.current.set_money(ai2.team, 2000)
 			var t := ai2.team
 			var count := func() -> Dictionary:
 				var robots2 := 0
@@ -1402,7 +1402,7 @@ static func run(ctx: Node) -> void:
 								manned2 += 1
 						elif u3.kind == "robot":
 							robots2 += 1
-				for z3 in MatchState.zones:
+				for z3 in MatchState.current.zones:
 					if z3.owner_team == t:
 						zones2 += 1
 				return {"robots": robots2, "manned": manned2, "zones": zones2}
@@ -1415,7 +1415,7 @@ static func run(ctx: Node) -> void:
 			# simulate a few minutes: think cycles + factory, unit and
 			# zone time (units must walk, capture zones, board hardware)
 			for i in 40:
-				MatchState.set_money(t, 2000)
+				MatchState.current.set_money(t, 2000)
 				ai2._think()
 				for c3 in ctx.get_children():
 					if c3 is RobotFactory or c3 is VehicleFactory or c3 is FortBuilding:
@@ -1426,7 +1426,7 @@ static func run(ctx: Node) -> void:
 						for j in 8:
 							u6._process(0.5)
 							u6._physics_process(0.5)
-				for z4 in MatchState.zones:
+				for z4 in MatchState.current.zones:
 					for j in 8:
 						z4._process(0.2)
 				manned_peak = maxi(manned_peak, int(count.call().manned))
@@ -1467,12 +1467,12 @@ static func run(ctx: Node) -> void:
 	if "--flag-test" in args:
 		var radar: Building2D = Building2D.new()
 		radar.setup(2, 0, "desert")
-		var zr: Node2D = MatchState.zones[0]
+		var zr: Node2D = MatchState.current.zones[0]
 		radar.position = zr.position + zr.world_rect().get_center()
 		ctx.add_child(radar)
-		zr.owner_team = MatchState.player_team
+		zr.owner_team = MatchState.current.player_team
 		radar._process(0.0)
-		print("FLAG: radar team=%d (want %d)" % [radar.team, MatchState.player_team])
+		print("FLAG: radar team=%d (want %d)" % [radar.team, MatchState.current.player_team])
 	if "--pickup-test" in args:
 		# quiet corner + overkill HP: the live map's wanderers must not
 		# steal the crate or kill the collector before the check runs
@@ -1523,13 +1523,13 @@ static func run(ctx: Node) -> void:
 				break
 		if f2:
 			var zone_hit: Node2D = null
-			for z3 in MatchState.zones:
+			for z3 in MatchState.current.zones:
 				if z3.world_rect().has_point(f2.world_footprint().get_center()):
 					zone_hit = z3
 					break
 			if zone_hit:
-				zone_hit.owner_team = MatchState.player_team
-				MatchState.set_money(MatchState.player_team, 500)
+				zone_hit.owner_team = MatchState.current.player_team
+				MatchState.current.set_money(MatchState.current.player_team, 500)
 				f2._process(0.1)  # sync owner from zone before queueing
 				var ok: bool = f2.queue_unit("robot:psycho")
 				var count_before := tree.get_nodes_in_group("units").size()
@@ -1537,7 +1537,7 @@ static func run(ctx: Node) -> void:
 					f2._process(0.5)
 				var psychos := 0
 				for u3 in tree.get_nodes_in_group("units"):
-					if u3 is Unit2D and u3.unit_name == "psycho" and u3.team == MatchState.player_team:
+					if u3 is Unit2D and u3.unit_name == "psycho" and u3.team == MatchState.current.player_team:
 						psychos += 1
 				print("PROD: queued=%s units %d -> %d psychos=%d queue_left=%d" % [
 					ok, count_before, tree.get_nodes_in_group("units").size(),
@@ -1546,11 +1546,11 @@ static func run(ctx: Node) -> void:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		var fort2: FortBuilding = null
 		for c in ctx.get_children():
-			if c is FortBuilding and c.team == MatchState.player_team:
+			if c is FortBuilding and c.team == MatchState.current.player_team:
 				fort2 = c
 				break
 		if fort2:
-			MatchState.set_money(1, 500)
+			MatchState.current.set_money(1, 500)
 			var ok2: bool = fort2.queue_unit("robot:psycho")
 			for i in 8:
 				fort2.queue_unit("robot:grunt")
@@ -1590,17 +1590,17 @@ static func run(ctx: Node) -> void:
 	if "--cancel-test" in args:
 		var fort3: FortBuilding = null
 		for c in ctx.get_children():
-			if c is FortBuilding and c.team == MatchState.player_team:
+			if c is FortBuilding and c.team == MatchState.current.player_team:
 				fort3 = c
 				break
 		if fort3:
-			MatchState.set_money(1, 500)
+			MatchState.current.set_money(1, 500)
 			fort3.queue_unit("robot:grunt")
 			fort3.queue_unit("robot:sniper")
-			var money_mid: int = MatchState.money[1]
+			var money_mid: int = MatchState.current.money[1]
 			fort3.cancel_at(1)  # refund the sniper ($80)
 			print("CANCEL: queue=%s money %d -> %d (sniper refund %d)" % [
-				fort3.queue.items, money_mid, MatchState.money[1], 80])
+				fort3.queue.items, money_mid, MatchState.current.money[1], 80])
 	if "--vehpath-test" in args:
 		var rg: AStarGrid2D = NavWorld.current.nav_grid
 		var vg: AStarGrid2D = NavWorld.current.vehicle_grid
@@ -1663,16 +1663,16 @@ static func run(ctx: Node) -> void:
 		print("APC: loaded=%s hidden=%s arrived=%s unloaded_near=%s" % [
 			loaded, hidden, apc2.move_target == Vector2.ZERO, unloaded_near])
 	if "--save-test" in args:
-		MatchState.set_money(1, 321)
-		MatchState.zones[0].set_owner_team(1)
+		MatchState.current.set_money(1, 321)
+		MatchState.current.zones[0].set_owner_team(1)
 		var saved: bool = GameState.save_game()
 		var snapshot: Dictionary = GameState.read_save()
-		MatchState.set_money(1, 0)
-		MatchState.zones[0].set_owner_team(0)
+		MatchState.current.set_money(1, 0)
+		MatchState.current.zones[0].set_owner_team(0)
 		GameState.pending_load = snapshot
 		ctx._apply_load()
 		print("SAVE: saved=%s money_restored=%d zone_owner=%d units=%d" % [
-			saved, MatchState.money[1], MatchState.zones[0].owner_team,
+			saved, MatchState.current.money[1], MatchState.current.zones[0].owner_team,
 			snapshot.get("units", []).size()])
 	if "--campaign-test" in args:
 		# snapshot the player's real progress first — advance() PERSISTS,
@@ -1716,7 +1716,7 @@ static func run(ctx: Node) -> void:
 					break
 			if not UnitRegistry.current.of_team(2).is_empty():
 				wproblems.append("cascade left team-2 units alive")
-			for z in MatchState.zones:
+			for z in MatchState.current.zones:
 				if z.owner_team == 2:
 					wproblems.append("cascade left a team-2 zone")
 					break
@@ -1740,7 +1740,7 @@ static func run(ctx: Node) -> void:
 			# player win — symmetric for all teams
 			for c in ctx.get_children().duplicate():
 				if c is FortBuilding and c.alive \
-						and c.team not in [0, MatchState.player_team]:
+						and c.team not in [0, MatchState.current.player_team]:
 					c.take_damage(c.hp)
 			if not GameState.over:
 				wproblems.append("all enemies eliminated but no game over")
@@ -1788,17 +1788,17 @@ static func run(ctx: Node) -> void:
 		# unit cap: base 25 + zone bonuses; production refuses beyond it
 		var fort: FortBuilding = null
 		for c in ctx.get_children():
-			if c is FortBuilding and c.team == MatchState.player_team:
+			if c is FortBuilding and c.team == MatchState.current.player_team:
 				fort = c
 				break
 		if fort:
-			MatchState.set_money(1, 99999)
+			MatchState.current.set_money(1, 99999)
 			# drive production until the cap refuses everything
 			for i in 200:
 				fort.queue_unit("robot:grunt")
 				fort._process(0.6)
-			var cap := MatchState.unit_cap(1)
-			var used := MatchState.unit_pop(1)
+			var cap := MatchState.current.unit_cap(1)
+			var used := MatchState.current.unit_pop(1)
 			# note: with live CPU opponents the cap moves as zones flip;
 			# the invariant is that the queue went full (production
 			# refused) — pop may sit above a freshly shrunken cap
@@ -1960,14 +1960,14 @@ static func run(ctx: Node) -> void:
 		for c in ctx.get_children():
 			if c is RobotFactory:
 				# capture it for the player so the panel shows
-				for z in MatchState.zones:
+				for z in MatchState.current.zones:
 					if z.world_rect().has_point(c.world_footprint().get_center()):
-						z.owner_team = MatchState.player_team
+						z.owner_team = MatchState.current.player_team
 						break
-				c.owner_team = MatchState.player_team
+				c.owner_team = MatchState.current.player_team
 				SelectionManager.current.clear_selection()
 				SelectionManager.current.toggle_select(c, false)
-				MatchState.set_money(MatchState.player_team, 600)
+				MatchState.current.set_money(MatchState.current.player_team, 600)
 				c.queue_unit("robot:grunt")
 				c.queue_unit("robot:psycho")
 				c.queue_unit("robot:tough")
