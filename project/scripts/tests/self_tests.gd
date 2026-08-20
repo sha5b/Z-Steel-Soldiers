@@ -537,6 +537,22 @@ static func run(ctx: Node) -> void:
 		var hp_before: int = fk_fort.hp
 		fk_fort.repair_by(700)
 		fk.check(fk_fort.hp == hp_before, "crane repair healed the fort")
+		# damage TRUTH audit: building HP and the small-arms-vs-building
+		# fractions must match the zsettings reference table (docs/
+		# RESEARCH.md — the x3.33 rescale once skipped small arms and
+		# forts became unkillable)
+		fk.check(fk_fort.max_hp == 33333,
+			"fort HP %d want 33333 (10000/240 zsettings, x0.08... x3.33)" % fk_fort.max_hp)
+		var shop: Building2D = ContentDB.building_def(3).behaviour.new()
+		shop.setup(3, 1, "desert")
+		fk.check(shop.max_hp == 6667,
+			"building HP %d want 6667 (2000/240 zsettings)" % shop.max_hp)
+		for spec in [["grunt", 0.0011], ["psycho", 0.0026], ["sniper", 0.007],
+				["pyro", 0.0105], ["laser", 0.0178], ["jeep", 0.0027]]:
+			var def := ContentDB.def_for("robot" if spec[0] != "jeep" else "vehicle",
+				String(spec[0]))
+			fk.check(is_equal_approx(def.building_frac, float(spec[1])),
+				"%s building_frac %.4f want %.4f" % [spec[0], def.building_frac, spec[1]])
 		# small-arms TTK: a laser (0.0178 of max HP per hit, 0.7 chance,
 		# ~0.4s cooldown) burns a full fort in original-order minutes,
 		# not hours

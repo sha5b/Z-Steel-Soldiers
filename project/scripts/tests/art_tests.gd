@@ -7,11 +7,13 @@ extends Object
 ## def-vs-art disagreements nobody validated.
 
 const TILE := 16
+const PLANETS := ["desert", "arctic", "city", "jungle", "volcanic"]
 
 
 static func run(_ctx: Node, rig: TestRig) -> void:
 	_audit_buildings(rig)
 	_audit_units(rig)
+	_audit_projectiles(rig)
 	rig.finish()
 
 
@@ -21,9 +23,17 @@ static func _audit_buildings(rig: TestRig) -> void:
 		if def == null:
 			rig.check(false, "building id %d has no def" % id)
 			continue
+		# EVERY planet ships intact AND destroyed art for every kind (the
+		# ruin swap loads it sight-unseen — a missing file = invisible ruin)
+		for planet in PLANETS:
+			var intact := ContentDB.building_art_path(def.tex, planet, false)
+			rig.check(intact != "" and ResourceLoader.exists(intact),
+				"%s: %s art missing at %s" % [def.bname, planet, intact])
+			var ruin := ContentDB.building_art_path(def.tex, planet, true)
+			rig.check(ResourceLoader.exists(ruin),
+				"%s: %s DESTROYED art missing at %s" % [def.bname, planet, ruin])
 		var path := ContentDB.building_art_path(def.tex, "desert", false)
 		if path == "" or not ResourceLoader.exists(path):
-			rig.check(false, "%s: art missing at %s" % [def.bname, path])
 			continue
 		var size: Vector2 = (load(path) as Texture2D).get_size()
 		var tiles := Vector2i(int(size.x) / TILE, int(size.y) / TILE)
@@ -47,6 +57,26 @@ static func _audit_buildings(rig: TestRig) -> void:
 					if def.bridge_span.x > def.bridge_span.y else tiles
 			rig.check(def.bridge_span.x <= span_tiles.x and def.bridge_span.y <= span_tiles.y,
 				"%s: bridge_span %s exceeds art %s" % [def.bname, def.bridge_span, span_tiles])
+
+
+## Projectiles reference a texture and an impact effect by name — both
+## must actually exist (a dangling reference is a silent tracer
+## fallback).
+static func _audit_projectiles(rig: TestRig) -> void:
+	var dir := DirAccess.open("res://content/projectiles")
+	if dir == null:
+		rig.check(false, "no content/projectiles dir")
+		return
+	for f in dir.get_files():
+		if not f.ends_with(".tres"):
+			continue
+		var def: ProjectileDef = load("res://content/projectiles/" + f) as ProjectileDef
+		if def == null:
+			continue
+		rig.check(def.texture != null,
+			"%s: no projectile texture" % f.get_basename())
+		rig.check(DirAccess.dir_exists_absolute("res://assets/z/effects/%s" % def.impact),
+			"%s: impact effect folder '%s' missing" % [f.get_basename(), def.impact])
 
 
 static func _audit_units(rig: TestRig) -> void:
