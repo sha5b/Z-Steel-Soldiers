@@ -7,8 +7,10 @@ assets and format knowledge from the open-source
 
 > **Status:** single-player feature-complete — all 57 original maps,
 > full unit roster, territory economy, production, campaign, save/load,
-> AI with difficulty, and a 34-check headless test suite. Multiplayer
-> intentionally out of scope. See `docs/ROADMAP.md`.
+> AI with difficulty, and a 37-flag headless test suite. Multiplayer:
+> P2P lobby shipped (LAN discovery + host rooms); in-match order
+> replication is the open milestone. See `docs/ROADMAP.md` and
+> `docs/BUGS.md`.
 
 ## Environment
 

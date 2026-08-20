@@ -42,6 +42,8 @@ shipped 2026-08 — see the bottom section.
   section); replicating player orders needs the determinism work
   (choke points are ready: `Unit2D.issue_order`, `queue_unit`,
   `set_rally`)
+- Verified open bugs live in `docs/BUGS.md` (root-caused, with
+  file:line evidence) — keep that file current instead of the roadmap
 - Original GUI chrome (production menu art exists, unused), water
   animation, craters, unit shadows
 - Full soundtrack needs one run of `tools/zod/render_midi.sh`
