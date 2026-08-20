@@ -123,6 +123,30 @@ static func walk_a_pair(ctx: Node, rig: TestRig) -> void:
 		print("PATH: no routable pair found (skipped)")
 		rig.finish()
 		return
+	# SMOOTHING. The raw A* result is a cell-centre staircase; string
+	# pulling drops the corners nobody has to turn at. Assert both halves
+	# of the contract: it really removes points, and every segment it
+	# keeps is one the walker would accept (same predicate).
+	var raw := NavWorld.current.grid_for("robot").get_point_path(
+		Vector2i((start_px / 16.0).floor()), Vector2i((goal / 16.0).floor()))
+	var pulled := NavWorld.current.request_path(start_px, goal, "robot")
+	rig.check(not pulled.is_empty(), "smoothed path came back empty")
+	if not pulled.is_empty() and raw.size() > 2:
+		rig.check(pulled.size() <= raw.size(),
+			"string pull GREW the path: %d -> %d" % [raw.size(), pulled.size()])
+		rig.check(pulled.size() < raw.size(),
+			"string pull removed nothing (%d points, staircase kept)" % raw.size())
+		var bad_leg := -1
+		for leg in range(pulled.size() - 1):
+			if not NavWorld.current.segment_clear(pulled[leg], pulled[leg + 1], "robot"):
+				bad_leg = leg
+				break
+		rig.check(bad_leg < 0,
+			"smoothed leg %d cuts through a solid cell" % bad_leg)
+		rig.check(pulled[0].distance_to(raw[0]) < 24.0
+			and pulled[pulled.size() - 1].distance_to(goal) < 24.0,
+			"string pull moved the endpoints")
+
 	var walker: Unit2D = load("res://scenes/unit.tscn").instantiate()
 	walker.team = 1
 	walker.position = start_px

@@ -130,35 +130,53 @@ static func _build_rocks(parent: Node, data: Dictionary, planet: String, grid: A
 		grid.set_point_solid(cell, true)
 
 
-## Which piece of the 6x6 rock sheet a cell shows, from its 4-neighbours.
-## The sheet is an AUTOTILE set: columns are left-edge / middle /
-## right-edge / single, and rows are top-edge / interior / (2 unused) /
-## south CLIFF FACE — the faces carry the shading and vegetation that
-## make a rock mass read as raised ground.
+## Which piece of the 6x6 rock sheet a cell shows, from its neighbours.
 ##
-## Every CLUSTERED rock used to take a single hard-coded piece, (1,1),
-## which is the featureless plateau INTERIOR fill. So a rock field
-## rendered as a flat, light, featureless slab with a stepped outline —
-## the "weird light brown patch that doesn't fit and covers everything"
-## — instead of a rock formation. Note the two constants the old code
-## used are exactly the special cases of this mapping: a lone rock is
-## single-width with nothing below it, giving (3, 3), and a fully
-## enclosed rock is middle-column interior, giving (1, 1). The bug was
-## applying the interior fill to every rock that had ANY neighbour.
+## SHEET LAYOUT, read off the art (rocks_<planet>.png, 6x6 of 16px):
+##   cols 0..3   left edge / middle / middle / right edge
+##   col 4       the cast SHADOW block (near-black with a lit curve)
+##   col 5       loose ground and rubble speckle
+##   row 0       plateau top edge (the scalloped rim)
+##   row 1       plateau interior
+##   rows 2,3,4  the CLIFF FACE — THREE rows of striated rock, top to
+##               bottom, row 4 being where the face meets the ground
+##   row 5       the ground at the foot of the cliff
+##
+## The face being three rows tall is the part that was missed: the old
+## mapping called rows 2 and 3 "(2 unused) / south CLIFF FACE" and drew
+## row 3 — the MIDDLE of the face — for every south-edge cell. So every
+## cliff rendered as rim + one band of mid-face, with the top of the drop
+## and its base never drawn at all: "the bottom is missing".
+##
+## Now the face is drawn as a face: a cell's row comes from how far it
+## sits from the bottom of its own rock column, so a three-deep mass
+## reads top-of-face / mid-face / base, and a shallower one uses the
+## bottom rows (the base always shows, because that is the edge the eye
+## reads the height from).
 const ROCK_COL_LEFT := 0
 const ROCK_COL_MID := 1
 const ROCK_COL_RIGHT := 2
 const ROCK_COL_SINGLE := 3
 const ROCK_ROW_TOP := 0
 const ROCK_ROW_INNER := 1
-const ROCK_ROW_FACE := 3  # nothing below: the south cliff face shows
+## The three face rows, top of the drop to its base.
+const ROCK_FACE_ROWS := [2, 3, 4]
+
+
+## How many rock cells run downward from `cell` before the mass ends.
+static func _rock_depth_below(cell: Vector2i, rock_cells: Dictionary) -> int:
+	var n := 0
+	while rock_cells.has(cell + Vector2i(0, n + 1)):
+		n += 1
+		if n > 64:
+			break   # runaway guard on a pathological map
+	return n
 
 
 static func _rock_piece(cell: Vector2i, rock_cells: Dictionary) -> Vector2i:
 	var left := rock_cells.has(cell + Vector2i(-1, 0))
 	var right := rock_cells.has(cell + Vector2i(1, 0))
 	var above := rock_cells.has(cell + Vector2i(0, -1))
-	var below := rock_cells.has(cell + Vector2i(0, 1))
 	var col := ROCK_COL_SINGLE
 	if left and right:
 		col = ROCK_COL_MID
@@ -166,9 +184,17 @@ static func _rock_piece(cell: Vector2i, rock_cells: Dictionary) -> Vector2i:
 		col = ROCK_COL_LEFT
 	elif left:
 		col = ROCK_COL_RIGHT
-	var row := ROCK_ROW_FACE
-	if below:
-		row = ROCK_ROW_INNER if above else ROCK_ROW_TOP
+	var below_count := _rock_depth_below(cell, rock_cells)
+	if below_count >= ROCK_FACE_ROWS.size():
+		# deep inside the mass: plateau surface, rim on the north edge
+		return Vector2i(col, ROCK_ROW_INNER if above else ROCK_ROW_TOP)
+	# within the bottom three rows: this cell is part of the drop. Index
+	# from the BASE so the base row always lands on the last cell.
+	var row: int = ROCK_FACE_ROWS[ROCK_FACE_ROWS.size() - 1 - below_count]
+	# a one-cell-tall rock with clear ground above it is not a cliff at
+	# all — give it the rim so it does not read as a floating face
+	if not above and below_count == 0:
+		return Vector2i(col, ROCK_ROW_TOP)
 	return Vector2i(col, row)
 
 

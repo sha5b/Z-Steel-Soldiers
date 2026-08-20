@@ -18,6 +18,18 @@ static func _all_nodes(root: Node) -> Array:
 	return out
 
 
+## Living units of one team and kind — the two lists the AI's tactical
+## passes take, built the same way the brain builds them.
+static func _ai_units_of(tree: SceneTree, team: int, kind: String) -> Array[Node]:
+	var out: Array[Node] = []
+	for u in tree.get_nodes_in_group(Groups.UNITS):
+		if u is Unit2D and u.alive and not u.carried and u.team == team:
+			var is_hardware: bool = u is Vehicle2D
+			if (kind == "vehicle") == is_hardware:
+				out.append(u)
+	return out
+
+
 static func should_run() -> bool:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	for flag in ["capture", "combat", "factory", "ai", "path", "dir", "near", "flag",
@@ -2346,6 +2358,45 @@ static func run(ctx: Node) -> void:
 					% empty_start + "even ordered a robot onto one")
 			tac_rig.check(int(after_t.zones) > 0,
 				"the AI holds no territory after the sim")
+			# HOLDING GROUND. Every chokepoint the brain offers must be a
+			# real bridge (they are the only place armour crosses a Z
+			# map), and a posted guard must actually be on DEFEND and be
+			# excluded from the push — a guard the next attack sweeps up
+			# was never a guard.
+			var bridge_spots := {}
+			for b3 in tree.get_nodes_in_group(Groups.ALL_BUILDINGS):
+				if b3 is Building2D and b3.alive and (b3 as Building2D).is_bridge():
+					bridge_spots[(b3 as Building2D).visual_center()] = true
+			var chokes: Array = ai2._chokepoints()
+			var off_bridge := 0
+			for spot in chokes:
+				if not bridge_spots.has(spot):
+					off_bridge += 1
+			tac_rig.check(off_bridge == 0,
+				"%d of %d chokepoints are not bridges" % [off_bridge, chokes.size()])
+			if not ai2._frontier_chokepoints().is_empty():
+				ai2._hold_chokepoints(ai2._idle_of(_ai_units_of(tree, t, "robot")),
+					ai2._idle_of(_ai_units_of(tree, t, "vehicle")))
+				var guards: Dictionary = ai2.guard_units()
+				# A DEFEND post is armed on ARRIVAL, not on the order, so
+				# a guard is legitimately either still walking to its
+				# crossing or standing on it with the post armed. What
+				# must never happen is a guard doing neither.
+				var adrift := 0
+				for g in guards:
+					var walking: bool = g.has_move_target() or g.order != null
+					if not walking and g.defend_post == Vector2.INF:
+						adrift += 1
+				tac_rig.check(adrift == 0,
+					"%d guards neither walking to a crossing nor holding one"
+					% adrift)
+				# and the cap holds: static defence never eats the army
+				var army_now: int = _ai_units_of(tree, t, "robot").size() \
+					+ _ai_units_of(tree, t, "vehicle").size()
+				tac_rig.check(guards.size() <= maxi(int(ceil(float(army_now)
+					* CpuAi.CHOKE_ARMY_SHARE)) + 1, 1),
+					"static defence tied up %d of %d units"
+					% [guards.size(), army_now])
 			tac_rig.finish("robots %d->%d manned_peak=%d zones=%d%s" % [
 				int(before_t.robots), int(after_t.robots), manned_peak,
 				int(after_t.zones), dbg])

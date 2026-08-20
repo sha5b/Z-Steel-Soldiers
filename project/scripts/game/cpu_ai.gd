@@ -116,8 +116,168 @@ func _think() -> void:
 	_man_hardware(robots, empty_hardware)
 	_maintenance(vehicles)
 	_capture_zones(robots, vehicles)
+	_hold_chokepoints(robots, vehicles)
 	_attack(robots, vehicles, enemy_army)
 	_update_rallies()
+
+
+# ------------------------- holding ground -------------------------
+
+## A Z map's real chokepoints are its BRIDGES. Infantry fords a river,
+## armour does not, so a bridge is the only place tanks cross — whoever
+## sits on one decides where the other side's armour can go at all. They
+## are explicit map objects, so this needs no terrain analysis and cannot
+## be wrong about the map. A destroyed bridge drops out of the list,
+## which is right: there is nothing left to hold.
+const CHOKE_REFRESH_MS := 8000
+## How close a chokepoint has to be to ground we hold to count as ours to
+## defend, and how close an enemy/neutral zone has to be for it to be a
+## FRONTIER rather than a quiet interior crossing.
+const CHOKE_OWN_RANGE := 420.0
+const CHOKE_FRONTIER_RANGE := 520.0
+## Never tie up more than this share of the army on static defence, or
+## the brain stops attacking and just squats.
+const CHOKE_ARMY_SHARE := 0.34
+
+var _choke_cache: Array[Vector2] = []
+var _choke_stamp := -CHOKE_REFRESH_MS
+var _choke_claims: Dictionary = {}   # spot (Vector2) -> guard unit
+
+
+func _chokepoints() -> Array[Vector2]:
+	var now := Time.get_ticks_msec()
+	if now - _choke_stamp < CHOKE_REFRESH_MS and not _choke_cache.is_empty():
+		return _choke_cache
+	_choke_stamp = now
+	var found: Array[Vector2] = []
+	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
+		if b is Building2D and b.alive and (b as Building2D).is_bridge():
+			found.append((b as Building2D).visual_center())
+	_choke_cache = found
+	return _choke_cache
+
+
+## The crossings on the seam between our ground and theirs — the only
+## ones worth standing on. An interior bridge deep in our own territory
+## needs no guard, and one deep in theirs is an attack, not a hold.
+func _frontier_chokepoints() -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	for spot in _chokepoints():
+		var mine := false
+		var theirs := false
+		for z in MatchState.current.zones:
+			var d: float = _zone_center(z).distance_to(spot)
+			if z.owner_team == team and d < CHOKE_OWN_RANGE:
+				mine = true
+			elif z.owner_team != team and d < CHOKE_FRONTIER_RANGE:
+				theirs = true
+		if mine and theirs:
+			out.append(spot)
+	return out
+
+
+## Every unit currently posted on a chokepoint. The push and the zone
+## grab both skip these — a guard that gets swept into the next attack
+## was never a guard.
+func guard_units() -> Dictionary:
+	var held := {}
+	for spot in _choke_claims:
+		var u = _choke_claims[spot]
+		if is_instance_valid(u) and u.alive:
+			held[u] = true
+	return held
+
+
+func _prune_choke_claims() -> void:
+	for spot in _choke_claims.keys():
+		var u = _choke_claims[spot]  # untyped: may hold a freed instance
+		var stale: bool = (not is_instance_valid(u)) or (not u.alive) or u.carried
+		if not stale and u.is_idle() and u.defend_post == Vector2.INF:
+			stale = true  # lost its post (re-ordered elsewhere)
+		if stale:
+			_choke_claims.erase(spot)
+
+
+## Post a standing guard on each frontier crossing, on DEFEND so it holds
+## the spot instead of chasing the first thing that shoots at it.
+##
+## Without this the brain had nowhere to BE: every unit was either
+## answering a named threat, walking to a named zone, or in the push. So
+## the moment a push left, the ground behind it was empty and the map
+## changed hands behind the army's back — which is what "it just swarms
+## your HQ" looks like from the other side.
+func _hold_chokepoints(robots: Array[Node], vehicles: Array[Node]) -> void:
+	_prune_choke_claims()
+	var spots := _frontier_chokepoints()
+	if spots.is_empty():
+		return
+	var army := robots.size() + vehicles.size()
+	var cap := int(floor(float(army) * CHOKE_ARMY_SHARE))
+	if cap <= 0:
+		return
+	var per_spot := 1 + clampi(MatchState.current.ai_difficulty, 0, 2) / 2
+	var posted := guard_units().size()
+	var already := {}
+	for u in guard_units():
+		already[u] = true
+	var free_units: Array[Node] = []
+	for u in _idle_of(robots) + _idle_of(vehicles):
+		if not already.has(u):
+			free_units.append(u)
+	for spot in spots:
+		if posted >= cap or free_units.is_empty():
+			return
+		var here := 0
+		for other in _choke_claims:
+			if other == spot:
+				here += 1
+		if here >= per_spot:
+			continue
+		free_units.sort_custom(func(a, b):
+			return a.global_position.distance_squared_to(spot) \
+				< b.global_position.distance_squared_to(spot))
+		var guard: Node = free_units.pop_front()
+		if not is_instance_valid(guard):
+			continue
+		# DEFEND, not move: the unit walks there and re-holds the post if
+		# it gets shoved off, which is the whole point of a guard
+		_order(guard, Order.move_defend(spot
+			+ Vector2(randf_range(-18.0, 18.0), randf_range(-18.0, 18.0))))
+		_choke_claims[spot] = guard
+		posted += 1
+
+
+## Which of our facilities sits closest to ground we do NOT hold. Cannons
+## cannot be moved once built (speed 0 by design, like the original's
+## emplaced guns), so the ONLY way the brain can choose where its static
+## defence ends up is to choose which building makes it. Building a gun
+## at the safe factory in the back was pure waste.
+func _frontier_facility() -> Node:
+	var target := Vector2.INF
+	var best_d := INF
+	for z in MatchState.current.zones:
+		if z.owner_team == team:
+			continue
+		var c: Vector2 = _zone_center(z)
+		for other in MatchState.current.zones:
+			if other.owner_team != team:
+				continue
+			var d: float = _zone_center(other).distance_squared_to(c)
+			if d < best_d:
+				best_d = d
+				target = c
+	if target == Vector2.INF:
+		return null
+	var pick: Node = null
+	var pick_d := INF
+	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
+		if not f.alive or f.team != team:
+			continue
+		var d: float = (f as Node2D).global_position.distance_squared_to(target)
+		if d < pick_d:
+			pick_d = d
+			pick = f
+	return pick
 
 
 # ------------------------- production -------------------------
@@ -130,6 +290,7 @@ func _produce() -> void:
 	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
 	var money := int(MatchState.current.money.get(team, 0))
 	var army_pop := MatchState.current.unit_pop(team)
+	var frontier := _frontier_facility()
 	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if not f.alive or f.team == 0 or f.team != team:
 			continue
@@ -147,6 +308,17 @@ func _produce() -> void:
 			continue
 		var pick := String(_weighted_pick(options, army_pop, diff))
 		var parts: PackedStringArray = pick.split(":")
+		# a CANNON is immobile once built, so where it appears is decided
+		# entirely by which building makes it: only the facility nearest
+		# the frontier may build one, and anywhere else re-picks something
+		# that can walk to the fight
+		if parts[0] == "cannon" and f != frontier:
+			var mobile: Array = options.filter(
+				func(i): return not String(i).begins_with("cannon:"))
+			if mobile.is_empty():
+				continue
+			pick = String(_weighted_pick(mobile, army_pop, diff))
+			parts = pick.split(":")
 		var cost := ContentDB.def_for(parts[0], parts[1]).cost
 		if money >= cost and _queue(f, pick):
 			money -= cost
@@ -383,7 +555,13 @@ func _attack(robots: Array[Node], vehicles: Array[Node], enemy_army: int) -> voi
 	if _attack_focus == Vector2.INF:
 		_attack_mode = false
 		return
-	var idle := _idle_of(robots) + _idle_of(vehicles)
+	# a guard swept into the push was never a guard: the crossings have to
+	# still be held when the army walks away from them
+	var guards := guard_units()
+	var idle: Array[Node] = []
+	for u in _idle_of(robots) + _idle_of(vehicles):
+		if not guards.has(u):
+			idle.append(u)
 	var ring := maxi(int(sqrt(float(idle.size()))), 1)
 	for i in idle.size():
 		var u: Node = idle[i]

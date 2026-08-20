@@ -207,6 +207,7 @@ func request_path(from: Vector2, to: Vector2, for_kind := "robot") -> PackedVect
 	var path := grid.get_point_path(a, b)
 	if path.is_empty():
 		return PackedVector2Array()  # no route for this kind: refuse
+	path = string_pull(path, for_kind)
 	# land exactly on the clicked point instead of the last cell centre,
 	# but only when that final approach is itself clear — a beeline from
 	# the last breadcrumb through a solid cell was the last
@@ -215,6 +216,43 @@ func request_path(from: Vector2, to: Vector2, for_kind := "robot") -> PackedVect
 			and segment_clear(path[path.size() - 1], to, for_kind):
 		path[path.size() - 1] = to
 	return path
+
+
+## How far ahead a corner may be skipped, in path points. Unbounded
+## look-ahead makes smoothing quadratic on long routes; 24 cells is far
+## more than any single straight run needs.
+const SMOOTH_WINDOW := 24
+
+
+## Drop the corners nobody has to turn at.
+##
+## `get_point_path` returns the raw A* cell-centre staircase, and units
+## walked it literally: cell centre to cell centre, 6px arrival radius
+## each, so a straight walk across open ground came out as a visible
+## zig-zag and the on-screen path trace drew the same staircase. Nothing
+## downstream straightened it.
+##
+## Standard string-pull: from each anchor, advance while the straight
+## segment to the candidate is clear, then commit the furthest point that
+## was. `segment_clear` is deliberately the SAME predicate the walker
+## audits itself with, so a smoothed route cannot claim a shortcut the
+## walker would then refuse to take.
+func string_pull(path: PackedVector2Array, for_kind := "robot") -> PackedVector2Array:
+	if path.size() <= 2:
+		return path
+	var out := PackedVector2Array([path[0]])
+	var anchor := 0
+	while anchor < path.size() - 1:
+		var furthest := anchor + 1
+		var j := anchor + 2
+		while j < path.size() and j - anchor <= SMOOTH_WINDOW:
+			if not segment_clear(path[anchor], path[j], for_kind):
+				break
+			furthest = j
+			j += 1
+		out.append(path[furthest])
+		anchor = furthest
+	return out
 
 
 ## Center-cell march along a segment — the same criterion the walker
