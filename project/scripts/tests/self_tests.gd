@@ -117,6 +117,25 @@ static func run(ctx: Node) -> void:
 					fails.append("preview %s" % String(e.name))
 			if terrains_seen.size() < 5:
 				fails.append("previews covered %d/5 terrains" % terrains_seen.size())
+			# the release's own TUTORIAL pages, and the viewer that shows
+			# them (they shipped unconverted and unreachable)
+			var pages: Array = TutorialScreen.load_pages()
+			if pages.size() != 7:
+				fails.append("tutorial pages converted: %d of 7" % pages.size())
+			var tut: TutorialScreen = (load("res://scenes/tutorial.tscn")
+				as PackedScene).instantiate()
+			ctx.add_child(tut)
+			await Engine.get_main_loop().process_frame
+			if tut.turn(-1) != 0:
+				fails.append("tutorial paged back off the first page")
+			if tut.turn(1) != 1:
+				fails.append("tutorial did not advance")
+			for i in 20:
+				tut.turn(1)
+			if tut.page != pages.size() - 1:
+				fails.append("tutorial ran past the last page (%d of %d)"
+					% [tut.page, pages.size()])
+			tut.queue_free()
 			var g_diff := GameSettings.difficulty
 			var g_speed := GameSettings.speed_index
 			var g_idle := GameSettings.auto_idle

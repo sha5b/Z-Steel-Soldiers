@@ -86,6 +86,52 @@ func _debris_pick(prefix: String, sizes: Array) -> String:
 	return String(pool.pick_random()) if not pool.is_empty() else "debris"
 
 
+## A FALLING BUILDING throws pieces of itself. The pack ships 84 frames
+## of this — 5 tumbling fort pieces and 2 generic ones, 12 frames each —
+## referenced by nothing; vehicles already burn, buildings just vanished
+## into a puff. Each piece flies out on a ballistic arc, tumbling through
+## its own frames, and fades where it lands.
+const DEBRIS_DIR := "res://assets/z/buildings/death_effects"
+const DEBRIS_FLIGHT := 0.9
+const DEBRIS_FADE := 1.6
+
+
+func building_debris(world_pos: Vector2, fort: bool, spread := 40.0) -> int:
+	var pieces := 5 if fort else 2
+	var thrown := 0
+	for i in (7 if fort else 4):
+		var frames := AnimLibrary.effect_frames(DEBRIS_DIR,
+			"%spiece%d" % ["fort_" if fort else "", i % pieces], 10.0)
+		if frames == null or not frames.has_animation("fx"):
+			continue
+		frames.set_animation_loop("fx", true)
+		var piece := AnimatedSprite2D.new()
+		piece.sprite_frames = frames
+		piece.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		piece.scale = Vector2.ONE  # native art scale
+		piece.z_index = 7  # above the ruin, like the explosion
+		piece.position = world_pos
+		add_child(piece)
+		piece.play("fx")
+		thrown += 1
+		# out and down: a tween on the position plus a lifted arc, so the
+		# piece reads as thrown rather than sliding
+		var away := Vector2.from_angle(randf() * TAU) \
+			* randf_range(spread * 0.4, spread * 1.6)
+		var lift := randf_range(10.0, 26.0)
+		var tween := piece.create_tween()
+		tween.set_parallel(true)
+		tween.tween_property(piece, "position",
+			world_pos + away, DEBRIS_FLIGHT).set_ease(Tween.EASE_OUT)
+		tween.tween_property(piece, "offset", Vector2(0.0, -lift),
+			DEBRIS_FLIGHT * 0.45).set_ease(Tween.EASE_OUT)
+		tween.chain().tween_property(piece, "offset", Vector2.ZERO,
+			DEBRIS_FLIGHT * 0.55).set_ease(Tween.EASE_IN)
+		tween.chain().tween_property(piece, "modulate:a", 0.0, DEBRIS_FADE)
+		tween.chain().tween_callback(piece.queue_free)
+	return thrown
+
+
 ## The UNLABELLED half of the robot voice bank (bark_23..75 = the pack's
 ## ROB23-75; ROB01-22 are the selected_*/acknowledge_* lines, matched by
 ## content hash). Nothing in the pack documents what these 53 lines say,

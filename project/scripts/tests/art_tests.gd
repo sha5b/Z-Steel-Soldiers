@@ -126,6 +126,19 @@ static func _audit_wired_art(ctx: Node, rig: TestRig) -> void:
 	rig.check(barks == Fx.CHATTER_LAST - Fx.CHATTER_FIRST + 1,
 		"%d of %d chatter barks converted" % [barks,
 			Fx.CHATTER_LAST - Fx.CHATTER_FIRST + 1])
+	# a falling building throws pieces of itself (84 frames the pack
+	# shipped and nothing referenced)
+	for spec in [["fort_", 5], ["", 2]]:
+		for i in int(spec[1]):
+			var frames := AnimLibrary.effect_frames(Fx.DEBRIS_DIR,
+				"%spiece%d" % [spec[0], i], 10.0)
+			rig.check(frames != null and frames.has_animation("fx")
+					and frames.get_frame_count("fx") > 0,
+				"debris piece %spiece%d has no frames" % [spec[0], i])
+	rig.check(Fx.building_debris(Vector2(4000, 4000), true) > 0,
+		"a falling fort threw no debris")
+	rig.check(Fx.building_debris(Vector2(4000, 4000), false) > 0,
+		"a falling building threw no debris")
 	# the building LEVEL digit, on every producer
 	for id in [0, 4, 5]:
 		var bdef := ContentDB.building_def(id)

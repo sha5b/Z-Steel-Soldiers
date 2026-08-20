@@ -33,18 +33,12 @@ They are listed in the order I would tackle them.
    but the panel chrome itself would mean rebuilding the HUD layout
    around a fixed 640x480 frame, and it cannot be verified headlessly.
 
-3. **84 building/fort death-debris pieces unreferenced** —
-   `buildings/death_effects/{fort_,}piece{0..4}_n{00..23}.png`. Vehicle
-   wrecks already burn (`Vehicle2D._add_wreck_fx`); a falling building
-   should throw these pieces. Needs a debris spawner with arcs, not just
-   an art reference.
-
-4. **42 of 48 production-GUI chrome files unconverted** — the original
+3. **42 of 48 production-GUI chrome files unconverted** — the original
    production menu's own frame (`other/production_gui/fus_*`,
    `object_back`, `selector_back`, the up/down/queue buttons). The panel
    works and uses the plates it has; this is a look-and-feel rebuild.
 
-5. **Multiplayer is not bit-deterministic** — by design now, not by
+4. **Multiplayer is not bit-deterministic** — by design now, not by
    omission: host-only brains, relayed intents, a 5s economy resync and
    a 10s FULL-ENTITY resync (`Net.push_entities` ->
    `MatchRelay.apply_entities`, reconciled by net id) plus late join.
@@ -52,33 +46,48 @@ They are listed in the order I would tackle them.
    positions drift within `MatchRelay.SNAP_DISTANCE` (24px) until the
    next push. A lockstep sim would need fixed-point movement.
 
-6. **GOG cutscenes and tutorial screens** — 94 `.jv[iv]` pairs with no
-   parser, and 37 of 72 GOG PNGs (the tutorial pages) unconverted.
+5. **GOG cutscenes** — 94 `.jv[iv]` pairs with no parser. (The
+   TUTORIAL pages are done, see Fixed; what is left unconverted of the
+   72 GOG PNGs is the iOS/Mac duplicates of the same pages, the credits
+   sheets and the social-network icons.)
 
-7. **`move_target` is fixed, but `Order` still carries a position for
+6. **`move_target` is fixed, but `Order` still carries a position for
    target orders** — `Order.attack` writes `position` from the target's
    location at issue time and nothing reads it afterwards. Harmless
    duplication, worth removing when the order struct is next touched.
 
-8. **51 of 75 `ROB##` voice lines are unlabelled** — they are converted
+7. **51 of 75 `ROB##` voice lines are unlabelled** — they are converted
    and reachable now (`bark_23..75`, played as idle chatter by
    `Fx.chatter`), but nothing in the pack documents what each line SAYS,
    so none of them can be used as a semantic cue (an acknowledgement, a
    death scream, a "we're under attack"). Labelling them needs a human
    ear, not code.
 
-9. **Crane `arm_off` dead data** — WONTFIX, documented: the rig renders
+8. **Crane `arm_off` dead data** — WONTFIX, documented: the rig renders
    correctly via canvas alignment (the `hook_off` table IS applied);
    folding `arm_off` in has no proven defect to fix and no headless way
    to verify the visual.
 
-10. **Rock autotiling ignores diagonals** — `MapLoader._rock_piece` uses
+9. **Rock autotiling ignores diagonals** — `MapLoader._rock_piece` uses
     8 of the 36 sheet pieces and only 4-neighbour masks, so inner
     corners where two arms of a formation meet show a straight edge.
     Closing it needs the original `orock.cpp` table; it cannot be
     derived from the art alone.
 
 ## Fixed
+- 2026-08-20 — **the release's TUTORIAL pages were unreachable.** Seven
+  512px "how to play" pages ship in the GOG set and nothing converted or
+  showed them, so the remake had no instructions at all. Converted
+  (`tools/gog/convert_assets.py`), shown by `scenes/tutorial.tscn`
+  (arrow keys / prev-next, clamped at both ends — the pages are an
+  ordered explanation, not a carousel) and reachable from the title menu.
+  Asserted by `--ui-test`.
+- 2026-08-20 — **a falling building threw no debris.** The pack ships
+  84 frames for it (5 tumbling fort pieces, 2 generic ones, 12 frames
+  each) and nothing referenced them: vehicles burned, buildings just
+  puffed out. `Fx.building_debris` throws them on ballistic arcs from
+  `Building2D._death_visuals` — the fort's own five for a fort, the
+  generic pair for everything else.
 - 2026-08-20 — **right-clicking a CRATE crashed the match.**
   `Pick.at` answers with units, crates AND buildings (a crate is a click
   target for the cursor), and `Commands._find_enemy` read `team` off

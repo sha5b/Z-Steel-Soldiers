@@ -43,6 +43,9 @@ MP_UI = ["MultiPlayer.png", "IPBackground.png", "IPSplash.png",
 # lighting pass). Palette-mode PNGs; Godot imports them as-is.
 PLANETS = ["ARTIC", "CITY", "DESERT", "JUNGLE", "VOLCAN"]
 
+# The PC release's tutorial pages (PCTutor1..7).
+TUTORIAL_PAGES = 7
+
 # 64x128 Mac-port menu plaques + 64x64 exit button art.
 PLAQUES = ["options.png", "audio.png", "credits.png", "Exit.png"]
 
@@ -103,6 +106,18 @@ def main() -> None:
                 shutil.copy2(src, dst)
                 n += 1
     print(f"planets: {n} world thumbnails copied")
+
+    # The release's own TUTORIAL PAGES (PC set, 512x512 each) — the
+    # "how to play" screens. 7 pages, shown by scenes/tutorial.tscn.
+    (PROJ / "ui" / "tutorial").mkdir(parents=True, exist_ok=True)
+    n = 0
+    for page in range(1, TUTORIAL_PAGES + 1):
+        src = GOG / "PNG" / f"PCTutor{page}.png"
+        dst = PROJ / "ui" / "tutorial" / f"tutor{page}.png"
+        if src.exists() and not dst.exists():
+            shutil.copy2(src, dst)
+            n += 1
+    print(f"tutorial: {n} pages copied ({TUTORIAL_PAGES} in the set)")
 
     (PROJ / "ui" / "plaques").mkdir(parents=True, exist_ok=True)
     n = 0

@@ -870,6 +870,11 @@ func _death_visuals() -> void:
 	if has_method("kill_garrison"):
 		call("kill_garrison")
 	Fx.destroyed(visual_center())
+	# the structure throws pieces of ITSELF (the pack's death_effects
+	# art, which nothing referenced): the fort's five pieces, two
+	# generic ones for everything else
+	Fx.building_debris(visual_center(), is_fort,
+		maxf(_art_size.x, 32.0) * 0.5)
 	if _sprite:
 		_set_building_texture(_texture_path(true))
 		for child in get_children():

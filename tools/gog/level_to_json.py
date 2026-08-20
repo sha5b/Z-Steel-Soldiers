@@ -17,10 +17,10 @@ Inputs per level NN (NN = 01..20 campaign, 26..29 + 31 skirmish):
 =============================================================================
 LEVEL{NN}.MAP — 56433 bytes on every one of the 25 files
 =============================================================================
-VERIFIED offsets (checks and numbers in docs/RESEARCH.md §2e):
+VERIFIED offsets (checks and numbers in docs/RESEARCH.md §6):
 
     0                u8    unknown (0xf7 on LEVEL01)
-    1     .. 6656    zone array, byte-identical copy of the one at 43377
+    1     .. 6656    region array, byte-identical copy of the one at 43377
                      (verified: d[1:6657] == d[43377:50033] on all 25 files)
     6657  .. 10096   two arrays we did not crack — see UNKNOWN below
     10097 .. 10109   char[13] tileset 1 name, e.g. "DESERT.LBM"
@@ -32,7 +32,7 @@ VERIFIED offsets (checks and numbers in docs/RESEARCH.md §2e):
     10129 .. 26512   PLANE 1: 128x128 bytes, row-major, 1 byte per cell
     26513 .. 42896   PLANE 2: 128x128 bytes, row-major, 1 byte per cell
     42897 .. 43376   480 zero bytes
-    43377 .. 56432   zone array: 96 records x 136 bytes
+    43377 .. 56432   region array: 96 records x 136 bytes
 
 The map occupies cells [0,width) x [0,height) of both 128x128 planes;
 everything outside is 0xEF in plane 1 (uncleared editor scratch shows up
@@ -76,13 +76,15 @@ what this converter writes as `zones` — see CPUPLR below. We do not know
 what the original uses it for and this converter ignores it.
 
 FORTS are not in any .DAT file. They are cut out of the tile grid: the
-ground under a fort is set to tile index 238 on every planet. Take the
-8-connected components of (plane1 == 238) with a 10-wide bounding box and
->= 90 cells; 100 cells is a north-facing fort (zod building id 0,
-`fort_front`), 96 cells is a south-facing one (id 1, `fort_back`).
-Verified against the 20 zod maps: all 20 fort_front anchors exact,
-19/20 fort_back exact (LEVEL03's blanked block sits one row lower than
-zod's anchor). Every one of the 25 levels yields exactly 2 forts.
+ground under a fort is set to PLANE-1 value 238 on every planet (which
+renders as the near-black sheet tile 478). Take the 8-connected components
+of (plane1 == 238) with a 10-wide bounding box and >= 90 cells; 100 cells
+is a north-facing fort (zod building id 0, `fort_front`), 96 cells is a
+south-facing one (id 1, `fort_back`).
+Verified against the 20 zod maps: 38 of 40 forts land on the zod anchor
+exactly, id included; LEVEL03's fort_back and LEVEL16's fort_front are
+one row off because a stray 238 cell extends the bounding box. Every one
+of the 25 levels yields exactly 2 forts.
 
 UNKNOWN in the .MAP:
   * byte 0.
@@ -91,7 +93,7 @@ UNKNOWN in the .MAP:
     4-record constant table identical in every level. Not needed for
     anything in the schema.
   * plane 2 bits 0..6 (above).
-  * most of each 136-byte zone record past the neighbour list.
+  * most of each 136-byte region record past the neighbour list.
 
 =============================================================================
 CPUPLR{NN}.DAT — 2217 bytes = 73 records x 30 bytes + a 27-byte tail
@@ -116,14 +118,16 @@ OBJECT{NN}.DAT — 1500 bytes = 150 records x 10 bytes
     +4 u8  type          per-planet object table, 0..61
     +5 u8  sub-value     0xFF on scenery, a small constant per hardware type
     +6 u8[4] = 0xFF      (a pointer field in the original struct)
-Verified: 1840 of 1847 in-use records land inside the declared map and
-1844 of 1847 are 16-aligned.
+Verified over all 25 files: 1840 of 1847 in-use records land inside the
+declared map and 1844 of 1847 are 16-aligned.
 
 The `type` byte indexes a PER-PLANET table. We recovered it by matching
-every record's cell against the zod `p02_bb_orig*` maps (see OBJECTS
-below for the table and its per-type hit rate). Scenery types are anchored
-one tile ABOVE the cell zod uses, hardware and pickups are not — that
-`dy` is part of the table.
+every record's cell against the zod `p02_bb_orig*` maps; OBJ_COMMON and
+OBJ_PLANET below carry the record count and the hit count per type.
+Scenery types are anchored one tile ABOVE the cell zod uses, hardware and
+pickups are not — that `dy` is part of the table. Over levels 01-20 the
+table converts 1406 in-use records, 1261 of them to a known id, and 1198
+of those 1261 (95.0%) land on a zod object of exactly that kind and id.
 
 Volcanic types 13/14/15/16 (144 records) have no counterpart in any zod
 map, so their zod scenery id is UNKNOWN; they are emitted as map_item 0,
@@ -195,9 +199,6 @@ SIZE_OFF = 10125
 PLANE1_OFF = 10129
 PLANE2_OFF = 26513
 PLANE_LEN = GRID_STRIDE * GRID_STRIDE
-REGIONS_OFF = 43377
-REGION_STRIDE = 136
-REGION_SLOTS = 96
 SHEET1_TILES = 240         # plane 2's top bit adds this
 FORT_GROUND_TILE = 238     # plane-1 value under a fort, all planets
 
@@ -207,13 +208,14 @@ BUILD_STRIDE = 80
 BRIDGE_STRIDE = 26
 CPUPLR_STRIDE = 30
 
-# "DESERT.LBM" -> our planet name / .BLK basename
+# the .MAP's tileset name -> our planet name. The .BLK/.PAL basename is
+# the same word except ARTIC.LBM, whose art file is spelled ARCTIC.
 PLANETS = {
-    "DESERT": ("desert", "DESERT"),
-    "VOLCAN": ("volcanic", "VOLCAN"),
-    "ARTIC": ("arctic", "ARCTIC"),
-    "CITY": ("city", "CITY"),
-    "JUNGLE": ("JUNGLE".lower(), "JUNGLE"),
+    "DESERT": "desert",
+    "VOLCAN": "volcanic",
+    "ARTIC": "arctic",
+    "CITY": "city",
+    "JUNGLE": "jungle",
 }
 
 # BUILD.DAT +4 -> zod building id (0 fort_front 1 fort_back 2 radar
@@ -227,60 +229,60 @@ BUILD_KIND = {0: 3, 1: 5, 4: 4, 8: 2}
 # Hardware, pickups and huts are planet-independent in position (dy = 0);
 # the hut TYPE is planet-specific because it indexes the planet's table.
 OBJ_COMMON = {
-    5: ("cannon", 1, 0),      # gun          n=81  hit=76
-    22: ("cannon", 0, 0),     # gatling      n=18  hit=17
-    23: ("cannon", 2, 0),     # howitzer     n=11  hit=11
-    21: ("cannon", 3, 0),     # missile      n=1   hit=1
-    33: ("vehicle", 0, 0),    # jeep         n=20  hit=16 (city's 4 unmatched)
-    29: ("vehicle", 1, 0),    # light tank   n=36  hit=35
-    8: ("vehicle", 2, 0),     # medium tank  n=19  hit=18
-    26: ("vehicle", 3, 0),    # heavy tank   n=4   hit=4
-    31: ("vehicle", 4, 0),    # apc          n=5   hit=5
-    24: ("vehicle", 5, 0),    # missile lnch n=4   hit=4
-    35: ("vehicle", 6, 0),    # crane        n=21  hit=21
-    9: ("map_item", 2, 0),    # grenades     n=2   hit=1
-    10: ("map_item", 2, 0),   # grenades     n=99  hit=96
+    5: ("cannon", 1, 0),      # gun               n=65  hit=62
+    22: ("cannon", 0, 0),     # gatling           n=18  hit=16
+    23: ("cannon", 2, 0),     # howitzer          n=11  hit=11
+    21: ("cannon", 3, 0),     # missile cannon    n=1   hit=1
+    33: ("vehicle", 0, 0),    # jeep              n=20  hit=16
+    29: ("vehicle", 1, 0),    # light tank        n=36  hit=35
+    8: ("vehicle", 2, 0),     # medium tank       n=19  hit=18
+    26: ("vehicle", 3, 0),    # heavy tank        n=4   hit=4
+    31: ("vehicle", 4, 0),    # apc               n=5   hit=5
+    24: ("vehicle", 5, 0),    # missile launcher  n=4   hit=4
+    35: ("vehicle", 6, 0),    # crane             n=21  hit=21
+    9: ("map_item", 2, 0),    # grenades          n=2   hit=1
+    10: ("map_item", 2, 0),   # grenades          n=99  hit=96
 }
 # per planet: type -> (kind, zod id, dy)
 OBJ_PLANET = {
     "desert": {
-        11: ("map_item", 4, 0),    # hut            n=46  hit=46
-        39: ("map_item", 11, 1),   # n=7   hit=7
-        40: ("map_item", 12, 1),   # n=23  hit=23
-        41: ("map_item", 13, 1),   # n=28  hit=27
-        42: ("map_item", 14, 1),   # n=10  hit=10
-        43: ("map_item", 15, 0),   # n=59  hit=57
+        11: ("map_item", 4, 0),    # hut     n=46 hit=46
+        39: ("map_item", 11, 1),   #         n=7  hit=7
+        40: ("map_item", 12, 1),   #         n=23 hit=23
+        41: ("map_item", 13, 1),   #         n=28 hit=27
+        42: ("map_item", 14, 1),   #         n=10 hit=10
+        43: ("map_item", 15, 0),   #         n=59 hit=57
         20: ("map_item", 0, 0),    # n=1   UNKNOWN, no zod counterpart
     },
     "volcanic": {
-        17: ("map_item", 4, 0),    # hut            n=51  hit=50
-        52: ("map_item", 20, 1),   # n=30  hit=29
-        53: ("map_item", 21, 1),   # n=54  hit=52
+        17: ("map_item", 4, 0),    # hut     n=51 hit=50
+        52: ("map_item", 20, 1),   #         n=30 hit=29
+        53: ("map_item", 21, 1),   #         n=54 hit=52
         13: ("map_item", 0, 0),    # n=6   UNKNOWN
         14: ("map_item", 0, 0),    # n=29  UNKNOWN
         15: ("map_item", 0, 0),    # n=40  UNKNOWN
         16: ("map_item", 0, 0),    # n=69  UNKNOWN
     },
     "arctic": {
-        19: ("map_item", 4, 0),    # hut            n=54  hit=51
-        46: ("map_item", 8, 1),    # n=46  hit=41
-        47: ("map_item", 7, 1),    # n=67  hit=63
-        60: ("map_item", 9, 1),    # n=11  hit=11
-        61: ("map_item", 10, 0),   # n=3   hit=3
+        19: ("map_item", 4, 0),    # hut     n=54 hit=51
+        46: ("map_item", 8, 1),    #         n=46 hit=41
+        47: ("map_item", 7, 1),    #         n=67 hit=63
+        60: ("map_item", 9, 1),    #         n=11 hit=11
+        61: ("map_item", 10, 0),   #         n=3  hit=3
     },
     "city": {
-        18: ("map_item", 4, 0),    # hut            n=83  hit=63
-        48: ("map_item", 16, 1),   # n=63  hit=63
-        49: ("map_item", 17, 1),   # n=35  hit=34
-        50: ("map_item", 18, 1),   # n=14  hit=12
-        51: ("map_item", 19, 1),   # n=46  hit=43
+        18: ("map_item", 4, 0),    # hut     n=83 hit=63
+        48: ("map_item", 16, 1),   #         n=63 hit=63
+        49: ("map_item", 17, 1),   #         n=35 hit=34
+        50: ("map_item", 18, 1),   #         n=14 hit=12
+        51: ("map_item", 19, 1),   #         n=46 hit=43
     },
     "jungle": {
-        12: ("map_item", 4, 0),    # hut            n=52  hit=51
-        54: ("map_item", 23, 1),   # n=22  hit=22
-        55: ("map_item", 22, 1),   # n=44  hit=42
-        56: ("map_item", 25, 1),   # n=40  hit=40
-        57: ("map_item", 24, 1),   # n=68  hit=68
+        12: ("map_item", 4, 0),    # hut     n=52 hit=51
+        54: ("map_item", 23, 1),   #         n=22 hit=22
+        55: ("map_item", 22, 1),   #         n=44 hit=42
+        56: ("map_item", 25, 1),   #         n=40 hit=40
+        57: ("map_item", 24, 1),   #         n=68 hit=68
     },
 }
 
@@ -313,7 +315,7 @@ def read_planes(raw: bytes) -> tuple[int, int, str, list[int], list[int]]:
     key = re.sub(r"\.LBM$", "", name1, flags=re.I).upper()
     if key not in PLANETS:
         raise ValueError(f"unknown tileset {name1!r}")
-    planet = PLANETS[key][0]
+    planet = PLANETS[key]
     width, height = struct.unpack_from("<HH", raw, SIZE_OFF)
     p1 = raw[PLANE1_OFF:PLANE1_OFF + PLANE_LEN]
     p2 = raw[PLANE2_OFF:PLANE2_OFF + PLANE_LEN]
@@ -326,27 +328,6 @@ def read_planes(raw: bytes) -> tuple[int, int, str, list[int], list[int]]:
             ground.append(p1[i])
             tiles.append(p1[i] + (SHEET1_TILES if p2[i] & 0x80 else 0))
     return width, height, planet, tiles, ground
-
-
-def read_regions(raw: bytes) -> list[dict]:
-    """The LEVEL.MAP adjacency graph. Not written to the JSON — kept so a
-    reader can inspect it (see the module docstring)."""
-    out = []
-    for slot in range(REGION_SLOTS):
-        off = REGIONS_OFF + slot * REGION_STRIDE
-        x1, y1, x2, y2, centre = struct.unpack_from("<5H", raw, off)
-        if raw[off + 10] == 0xFF or x2 <= x1 or y2 <= y1:
-            continue
-        nbr = []
-        i = off + 10
-        while raw[i] != 0xFF and len(nbr) < 32:
-            nbr.append(raw[i])
-            i += 1
-        out.append({"x": x1 // TILE_PX, "y": y1 // TILE_PX,
-                    "w": (x2 - x1) // TILE_PX, "h": (y2 - y1) // TILE_PX,
-                    "centre": (centre % GRID_STRIDE, centre // GRID_STRIDE),
-                    "neighbours": nbr})
-    return out
 
 
 def read_zones(raw: bytes, width: int, height: int) -> list[dict]:
@@ -465,16 +446,13 @@ def convert(gog: Path, number: int, tileinfo_dir: Path | None = None) -> dict:
         if cpuplr.exists() else []
 
     objects = read_forts(ground, width, height)
-    for name, reader in (("OBJECT", read_objects), ("BUILD", read_buildings),
-                         ("BRIDGE", read_bridges)):
+    for name, reader in (("BUILD", read_buildings), ("BRIDGE", read_bridges)):
         path = gog / f"{name}{number:02d}.DAT"
-        if not path.exists():
-            continue
-        blob = path.read_bytes()
-        if reader is read_objects:
-            objects += read_objects(blob, planet, width, height)
-        else:
-            objects += reader(blob, width, height)
+        if path.exists():
+            objects += reader(path.read_bytes(), width, height)
+    obj_dat = gog / f"OBJECT{number:02d}.DAT"
+    if obj_dat.exists():
+        objects += read_objects(obj_dat.read_bytes(), planet, width, height)
 
     passable = water = None
     if tileinfo_dir is not None:

@@ -70,6 +70,10 @@ unique_name_in_owner = true
 custom_minimum_size = Vector2(220, 30)
 text = "Multiplayer"
 
+[node name="HowToPlay" type="Button" parent="Menu"]
+custom_minimum_size = Vector2(160, 28)
+text = "How To Play"
+
 [node name="Settings" type="Button" parent="Menu"]
 custom_minimum_size = Vector2(220, 30)
 text = "Settings"
@@ -82,5 +86,6 @@ text = "Quit"
 [connection signal="pressed" from="Menu/Campaign" to="." method="_on_campaign_pressed"]
 [connection signal="pressed" from="Menu/Skirmish" to="." method="_on_skirmish_pressed"]
 [connection signal="pressed" from="Menu/Multiplayer" to="." method="_on_multiplayer_pressed"]
+[connection signal="pressed" from="Menu/HowToPlay" to="." method="_on_how_to_play_pressed"]
 [connection signal="pressed" from="Menu/Settings" to="." method="_on_settings_pressed"]
 [connection signal="pressed" from="Menu/Quit" to="." method="_on_quit_pressed"]

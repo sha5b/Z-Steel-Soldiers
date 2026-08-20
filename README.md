@@ -21,7 +21,8 @@ assets and format knowledge from the open-source
 - Controls: WASD/arrows/edge pan, wheel zoom, drag = box select,
   right-click = move order, Q/E/R order stance, T auto-man, X dismount,
   Ctrl+digit assigns a control group and digit recalls it (a second
-  press jumps the camera to that squad).
+  press jumps the camera to that squad). The release's own 7 tutorial
+  pages are on the title menu under **How To Play**.
 
 ## Repository layout
 

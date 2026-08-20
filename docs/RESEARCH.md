@@ -274,3 +274,270 @@ talking portraits; art = 24 animated face folders, not yet copied).
   committed or redistributed.
 - Zod Engine assets: extracted/repacked originals, same copyright; GPL
   applies to its code, which we do not use.
+
+## 6. Original campaign level format (reverse-engineered 2026-08-20)
+
+Parser: `tools/gog/level_to_json.py`. It reads `assets_original/gog/` and
+writes the same JSON schema `tools/zod/map_to_json.py` emits, so
+`map_loader.gd` loads the original 20 campaign levels plus the 5 extra
+maps (`LEVEL26-29`, `LEVEL31`) unchanged.
+
+Every claim below names the check that produced it. Anything I could not
+prove is under "Still unknown" and the tool leaves it out.
+
+### 6.1 The ground truth that made this possible
+
+`project/assets/maps/p02_bb_orig01..20.json` — which BUGS.md item 1 calls
+"the zod multiplayer pack" — **are the 20 original campaign levels**,
+edited by the zod authors for 2 players. Proof: each one has the exact
+width, height and planet of the matching `LEVEL{01-20}.MAP`, and 96.17%
+of all 218,000 tiles agree cell for cell. That gives a per-cell and
+per-object oracle that is far stronger than eyeballing
+`Maps/LEVEL*.png`, and every id table in the tool was *read off* it, not
+guessed. `Maps/LEVEL*.png` stays useful as an independent check because
+zod's edits do not appear in it.
+
+### 6.2 `LEVEL{NN}.MAP` — 56433 bytes, identical size on all 25 files
+
+| Offset | Size | Field | Status |
+|---|---|---|---|
+| 0 | 1 | unknown (0xF7 on LEVEL01) | GUESSED |
+| 1 | 6656 | byte-identical copy of the region array at 43377 | VERIFIED |
+| 6657 | 3440 | 138-byte-stride array, 3-4 used records + a constant table | UNKNOWN |
+| 10097 | 13 | `char` tileset-1 name, e.g. `DESERT.LBM` | VERIFIED |
+| 10110 | 1 | `u8` = 1 on all 25 files | VERIFIED |
+| 10111 | 13 | `char` tileset-2 name, e.g. `DESERT2.LBM` | VERIFIED |
+| 10124 | 1 | `u8` = 1 on all 25 files | VERIFIED |
+| 10125 | 2 | `u16` width in tiles | VERIFIED |
+| 10127 | 2 | `u16` height in tiles | VERIFIED |
+| 10129 | 16384 | plane 1, 128×128 bytes, row-major | VERIFIED |
+| 26513 | 16384 | plane 2, 128×128 bytes, row-major | VERIFIED |
+| 42897 | 480 | zeros | VERIFIED |
+| 43377 | 13056 | region array, 96 × 136 bytes | VERIFIED |
+
+- **Duplicate array**: `d[1:6657] == d[43377:50033]` on all 25 files.
+- **Width/height**: the values (64×86 … 128×128) reproduce the aspect
+  ratio of the rendered `Maps/LEVEL*.png` thumbnails to within 0.5% on
+  24 of 25 levels (LEVEL13 is 4.5% off; its thumbnail looks cropped).
+- **Grid stride 128**: region record 0 of LEVEL01 has rect
+  (160,288)-(272,400) px, centre tile (13,21), and stores centre_cell
+  2701 = 21·128+13; record 1 gives 2737 = 21·128+49.
+- **The used rectangle is exactly `width × height`**: outside it plane 1
+  is 0xEF. Checked per row on all 25 files — exact on 22; LEVEL01, 04
+  and 08 carry uncleared editor scratch a few rows/columns past the
+  declared size, which the tool ignores.
+
+### 6.3 The tile index — `plane1 + 240 × (plane2 >> 7)`
+
+Plane 1 is an index into the level's **first** tileset (0…239) and plane
+2's top bit selects the **second** tileset. That is exactly the 480-tile
+layout of our `assets/z/planets/<planet>.png` sheets, so the sum is
+already a sheet index — no per-level remap exists or is needed.
+
+- VERIFIED: 96.172% of 218,000 cells match the zod ground truth exactly.
+  Plane 1 alone scores 66%. The residual is where the zod authors edited
+  for 2 players — 200 of LEVEL01's 311 mismatches are the two fort
+  footprints, where zod paints plain ground and the original punches a
+  dark hole (see 6.6).
+- VERIFIED: rendering the tool's output with the zod sheets and
+  downscaling to the thumbnail size gives a mean Pearson correlation of
+  **0.7216** against `Maps/LEVEL1-25.png` (0.8105 if the fort footprints
+  are excluded, since the thumbnails show the fort sprite there and a
+  bare tile render shows the hole). Plane 1 alone scores 0.6129.
+
+**GOG `.BLK` → zod sheet.** `<PLANET>.BLK` is 512 × 16×16 8-bit tiles
+and `<PLANET>.PAL` is a 6-bit VGA palette. Indices 240-255 and 496-511
+are unused padding, so `sheet = blk if blk < 240 else blk - 16`
+(240 + 240 = the 480 tiles of our sheet). Verified by rendering every BLK
+tile and matching it against every sheet tile on all five planets: that
+rule is the **nearest** match for **480/480** tiles on every planet, with
+a worst mean per-channel error of 2.36/255. There are **zero exact**
+matches — the palettes are quantised differently (6-bit vs 8-bit), so the
+art is the same but not bit-identical. Map cells never index above 239 in
+plane 1, so for level data the mapping is the identity.
+
+**Plane 2 bits 0-6** are a per-cell class 0…63, UNKNOWN. It clearly
+tracks terrain kind (value 7 is 50% road tiles, 9 is 72% water, 19 is
+63% impassable by tileinfo) and every rock in the zod maps sits on a cell
+whose low bits are 0, but no reading predicted anything, so the tool
+ignores it.
+
+### 6.4 Region array (43377, 96 × 136) — parsed but NOT used
+
+`u16 x1,y1,x2,y2` in pixels, `u16 centre_cell`, then neighbour ids
+terminated by 0xFF; bytes 53-135 are an uninitialised table filled with
+the first neighbour id. A slot is in use when byte +10 is not 0xFF.
+LEVEL01 has 13 records (six 7×7 boxes plus connecting corridors),
+LEVEL20 has 89. This is an **adjacency graph, not the territory grid** —
+it does not tile the map and its count does not match the zod zone count.
+What the original uses it for is UNKNOWN.
+
+### 6.5 `CPUPLR{NN}.DAT` — 2217 b = 73 × 30 + a 27-byte tail — the zones
+
+`u16 x1, y1, x2, y2` in **tiles** (not pixels); in use when the rect is
+non-empty and fits the map. The remaining 22 bytes and the tail (which
+ends with 40000 and 50) are UNKNOWN.
+
+These are the territory rectangles: a 3×3 … 4×4 lattice with a one-tile
+gutter covering 70-84% of the map. VERIFIED: the in-use record count
+equals the zod zone count on **all 20** levels (9,9,10,15,9,12,10,15,10,
+11,10,12,12,14,14,15,16,14,16,16) and **101 of 249** rects are
+bit-identical; the other 148 differ by one tile on one edge because zod
+closed the gutters. The tool writes the raw GOG rect.
+
+### 6.6 Forts — cut out of the tile grid, not stored as objects
+
+No `.DAT` file holds a fort. The ground under one is set to **plane-1
+value 238 on every planet** (which renders as a near-black hole, sheet
+tile 478). Take 8-connected components of `plane1 == 238` with a 10-tile
+wide bounding box and ≥ 90 cells: **100 cells is a north-facing fort**
+(zod building id 0, `fort_front`), **96 cells is south-facing** (id 1,
+`fort_back`).
+
+- VERIFIED: 38 of 40 forts land on the zod anchor exactly, id included.
+  The two misses (LEVEL03 `fort_back`, LEVEL16 `fort_front`) are one row
+  off because a stray 238 cell extends the bounding box.
+- All 25 levels yield exactly 2 forts, which is what the tool writes as
+  `player_count`.
+- `owner` copies the convention every one of the 20 zod maps uses —
+  `fort_front` = team 2, `fort_back` = team 1 — CONFIRMED against
+  `Maps/LEVEL1.png`, where the north fort carries a blue plaque and the
+  south fort a red one. It is a convention, not a field we read.
+
+### 6.7 `OBJECT{NN}.DAT` — 1500 b = 150 × 10
+
+`u16 x, u16 y` in pixels (0xFFFF = free slot), `u8 type`, `u8 sub-value`,
+then 4 bytes of 0xFF (a pointer in the original struct). VERIFIED: 1840
+of 1847 in-use records land inside the declared map and 1844 of 1847 are
+16-aligned.
+
+`type` indexes a **per-planet** table. Recovered by matching every
+record's cell against the zod maps. Hardware and pickups use the cell as
+stored; scenery is anchored **one tile above** the cell zod uses, and
+that `dy` is part of the table. Table with the record count and how many
+matched that exact kind+id:
+
+| type | → | n / hit | | type | → | n / hit |
+|---|---|---|---|---|---|---|
+| 5 | cannon gun | 65/62 | | 22 | cannon gatling | 18/16 |
+| 23 | cannon howitzer | 11/11 | | 21 | cannon missile | 1/1 |
+| 33 | vehicle jeep | 20/16 | | 29 | vehicle light | 36/35 |
+| 8 | vehicle medium | 19/18 | | 26 | vehicle heavy | 4/4 |
+| 31 | vehicle apc | 5/5 | | 24 | vehicle missile launcher | 4/4 |
+| 35 | vehicle crane | 21/21 | | 9, 10 | map_item grenades | 101/97 |
+| 11/12/17/18/19 | hut (desert/jungle/volcanic/city/arctic) | 286/261 | | | | |
+| desert 39,40,41,42,43 | map_item 11,12,13,14,15 | 127/124 | | arctic 46,47,60,61 | map_item 8,7,9,10 | 127/118 |
+| city 48,49,50,51 | map_item 16,17,18,19 | 158/152 | | jungle 54,55,56,57 | map_item 23,22,25,24 | 174/172 |
+| volcanic 52,53 | map_item 20,21 | 84/81 | | volcanic 13,14,15,16 | **UNKNOWN** | 144/0 |
+
+Over levels 01-20 the table converts 1406 in-use records, 1261 of them
+to a known id, and **1198 of those 1261 (95.0%)** land on a zod object of
+exactly that kind and id.
+
+Volcanic types 13/14/15/16 (144 records) have no counterpart in any zod
+map, so their scenery id is unknown; the tool emits them as `map_item 0`,
+which renders nothing rather than the wrong sprite. `desert 20` (n=1) and
+`city 33` (n=4) are also unmatched; `city 33` is almost certainly a jeep
+by cross-planet consistency and is mapped as one.
+
+The `sub-value` byte is 0xFF on scenery and a small per-type constant on
+hardware. Its meaning is UNKNOWN and the tool ignores it.
+
+### 6.8 `BUILD{NN}.DAT` — 2800 b = 35 × 80
+
+`u16 x, u16 y` in pixels — the **same anchor zod uses** — then
+`u8 kind` (**0 repair, 1 vehicle factory, 4 robot factory, 8 radar**,
+0xFF on a free/stale slot), `u8` = 8 on every live record, `u8` flags
+(0/192/224 live, 240-255 stale), and `u16 max health` at +12 (500 for
+radar and repair, 1000-5000 for factories). +22, +30 and +59 are heap
+pointers from the original 32-bit build; the rest is padding or unread.
+
+`kind` → zod id was read off the ground truth, not guessed. Together
+with the bridges below, matching in-use records against the zod maps
+gives **257 hits with the right position AND the right id and ZERO
+position hits with a wrong id**; 27 more have no zod object (zod removed
+them when rebalancing).
+
+**Building level is INFERRED, not found.** No byte in the 80 predicts
+zod's `blevel` (best purity 0.678, and that byte has 126 distinct
+values). The factories' max-health tier is the only level-like number:
+`max_hp/1000`, minus one for robot factories, reproduces zod's `blevel`
+on **165 of 170** factory records (97.1%). The off-by-one between the two
+factory types is unexplained. Radar and repair always read 500 and their
+zod `blevel` scatters 0-5 with nothing to predict it, so the tool writes
+0 for them (they build nothing, so nothing reads it).
+
+### 6.9 `BRIDGE{NN}.DAT` — 312 b = 12 × 26
+
+`u16 x, y` in pixels (0xFFFF = free), `u16 w, h` in pixels (4×6 … 10×4
+tiles), `u16 health`, `u16 max health` (300/500/600), `u16` 0-or-16.
+Orientation from the span: `w > h` is `bridge_horz` (zod building id 7),
+`h > w` is `bridge_vert` (id 6). Included in the 257/0 count above.
+
+### 6.10 `levels.dat` — 12240 b = 51 records × 240, record N = level N
+
+| Offset | Field |
+|---|---|
+| +0 | `char[20]` level name |
+| +20 / +33 / +46 | `char[13]` map / robots / cpuplr file |
+| +59 / +72 | `char[13]` `preset2.wal` / `preset1.wal` |
+| +85 | `u8[12]` list of 0…0x12 values, 0xFF-terminated — UNKNOWN |
+| +97 / +111 | `char[14]` object file / `char[13]` mult file |
+| +124 / +128 | `u32` = 10000 twice (starting credits? GUESSED) |
+| +132 / +145 | `char[13]` build file / `char[14]` bridge file |
+
+The 20 campaign names: Virgin Soldiers, Psychos, Death Valley, Desert
+Islands, Hot Nuts, Sooty Bolts, Pyro Technics, Molten Kombat, Slippery
+Jim, The Wall, Heavy Metal, Chilly Willy, Hot n Steamy, Restoration,
+Swamp Fever, Light Brigade, Car Park, Mayhem, Bridge Game, Z. Records
+21-25, 30 and 36-40 name maps the release does not ship; 26-29 and 31
+(the files we do have) are just planet names.
+
+### 6.11 `passable` / `water`
+
+Taken from the zod `<planet>.tileinfo` record of the **corrected** tile
+index, i.e. exactly what `tools/zod/map_to_json.py` does. VERIFIED
+against the zod maps' own arrays: **98.28%** agreement on `passable` and
+**99.98%** on `water` over 218,000 cells; the residual tracks the 3.8%
+of tiles zod edited.
+
+Rock objects are NOT derivable from the GOG per-level files. In the
+original, rocks are terrain — every one of the 5,990 rock objects in the
+zod maps sits on a rock/cliff tile that our tile array already carries
+(86.6% on an identical tile index), and no tile set, plane-2 value or
+`.DAT` record predicts which cells zod turned into `orock` objects. Rock
+terrain still blocks movement through `passable`, so nothing is lost
+except the separate destructible-rock entities.
+
+### 6.12 Still unknown / not in the release
+
+- **The starting armies.** Every `levels.dat` record names
+  `preset1.wal` / `preset2.wal`; **neither file exists in the install**
+  (`Z.exe` holds the string, not the data). A converted level therefore
+  has its forts, factories, bridges, scenery and unmanned hardware but
+  no starting robots — the fort has to build them. Confirmed by
+  searching every `u16` pair in `LEVEL01.MAP`, `OBJECT01`, `BUILD01`,
+  `BRIDGE01`, `CPUPLR01`, `levels.dat`, `robots.dat`, `mult.dat`,
+  `Z.exe`, `CHARS.BIN` and `PHRASES.BIN` for a coordinate within 80 px
+  of either LEVEL01 fort (found by template-matching the fort sprite in
+  `Maps/LEVEL1.png` at r=0.82): **0 hits**.
+- `LEVEL.MAP` byte 0, the 138-stride array at 6657, plane 2 bits 0-6,
+  and most of each 136-byte region record.
+- `robots.dat` (25000 b): a 44-byte-stride roster of named robots
+  ("Grant", "Tough", "Sniper") with 5-byte stat blocks. Shared by every
+  level, so it is a name/stat pool, not per-level placement. Not parsed.
+- `mult.dat` (628 b) and the `CPUPLR` tail: AI tuning, not parsed.
+- `OBJECT` sub-value byte; `BUILD` flags byte and the fields at +26/+28.
+- Volcanic scenery types 13/14/15/16 → zod scenery id.
+
+### 6.13 Running it
+
+```
+python3 tools/gog/level_to_json.py assets_original/gog <out_dir> \
+        assets_original/zod/planets
+```
+
+Writes `zc01_virgin_soldiers.json` … `zc20_z.json` plus
+`zs26_desert.json` … `zs31_city_1.json` (25 files). The third argument is
+the tileinfo directory; without it `passable`/`water` come out `null`,
+which `map_loader.gd` treats as fully passable.

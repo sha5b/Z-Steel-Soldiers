@@ -40,6 +40,10 @@ func _on_multiplayer_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/multiplayer.tscn")
 
 
+func _on_how_to_play_pressed() -> void:
+	get_tree().change_scene_to_file("res://scenes/tutorial.tscn")
+
+
 func _on_settings_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/settings.tscn")
 
