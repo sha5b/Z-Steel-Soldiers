@@ -755,10 +755,14 @@ func update_flag(for_team: int) -> void:
 
 
 func _process(delta: float) -> void:
-	if Engine.is_editor_hint() or not alive:
-		return  # a ruin produces nothing
+	if Engine.is_editor_hint():
+		return
+	if not alive:
+		_ruin_fx(delta)
+		return  # a ruin produces nothing but smoke
 	_follow_zone_owner()
 	_tick_behaviours(delta)
+	_damage_fx(delta)
 
 
 ## Zone-follow, ONE implementation: whichever zone contains the
@@ -879,6 +883,66 @@ func _repair_tick(delta: float) -> void:
 		done.move_to(done.global_position + Vector2(0, 34))
 
 
+# ----------------------- burning -----------------------
+# The original burns a hurt structure. We burned nothing: a fort one
+# shot from collapse looked identical to an untouched one, and the ruin
+# it left sat there clean for the rest of the match. Vehicles already
+# had this (Vehicle2D._damage_fx, the original's ETankSmoke); structures
+# use the same shipped art through Fx.structure_smoke.
+
+const SMOKE_AT := 0.5  # fraction of max HP where a structure starts smoking
+const RUIN_BURN := 9.0  # seconds a fresh ruin keeps OPEN FLAME, then smoulders
+var _smoke_timer := 0.0
+var _ruin_burn := 0.0
+
+
+## Smoke off a damaged structure. The plume leaves a random point on the
+## upper part of the footprint — the walls and roof, not the apron in
+## front — and both the rate and the plume size climb as the structure
+## burns down. Big structures carry proportionally more fires than a
+## radar hut. Bridges are excluded: their damage state is the sheet's
+## own wreck frame, and a span of rubble in a river does not smoke.
+func _damage_fx(delta: float) -> void:
+	if is_bridge() or float(hp) >= float(max_hp) * SMOKE_AT:
+		return
+	_smoke_timer -= delta
+	if _smoke_timer > 0.0:
+		return
+	# 0 at the smoking threshold, 1 at destruction
+	var hurt := 1.0 - clampf(float(hp) / (float(max_hp) * SMOKE_AT), 0.0, 1.0)
+	var fp := world_footprint()
+	var area_scale := clampf(fp.size.x * fp.size.y / 4096.0, 0.6, 2.5)
+	_smoke_timer = randf_range(0.5, 1.1) / (area_scale * (0.4 + hurt))
+	Fx.structure_smoke(_burn_point(fp), hurt,
+		hurt > 0.6 and randf() < 0.35)
+
+
+## A fallen structure keeps burning: open flame for the first seconds,
+## then a thinner column that never quite goes out — the same rule tank
+## husks follow (Vehicle2D._update_wreck).
+func _ruin_fx(delta: float) -> void:
+	if is_bridge():
+		return
+	_ruin_burn = maxf(0.0, _ruin_burn - delta)
+	_smoke_timer -= delta
+	if _smoke_timer > 0.0:
+		return
+	var burning := _ruin_burn > 0.0
+	_smoke_timer = randf_range(0.3, 0.7) if burning else randf_range(1.3, 2.6)
+	Fx.structure_smoke(_burn_point(world_footprint()),
+		1.0 if burning else 0.4, burning)
+
+
+## Where a plume leaves the structure: anywhere across its width, in the
+## top 40% of its height. Inset proportionally so a one-tile hut still
+## emits from inside its own outline.
+func _burn_point(fp: Rect2) -> Vector2:
+	var inset := minf(4.0, fp.size.x * 0.25)
+	return Vector2(
+		randf_range(fp.position.x + inset, fp.end.x - inset),
+		randf_range(fp.position.y, fp.position.y + fp.size.y * 0.4))
+
+
 ## `at` is the impact point in world px when the caller knows it (every
 ## weapon does) — see _hit_flash for why that matters.
 func take_damage(amount: int, at := Vector2.INF) -> void:
@@ -939,7 +1003,10 @@ func _death_visuals() -> void:
 	# art, which nothing referenced): the fort's five pieces, two
 	# generic ones for everything else
 	Fx.building_debris(visual_center(), is_fort,
-		maxf(_art_size.x, 32.0) * 0.5)
+		maxf(_art_size.x, 32.0) * 0.5, world_footprint())
+	# the ruin goes on burning (see _ruin_fx)
+	_ruin_burn = RUIN_BURN
+	_smoke_timer = 0.0
 	if _sprite:
 		_set_building_texture(_texture_path(true))
 		for child in get_children():

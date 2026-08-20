@@ -117,7 +117,11 @@ per-type `Init`/`DoRender`) against the actual sprite pixels:
   (`track_dust_r`), leak oil (`tank_oil_0-2`) and spark
   (`track_spark_r`/`ground_spark`); deaths use `death_effects/`
   (big_smoke/fire/little_fire/smoke/spark) and
-  `other/explosions/side_explosion`.
+  `other/explosions/side_explosion`. STRUCTURES burn from the same set
+  (`Fx.structure_smoke`) — the plume size band per structure and the
+  emission rate are OURS, not read off the release: nothing in the pack
+  records either. `buildings/death_effects/` holds only the 7 tumbling
+  piece sets, so the smoke/fire art is shared with the vehicle folder.
 
 ### Original art still without a consumer (future work)
 

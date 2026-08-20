@@ -27,6 +27,13 @@ Verified by test unless noted otherwise.
 | AI | Holds ground: posts DEFEND guards on frontier bridges (the only place armour crosses a Z map), capped at ~1/3 of the army, and guards are excluded from the push. Cannons — immobile once built — are only produced at the facility nearest the frontier. `--tactics-test`. |
 | Research | `RESEARCH.md` 2e (PHRASES.BIN), 2e.1 (portrait offsets), 2f (HUD slot derivation). Corrected the stale claim that our stats were unported. |
 
+### Landed after the handoff was written
+
+| Area | What changed |
+|---|---|
+| Structures burn | Player-reported open item 2. Buildings had NO damage VFX: a fort one shot from collapse looked untouched, and the ruin it left sat clean for the rest of the match. The pack's burn set (`little_smoke`/`smoke`/`big_smoke`, `little_fire`/`small_fire_smoke`) was vehicle-only — `little_fire` had no consumer at all. Now: below 50% HP a structure smokes from a random point on its upper footprint, plume size and rate both climbing as it burns down and scaled by its area; a fresh ruin keeps open flame for 9s and then smoulders for good (the rule tank husks already followed). Bridges excluded — their damage state is the sheet's own wreck frame. `--art-test` asserts every burn set resolves, that `structure_smoke` returns art at each severity band, and that a real damaged fort and a real ruin both emit. |
+| Debris follows the footprint | Every piece left the exact visual centre, and a one-tile hut threw the same 4 pieces as a 128px fort. `Fx.building_debris` now takes the footprint rect: origins scatter across the structure's upper two thirds and the count scales with area (1 piece per ~2x2 tiles, 4-12). |
+
 ## Open
 
 ### Reported by the player, not resolved
@@ -35,10 +42,14 @@ Verified by test unless noted otherwise.
    *spasm* is fixed (above). The reach half is unverified — it could not
    be reproduced headlessly. **Needs a repro: which map, which gun, and
    whether the gun is a fort tower mount or a free-standing cannon.**
-2. **Building smoke and debris effects.** Listed by the player as
-   looking wrong; not investigated at all this session. The art exists
-   (`death_effects/`, `effects/`) and `Fx.building_debris` is wired, so
-   this is a tuning/coverage question rather than a missing feature.
+2. **Building smoke and debris effects** — LARGELY CLOSED, see below.
+   The root cause was not tuning: **structures never burned at all.**
+   Fixed (`Fx.structure_smoke`, `Building2D._damage_fx`/`_ruin_fx`,
+   `--art-test`). What is still unverified is the *pixel* match: nothing
+   in the pack records how fast the original's plumes came or which of
+   the five burn sets it used per structure size, so the rates and the
+   size bands are OURS. Eyeball with
+   `--screenshot 3 --burn-building`.
 3. **Cliff faces** — improved but not confirmed against the original.
    Still unused in the autotile: the shadow column (col 4) and the
    rubble column (col 5) of `rocks_<planet>.png`, and row 5 (the ground
@@ -103,10 +114,12 @@ Verified by test unless noted otherwise.
 14. **Path smoothing is bounded at `SMOOTH_WINDOW = 24` points** to keep
     it linear. Long cross-map routes still keep corners every ~24 cells
     that a full string-pull would remove.
-15. **Two screenshot aids were added to `match.gd`:** `--select-first`
-    and `--select-factory`, in the same spirit as the existing
-    `--dump-visible`. They exist so HUD changes can be eyeballed from a
-    headless run; delete them if that stops being useful.
+15. **Three screenshot aids in `match.gd`:** `--select-first`,
+    `--select-factory` and `--burn-building` (drops the player's first
+    structure to 12% HP and pans to it, so the burn VFX can be judged),
+    in the same spirit as the existing `--dump-visible`. They exist so
+    visual changes can be eyeballed from one run; delete them if that
+    stops being useful.
 
 ## Not mine
 

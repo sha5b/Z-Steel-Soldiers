@@ -96,10 +96,21 @@ const DEBRIS_FLIGHT := 0.9
 const DEBRIS_FADE := 1.6
 
 
-func building_debris(world_pos: Vector2, fort: bool, spread := 40.0) -> int:
+## `from_rect` is the falling structure's FOOTPRINT. Every piece used to
+## leave the exact same point — the visual centre — so a 96px fort threw
+## its rubble out of one pixel like a firework, and a small hut threw
+## the identical amount. Given a rect, each piece starts somewhere on the
+## structure (upper two thirds, where the walls are) and the count scales
+## with its area. Called with no rect, the old fixed counts stand.
+func building_debris(world_pos: Vector2, fort: bool, spread := 40.0,
+		from_rect := Rect2()) -> int:
 	var pieces := 5 if fort else 2
+	var count := 7 if fort else 4
+	var area := from_rect.size.x * from_rect.size.y
+	if area > 0.0:
+		count = clampi(int(area / 1024.0), 4, 12)  # 1 piece per ~2x2 tiles
 	var thrown := 0
-	for i in (7 if fort else 4):
+	for i in count:
 		var frames := AnimLibrary.effect_frames(DEBRIS_DIR,
 			"%spiece%d" % ["fort_" if fort else "", i % pieces], 10.0)
 		if frames == null or not frames.has_animation("fx"):
@@ -110,7 +121,13 @@ func building_debris(world_pos: Vector2, fort: bool, spread := 40.0) -> int:
 		piece.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		piece.scale = Vector2.ONE  # native art scale
 		piece.z_index = 7  # above the ruin, like the explosion
-		piece.position = world_pos
+		var origin := world_pos
+		if area > 0.0:
+			origin = Vector2(
+				randf_range(from_rect.position.x, from_rect.end.x),
+				randf_range(from_rect.position.y,
+					from_rect.position.y + from_rect.size.y * 0.66))
+		piece.position = origin
 		add_child(piece)
 		piece.play("fx")
 		thrown += 1
@@ -122,7 +139,7 @@ func building_debris(world_pos: Vector2, fort: bool, spread := 40.0) -> int:
 		var tween := piece.create_tween()
 		tween.set_parallel(true)
 		tween.tween_property(piece, "position",
-			world_pos + away, DEBRIS_FLIGHT).set_ease(Tween.EASE_OUT)
+			origin + away, DEBRIS_FLIGHT).set_ease(Tween.EASE_OUT)
 		tween.tween_property(piece, "offset", Vector2(0.0, -lift),
 			DEBRIS_FLIGHT * 0.45).set_ease(Tween.EASE_OUT)
 		tween.chain().tween_property(piece, "offset", Vector2.ZERO,
@@ -130,6 +147,54 @@ func building_debris(world_pos: Vector2, fort: bool, spread := 40.0) -> int:
 		tween.chain().tween_property(piece, "modulate:a", 0.0, DEBRIS_FADE)
 		tween.chain().tween_callback(piece.queue_free)
 	return thrown
+
+
+## A HURT OR BURNING STRUCTURE. The pack ships the original's whole
+## burn set (`death_effects/`: little_smoke/smoke/big_smoke and
+## little_fire/small_fire_smoke) and only vehicles ever used it — a fort
+## one shot from collapse looked exactly like an untouched one, and its
+## ruin then sat there clean forever. `severity` is 0..1 and picks the
+## size of the plume; `with_fire` puts a flame at its foot. Returns
+## false when none of the art resolves (so a test can tell).
+const STRUCTURE_SMOKE := ["little_smoke", "smoke", "big_smoke"]
+const STRUCTURE_FIRE := ["little_fire", "small_fire_smoke"]
+var _loop_frames := {}  # effect folder -> SpriteFrames (built once, shared)
+
+
+func structure_smoke(world_pos: Vector2, severity: float,
+		with_fire := false) -> bool:
+	var sizes: Array = STRUCTURE_SMOKE
+	var pick: String = sizes[clampi(int(clampf(severity, 0.0, 0.999)
+		* sizes.size()), 0, sizes.size() - 1)]
+	var frames := _looping_effect(pick, 8.0)
+	if frames != null:
+		_spawn_drifting(frames, world_pos + Vector2(randf_range(-3.0, 3.0), 0.0),
+			randf_range(9.0, 18.0), randf_range(1.0, 1.7))
+	if with_fire:
+		# the flame sits low and lives briefly; the plume above it is
+		# what carries the eye
+		var flame := _looping_effect(
+			String(STRUCTURE_FIRE[randi() % STRUCTURE_FIRE.size()]), 10.0)
+		if flame != null:
+			_spawn_drifting(flame, world_pos + Vector2(randf_range(-4.0, 4.0), 3.0),
+				randf_range(2.0, 5.0), randf_range(0.5, 0.9))
+	return frames != null
+
+
+## Looping frames for a named effect folder, built ONCE. A burning fort
+## emits a puff a second for the rest of the match; rebuilding the
+## SpriteFrames per puff walked the directory every time.
+func _looping_effect(name: String, fps: float) -> SpriteFrames:
+	if _loop_frames.has(name):
+		return _loop_frames[name]
+	var frames := AnimLibrary.effect_frames(
+		"res://assets/z/effects/%s" % name, name, fps)
+	if frames == null or not frames.has_animation("fx"):
+		_loop_frames[name] = null
+		return null
+	frames.set_animation_loop("fx", true)
+	_loop_frames[name] = frames
+	return frames
 
 
 ## The UNLABELLED half of the robot voice bank (bark_23..75 = the pack's

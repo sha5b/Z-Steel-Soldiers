@@ -167,6 +167,44 @@ static func _audit_wired_art(ctx: Node, rig: TestRig) -> void:
 		"a falling fort threw no debris")
 	rig.check(Fx.building_debris(Vector2(4000, 4000), false) > 0,
 		"a falling building threw no debris")
+	# debris count follows the FOOTPRINT: a fort scatters more pieces
+	# than a one-tile hut (they all used to leave the same single pixel,
+	# in the same quantity, whatever the structure's size)
+	var small_wreck := Fx.building_debris(Vector2(4000, 4000), false, 40.0,
+		Rect2(0.0, 0.0, 32.0, 32.0))
+	var large_wreck := Fx.building_debris(Vector2(4000, 4000), true, 40.0,
+		Rect2(0.0, 0.0, 128.0, 128.0))
+	rig.check(large_wreck > small_wreck,
+		"debris count ignored footprint size (%d vs %d)"
+			% [large_wreck, small_wreck])
+	# a HURT STRUCTURE BURNS. The pack's whole burn set was vehicle-only:
+	# buildings never smoked at any damage level and their ruins never
+	# smouldered (docs/HANDOFF.md open item 2).
+	var burn_sets: Array = Fx.STRUCTURE_SMOKE + Fx.STRUCTURE_FIRE
+	for burn_name in burn_sets:
+		var burn: SpriteFrames = AnimLibrary.effect_frames(
+			"res://assets/z/effects/%s" % burn_name, String(burn_name), 8.0)
+		rig.check(burn != null and burn.has_animation("fx")
+				and burn.get_frame_count("fx") > 0,
+			"burn set '%s' has no frames" % burn_name)
+	for severity in [0.0, 0.5, 1.0]:
+		rig.check(Fx.structure_smoke(Vector2(4000, 4000), severity, true),
+			"structure smoke at severity %.1f resolved no art" % severity)
+	var burner: Building2D = ContentDB.building_def(0).behaviour.new()
+	burner.setup(0, 1, "desert", 1)
+	ctx.add_child(burner)
+	burner.hp = int(burner.max_hp * 0.1)
+	var puffs := Fx.get_child_count()
+	burner._damage_fx(1.0)
+	rig.check(Fx.get_child_count() > puffs, "a burning fort emitted no smoke")
+	# and the ruin it leaves keeps burning, like a tank husk does
+	burner.alive = false
+	burner._ruin_burn = Building2D.RUIN_BURN
+	burner._smoke_timer = 0.0
+	puffs = Fx.get_child_count()
+	burner._ruin_fx(1.0)
+	rig.check(Fx.get_child_count() > puffs, "a fort's ruin did not smoulder")
+	burner.queue_free()
 	# the building LEVEL digit, on every producer
 	for id in [0, 4, 5]:
 		var bdef := ContentDB.building_def(id)

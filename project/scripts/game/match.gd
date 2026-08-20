@@ -116,6 +116,11 @@ func _screenshot(delay_text: String) -> void:
 		_select_first_factory()
 		await get_tree().process_frame
 		await get_tree().process_frame
+	if "--burn-building" in shot_all:
+		_burn_first_building()
+		# let the plume build up before the frame is taken
+		for _i in 90:
+			await get_tree().process_frame
 	if "--dump-visible" in (OS.get_cmdline_args() + OS.get_cmdline_user_args()):
 		_dump_ground_nodes()
 	var image := get_viewport().get_texture().get_image()
@@ -141,6 +146,21 @@ func _select_first_factory() -> void:
 			SelectionManager.current.toggle_select(b, false)
 			b.queue_unit("robot:grunt", true)
 			camera.pan_to((b as Node2D).global_position)
+			return
+
+
+## Screenshot aid for the BURN VFX (Building2D._damage_fx): drop the
+## player's first structure to 12% HP and pan to it, so a damaged
+## building's smoke can be eyeballed. The plume is the one part of the
+## burn work a headless assert cannot judge — it can only confirm that
+## puffs spawn, not that they read as fire coming out of a roof.
+func _burn_first_building() -> void:
+	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
+		if b is Building2D and b.alive and not (b as Building2D).is_bridge() \
+				and (b as Building2D).team == MatchState.current.player_team:
+			var hurt := b as Building2D
+			hurt.hp = maxi(1, int(hurt.max_hp * 0.12))
+			camera.pan_to(hurt.visual_center())
 			return
 
 
