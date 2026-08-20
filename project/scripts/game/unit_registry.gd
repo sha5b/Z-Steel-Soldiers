@@ -44,6 +44,14 @@ func untrack(unit: Unit2D) -> void:
 	GameState.check_no_units(unit.team)
 
 
+## Structural removal from Unit2D._exit_tree — silent (NO elimination
+## check: freeing without dying, like the save-restore roster swap,
+## must not eliminate a team) and guarantees the roster never holds a
+## freed instance regardless of how the unit left the tree.
+func forget(unit: Unit2D) -> void:
+	_all.erase(unit)
+
+
 func all_units() -> Array[Unit2D]:
 	# lazily drop dangling refs (units freed without die()) — callers
 	# must never see a freed instance ('is' on one is a hard error)

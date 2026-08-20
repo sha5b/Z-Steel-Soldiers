@@ -70,6 +70,15 @@ func _ready() -> void:
 	cooldown = stats.cooldown
 	speed = stats.speed
 	scale = Vector2(sprite_scale, sprite_scale)
+
+
+## Structural deregistration: whatever frees a unit (death, the
+## save-restore roster swap, map teardown), the roster never keeps a
+## dangling reference. die() additionally runs the elimination check —
+## freeing without dying must NOT eliminate a team.
+func _exit_tree() -> void:
+	if UnitRegistry.current:
+		UnitRegistry.current.forget(self)
 	collision_layer = 1
 	collision_mask = 2  # physics solves unit-vs-BUILDING only
 	_build_frames()
