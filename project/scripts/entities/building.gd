@@ -605,6 +605,20 @@ func is_bridge() -> bool:
 	return building_id == 6 or building_id == 7
 
 
+## Capability query: does this building accept an order-driven
+## interaction from `u` (damaged hardware -> its repair shop; a crane
+## -> a damaged building/bridge)? Commands asks the TARGET instead of
+## sniffing classes — new interactable buildings only implement this.
+func accepts_order_from(u: Unit2D) -> bool:
+	if not (u is Vehicle2D) or u.speed <= 0.0:
+		return false
+	if is_repair_shop() and owner_team == u.team and u.hp < u.max_hp:
+		return true
+	# bridges are communal infrastructure: any team's crane rebuilds them
+	return u.can_service_buildings() and hp < max_hp \
+			and (team == u.team or is_bridge())
+
+
 func is_repair_shop() -> bool:
 	return building_id == 3
 

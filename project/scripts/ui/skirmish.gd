@@ -25,18 +25,7 @@ func _ready() -> void:
 
 
 func _rebuild() -> void:
-	list.clear()
-	for e in MapCatalog.entries():
-		if e.sandbox:
-			continue
-		var map_name := String(e.name)
-		var m := MapCatalog.meta(map_name)
-		if _filter() > 0 and m.players != _filter():
-			continue
-		list.add_item("%s  %dP  %dx%d" % [
-			MapCatalog.display_title(map_name), m.players, m.width, m.height])
-		list.set_item_icon(list.item_count - 1, MapPreview.texture(map_name))
-		list.set_item_metadata(list.item_count - 1, String(e.path))
+	MapListUI.populate(list, _filter())
 	if list.item_count > 0:
 		list.select(0)
 		_show(list.get_selected_items()[0])
@@ -52,11 +41,9 @@ func _filter() -> int:
 func _show(index: int) -> void:
 	var path: String = list.get_item_metadata(index)
 	var map_name := path.get_file().get_basename()
-	var m := MapCatalog.meta(map_name)
 	preview.texture = MapPreview.texture(map_name)
 	map_name_label.text = MapCatalog.display_title(map_name)
-	map_info_label.text = "%s   %dx%d   %d PLAYERS" % [
-		m.terrain.to_upper(), m.width, m.height, m.players]
+	map_info_label.text = MapListUI.info_line(path)
 
 
 func _on_chip_pressed(_chip: Button) -> void:

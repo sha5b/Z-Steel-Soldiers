@@ -45,19 +45,8 @@ func _ready() -> void:
 
 func _build_map_list() -> void:
 	map_list.allow_reselect = true
-	map_list.clear()
 	map_list.add_theme_constant_override("icon_maximum_width", 36)
-	var current := str(Net.room.get("map", ""))
-	for e in MapCatalog.entries():
-		if e.sandbox:
-			continue
-		var map_name := String(e.name)
-		var m := MapCatalog.meta(map_name)
-		map_list.add_item("%s  %dP" % [MapCatalog.display_title(map_name), m.players])
-		map_list.set_item_icon(map_list.item_count - 1, MapPreview.texture(map_name))
-		map_list.set_item_metadata(map_list.item_count - 1, String(e.path))
-		if String(e.path) == current:
-			map_list.select(map_list.item_count - 1)
+	MapListUI.populate(map_list, 0, str(Net.room.get("map", "")))
 
 
 func _refresh() -> void:
@@ -66,11 +55,9 @@ func _refresh() -> void:
 	var path := str(Net.room.get("map", ""))
 	if path != "":
 		var map_name := path.get_file().get_basename()
-		var m := MapCatalog.meta(map_name)
 		preview.texture = MapPreview.texture(map_name)
 		map_name_label.text = MapCatalog.display_title(map_name)
-		map_info_label.text = "%s   %dx%d   %d PLAYERS" % [
-			m.terrain.to_upper(), m.width, m.height, m.players]
+		map_info_label.text = MapListUI.info_line(path)
 		if map_list.visible:
 			for i in map_list.item_count:
 				if str(map_list.get_item_metadata(i)) == path:

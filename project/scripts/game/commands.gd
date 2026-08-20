@@ -107,12 +107,4 @@ static func _find_own_fort(world_position: Vector2) -> FortBuilding:
 
 
 static func _wants_building_order(u: Node2D, b: Building2D) -> bool:
-	if not (u is Vehicle2D) or u.kind != "vehicle" or u.speed <= 0.0:
-		return false
-	if b.is_repair_shop() and b.owner_team == u.team and u.hp < u.max_hp:
-		return true
-	# bridges are communal infrastructure: any team's crane rebuilds them
-	if u.unit_name == "crane" and b.hp < b.max_hp \
-			and (b.team == u.team or b.is_bridge()):
-		return true
-	return false
+	return b.accepts_order_from(u)  # the target answers (capability query)

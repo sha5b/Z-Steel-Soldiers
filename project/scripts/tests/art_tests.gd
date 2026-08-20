@@ -14,7 +14,27 @@ static func run(_ctx: Node, rig: TestRig) -> void:
 	_audit_buildings(rig)
 	_audit_units(rig)
 	_audit_projectiles(rig)
+	_audit_world_scale(rig)
 	rig.finish()
+
+
+## SCALE CONTRACT: world-space art renders at NATIVE size — no unit
+## scene may override sprite_scale away from 1.0 (the 2x era is dead;
+## a stray override doubles that unit against the 1:1 world).
+static func _audit_world_scale(rig: TestRig) -> void:
+	for folder in ["res://scenes/units", "res://scenes/vehicles",
+			"res://scenes/cannons"]:
+		var dir := DirAccess.open(folder)
+		if dir == null:
+			continue
+		for f in dir.get_files():
+			if not f.ends_with(".tscn"):
+				continue
+			var text := FileAccess.open("%s/%s" % [folder, f], FileAccess.READ).get_as_text()
+			for line in text.split("\n"):
+				if line.contains("sprite_scale") \
+						and not line.contains("sprite_scale = 1.0"):
+					rig.check(false, "%s: %s" % [f, line.strip_edges()])
 
 
 static func _audit_buildings(rig: TestRig) -> void:

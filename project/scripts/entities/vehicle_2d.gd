@@ -55,6 +55,11 @@ const APC_CAPACITY := 3  # mirrored from ContentDB.rules.apc_capacity
 const SCAN_STEP_SECONDS := 1.0  # zod turrent_time_int: idle turrets rotate one sector per second
 
 
+## Cranes are the unit that services buildings/bridges.
+func can_service_buildings() -> bool:
+	return unit_name == "crane"
+
+
 func is_apc() -> bool:
 	return unit_name == "apc"
 
