@@ -22,6 +22,7 @@ func _ready() -> void:
 	# 1280x720 canvas had at 0.7
 	zoom = Vector2(1.4, 1.4)
 	make_current()
+	_sync_view_offset()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -41,16 +42,22 @@ func _process(delta: float) -> void:
 	var dir := Input.get_vector("cam_left", "cam_right", "cam_forward", "cam_back")
 	var move := dir * PAN_SPEED * delta / zoom.x
 	if enable_edge_pan:
-		var vp := get_viewport().get_visible_rect()
+		# the WORLD's edge, not the window's: with the HUD chrome down the
+		# right side and along the bottom, a cursor heading for the
+		# sidebar or the Menu button used to shove the camera the moment
+		# it crossed the window margin
+		var view := HudFrame.view_rect()
 		var m := get_viewport().get_mouse_position()
-		if m.x < EDGE_MARGIN:
-			move.x -= PAN_SPEED * delta / zoom.x
-		elif m.x > vp.size.x - EDGE_MARGIN:
-			move.x += PAN_SPEED * delta / zoom.x
-		if m.y < EDGE_MARGIN:
-			move.y -= PAN_SPEED * delta / zoom.x
-		elif m.y > vp.size.y - EDGE_MARGIN:
-			move.y += PAN_SPEED * delta / zoom.x
+		if view.has_point(m):
+			if m.x < view.position.x + EDGE_MARGIN:
+				move.x -= PAN_SPEED * delta / zoom.x
+			elif m.x > view.end.x - EDGE_MARGIN:
+				move.x += PAN_SPEED * delta / zoom.x
+			if m.y < view.position.y + EDGE_MARGIN:
+				move.y -= PAN_SPEED * delta / zoom.x
+			elif m.y > view.end.y - EDGE_MARGIN:
+				move.y += PAN_SPEED * delta / zoom.x
+	_sync_view_offset()
 	_clamp_move(move)
 
 
@@ -62,7 +69,7 @@ func pan_to(world: Vector2) -> void:
 ## Clamp the camera CENTER so the whole VIEW stays inside bounds; maps
 ## smaller than the view just centre themselves.
 func _clamp_move(move: Vector2) -> void:
-	var view := get_viewport().get_visible_rect().size / zoom
+	var view := HudFrame.view_rect().size / zoom
 	var half := view * 0.5
 	var target := position + move
 	var center := bounds.get_center()
@@ -74,6 +81,17 @@ func _clamp_move(move: Vector2) -> void:
 		else:
 			target[axis] = clampf(target[axis], lo, hi)
 	position = _snapped(target)
+
+
+## The HUD chrome covers the right and bottom edges, so `position` — which
+## Godot puts at the WINDOW's centre — would sit right of and below the
+## middle of what the player can actually see. Offsetting by half the
+## covered width/height re-centres the camera on the WORLD view, which is
+## what "the screen centres on the unit you select" has to mean.
+func _sync_view_offset() -> void:
+	var vp := Vector2(get_viewport().get_visible_rect().size)
+	var view := HudFrame.view_rect()
+	offset = Vector2(vp.x - view.size.x, vp.y - view.size.y) * 0.5 / zoom
 
 
 ## Whole-SCREEN-pixel position: the same world texel always maps to the

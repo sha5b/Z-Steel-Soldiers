@@ -239,7 +239,7 @@ static func _marker_tex(owner: int, water: bool) -> Texture2D:
 
 func set_owner_team(team: int) -> void:
 	if owner_team == MatchState.current.player_team and team != MatchState.current.player_team:
-		Fx.announce("territory_lost")
+		Fx.announce("territory_lost", world_rect().get_center())
 	owner_team = team
 	captured.emit(team)
 	MatchState.current.notify_zone_captured(team)

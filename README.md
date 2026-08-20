@@ -5,7 +5,8 @@ robot RTS — in Godot 4, as faithful to the original as possible using the
 assets and format knowledge from the open-source
 [Zod Engine](https://github.com/a-sf-mirror/zod_engine) project.
 
-> **Status:** single-player feature-complete — all 57 original maps,
+> **Status:** single-player feature-complete — the ORIGINAL 20-level
+> campaign converted from the retail data plus the 57 zod maps,
 > full unit roster, territory economy, production, campaign, save/load,
 > AI with difficulty, and a 46-flag headless test suite (every flag
 > asserts). Multiplayer: P2P lobby, in-match intent replication,
@@ -19,10 +20,16 @@ assets and format knowledge from the open-source
   flatpak run org.godotengine.Godot   # open project/project.godot, press F5
   ```
 - Controls: WASD/arrows/edge pan, wheel zoom, drag = box select,
-  right-click = move order, Q/E/R order stance, T auto-man, X dismount,
-  Ctrl+digit assigns a control group and digit recalls it (a second
-  press jumps the camera to that squad). The release's own 7 tutorial
-  pages are on the title menu under **How To Play**.
+  right-click = order. **Every hotkey is the letter printed on the HUD
+  plate it presses**, so the frame teaches its own keyboard — sidebar
+  `T` smart idle, `D` defend, `Z` attack-move (D and Z are toggles;
+  neither lit = plain move), bottom bar `R` all robots, `V` all
+  hardware, `B` cycle factories, `G` cycle control groups, plus `X`
+  dismount and Ctrl+digit / digit for control groups (a second press
+  jumps the camera to that squad). Two original habits are on by
+  default: an order DROPS the selection, and clicking a unit CENTRES
+  the camera on it. The release's own 7 tutorial pages are on the title
+  menu under **How To Play**.
 
 ## Repository layout
 
@@ -34,8 +41,12 @@ assets and format knowledge from the open-source
 | `assets_original/zod/` | Zod Engine asset set — unit/map sprites (gitignored, 84 MB) |
 | `project/assets/z/` | Working asset set, built by `tools/gog/convert_assets.py` (gitignored) |
 
-Asset tools live in `tools/`: `gog/convert_assets.py` (sfx, music, HUD
-art), `zod/copy_art.py` (declarative copier for the zod pack),
+Asset tools live in `tools/`: `gog/level_to_json.py` (the original
+20-level campaign from the retail `LEVEL##.MAP` data — format notes in
+`docs/RESEARCH.md` §6), `gog/convert_assets.py` (sfx, music, HUD art), `zod/copy_art.py` (declarative copier for the zod pack),
+`zod/build_hud.py` (the in-game HUD frame's own pieces, and the animated
+head portraits — it recovers the face-piece offsets by brute force and
+bakes whole frames; see `docs/RESEARCH.md` §2e),
 `zod/map_to_json.py` + `zod/tileinfo_to_json.py` (map and terrain
 tables) and `zod/verify_map_planets.py` (audits — and repairs — the
 planet tag on every converted map; run it after any map conversion).

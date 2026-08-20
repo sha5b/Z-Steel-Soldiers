@@ -41,6 +41,22 @@ COPIES: list[tuple[str, str]] = [
     # the two factory plates were the missing pieces.
     ("other/production_gui/robot_factory_label.png", "ui/production/"),
     ("other/production_gui/vehicle_factory_label.png", "ui/production/"),
+    # The rest of the build-menu chrome. The panel had the title plates
+    # and the object buttons but none of the WINDOW the original draws
+    # them in, nor its Ok/Cancel pair or its status plates — so the
+    # factory popup was our own panel wearing two original stickers.
+    ("other/production_gui/base_image.png", "ui/production/"),
+    ("other/production_gui/object_back.png", "ui/production/"),
+    ("other/production_gui/object_name_button.png", "ui/production/"),
+    ("other/production_gui/object_name_button_pressed.png", "ui/production/"),
+    ("other/production_gui/ok_button.png", "ui/production/"),
+    ("other/production_gui/ok_button_pressed.png", "ui/production/"),
+    ("other/production_gui/cancel_button.png", "ui/production/"),
+    ("other/production_gui/cancel_button_pressed.png", "ui/production/"),
+    ("other/production_gui/paused_label.png", "ui/production/"),
+    ("other/production_gui/buildingless_label.png", "ui/production/"),
+    ("other/production_gui/down_button.png", "ui/production/"),
+    ("other/production_gui/down_button_pressed.png", "ui/production/"),
     # Per-planet battle themes. The GOG release ships arctic/city/jungle
     # (AA16/aC16/aJ16); desert and volcanic only exist in the zod pack.
     ("sounds/music_desert.ogg", "music/"),

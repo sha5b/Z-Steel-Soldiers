@@ -54,13 +54,13 @@ func _sync(units: Array) -> void:
 	visible = unit != null and unit.alive
 	if not visible:
 		return
-	_backdrop.texture = _load(_backdrop_path(unit))
+	_backdrop.texture = _load(backdrop_path(unit))
 	_portrait.texture = _load(unit.portrait_path())
 	_plate.texture = _load(plate_path(unit.unit_name, unit.team))
 
 
 ## Robots stand on their planet; hardware sits on the garage plate.
-static func _backdrop_path(unit: Unit2D) -> String:
+static func backdrop_path(unit: Unit2D) -> String:
 	if unit.kind != "robot":
 		return HARDWARE_BACKDROP
 	var planet: String = MatchState.current.planet if MatchState.current else "desert"

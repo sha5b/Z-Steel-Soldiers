@@ -26,7 +26,7 @@ static func should_run() -> bool:
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
 			"mp", "rally", "placement", "fortkill", "parity", "art", "mpmatch",
-			"garrison", "terrain", "group", "veteran"]:
+			"garrison", "terrain", "group", "veteran", "retail"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -117,6 +117,64 @@ static func run(ctx: Node) -> void:
 					fails.append("preview %s" % String(e.name))
 			if terrains_seen.size() < 5:
 				fails.append("previews covered %d/5 terrains" % terrains_seen.size())
+			# THE IN-GAME HUD FRAME. Every piece here shipped in the pack
+			# and had no consumer until the frame was built, so a missing
+			# conversion used to show up as an invisible ResourceLoader
+			# false branch — an empty slot in the sidebar and no error.
+			for piece in ["main_hud_side_red", "main_hud_bottom_left",
+					"main_hud_bottom_center", "main_hud_bottom_right",
+					"side_filler", "bottom_filler", "grenade",
+					"health_full", "health_lost", "health_empty"]:
+				if not ResourceLoader.exists(
+						"res://assets/z/ui/hud/%s.png" % piece):
+					fails.append("hud piece %s" % piece)
+			for letter in ["a", "t", "d", "z", "r", "v", "b", "g", "menu"]:
+				for state in ["active", "inactive", "pressed"]:
+					if not ResourceLoader.exists(
+							"res://assets/z/ui/hud/btn_%s_%s.png" % [letter, state]):
+						fails.append("hud button %s_%s" % [letter, state])
+			# the 74px health strips ARE the original's HP scale — one
+			# pixel per hit point, so the width is load-bearing
+			for strip in ["health_full", "health_lost", "health_empty"]:
+				var tex: Texture2D = load("res://assets/z/ui/hud/%s.png" % strip)
+				if tex != null and tex.get_width() != int(HudFrame.HEALTH.size.x):
+					fails.append("%s is %dpx, frame slot is %d"
+						% [strip, tex.get_width(), int(HudFrame.HEALTH.size.x)])
+			# equipment art + ANIMATED PORTRAITS for every robot, per team
+			for type_name in ["grunt", "psycho", "sniper", "tough", "pyro", "laser"]:
+				if not ResourceLoader.exists(
+						"res://assets/z/ui/hud/weapon_%s.png" % type_name):
+					fails.append("equipment art %s" % type_name)
+				for tn in ["red", "blue", "green", "yellow"]:
+					var dir := "res://assets/z/ui/portraits/%s_%s" % [type_name, tn]
+					for frame_name in ["base.png", "hurt.png", "blink_n00.png",
+							"talk_n00.png"]:
+						if not ResourceLoader.exists("%s/%s" % [dir, frame_name]):
+							fails.append("portrait %s_%s/%s" % [type_name, tn, frame_name])
+			# the live frame: its widgets exist and the world view really
+			# is inset by the chrome (the camera and the click handler
+			# both trust view_rect)
+			var frame: HudFrame = ctx.get_node_or_null("CanvasLayer/HUD/HudFrame")
+			if frame == null:
+				fails.append("HudFrame missing from the match scene")
+			else:
+				var vp: Vector2 = Vector2(ctx.get_viewport().get_visible_rect().size)
+				var view: Rect2 = HudFrame.view_rect()
+				if absf(view.size.x - (vp.x - HudFrame.SIDE_W)) > 0.5 \
+						or absf(view.size.y - (vp.y - HudFrame.BAR_H)) > 0.5:
+					fails.append("view_rect %s does not exclude the chrome" % view)
+				if view.has_point(Vector2(vp.x - 4.0, vp.y * 0.5)):
+					fails.append("view_rect includes the sidebar")
+				if view.has_point(Vector2(vp.x * 0.25, vp.y - 2.0)):
+					fails.append("view_rect includes the bottom bar")
+			# the build menu's own chrome (the window, its Ok/Cancel pair
+			# and the status plates the time readout sits beside)
+			for art in ["base_image", "ok_button", "cancel_button",
+					"building_label", "buildingless_label", "paused_label",
+					"object_button"]:
+				if not ResourceLoader.exists(
+						"res://assets/z/ui/production/%s.png" % art):
+					fails.append("build menu art %s" % art)
 			# the release's own TUTORIAL pages, and the viewer that shows
 			# them (they shipped unconverted and unreachable)
 			var pages: Array = TutorialScreen.load_pages()
@@ -168,8 +226,8 @@ static func run(ctx: Node) -> void:
 			GameSettings.apply()
 			GameSettings.save()
 			# production panel wiring regression: enqueuing WITHOUT
-			# reselecting must rebuild the queue row (the row used to
-			# miss pure enqueues until the player reselected the factory)
+			# reselecting must refresh the window's readouts (they used
+			# to miss pure enqueues until the player reselected)
 			var panel: ProductionPanel = ctx.get_node_or_null(
 				"CanvasLayer/HUD/ProductionPanel")
 			var any_facility = null
@@ -185,13 +243,15 @@ static func run(ctx: Node) -> void:
 				SelectionManager.current.toggle_select(any_facility, false)
 				await tree.process_frame
 				MatchState.current.set_money(MatchState.current.player_team, 500)
-				var before: int = panel._queue_row.get_child_count()
+				var before: String = panel._time.text
 				any_facility.queue_unit("robot:grunt", true)
 				await tree.process_frame
 				await tree.process_frame
-				var after: int = panel._queue_row.get_child_count()
-				if after <= before:
-					fails.append("queue row did not rebuild on enqueue (reselect bug)")
+				var after: String = panel._time.text
+				if after == before or after == "":
+					fails.append("panel readout did not refresh on enqueue (reselect bug)")
+				if panel._object.texture == null:
+					fails.append("panel object window empty while building")
 				SelectionManager.current.clear_selection()
 			# SIGNAL ARITY AUDIT. A 0-arg method connected to a 1-arg
 			# signal is not a parse error — it throws
@@ -565,6 +625,33 @@ static func run(ctx: Node) -> void:
 				fort_holds = held.owner_team == enemy_fort.team
 		cap_rig.check(fort_holds,
 			"a zone with a LIVE enemy fort flipped on presence")
+		# TAKING A SECTOR TAKES THE UNIT ON ITS LINE. Timing the assault
+		# to land just before a factory's clock runs out is one of the
+		# original's real tactical hooks; we used to scrap the whole
+		# queue on capture, which made the timing worth nothing.
+		var prod: Building2D = null
+		for b in tree.get_nodes_in_group(Groups.FACILITIES):
+			if b is Building2D and b.alive and b.produces_anything() \
+					and b.owner_team != 0:
+				prod = b
+				break
+		if prod == null:
+			cap_rig.check(true, "")  # no producer on this map to test with
+		else:
+			var loser: int = prod.owner_team
+			prod.queue.clear()
+			prod.queue_unit("robot:grunt", true)
+			prod.queue_unit("robot:grunt", true)
+			prod.queue.elapsed = 12.0
+			var queued_before: int = prod.queue_items().size()
+			prod.producer.scrap_queue()
+			cap_rig.check(prod.queue_items().size() == 1,
+				"capture left %d queued, want just the item on the line"
+				% prod.queue_items().size())
+			cap_rig.check(absf(prod.queue.elapsed - 12.0) < 0.01,
+				"capture reset the build clock to %.1f, want the 12.0s already served"
+				% prod.queue.elapsed)
+			cap_rig.check(queued_before == 2 and loser != 0, "")
 		cap_rig.finish()
 	if "--combat-test" in args:
 		var a: Unit2D = load("res://scenes/unit.tscn").instantiate()
@@ -754,6 +841,61 @@ static func run(ctx: Node) -> void:
 		ArtTests.run(ctx, TestRig.start("ART"))
 	if "--terrain-test" in args:
 		TerrainTests.run(ctx, TestRig.start("TERRAIN"))
+	if "--retail-test" in args:
+		# THE ORIGINAL CAMPAIGN, converted from the retail data
+		# (tools/gog/level_to_json.py). Every level must load and be
+		# PLAYABLE: two fort halves on opposing teams, a territory grid,
+		# tiles inside the sheet, units on walkable ground, and — since
+		# the release ships no `preset*.wal` starting armies — a squad
+		# handed to each fort team so the first lost robot cannot end the
+		# mission (MapLoader._grant_starting_squads).
+		var rt := TestRig.start("RETAIL")
+		var levels := PackedStringArray()
+		for entry in MapCatalog.entries():
+			if String(entry.name).begins_with(MapCatalog.CAMPAIGN_PREFIX):
+				levels.append(String(entry.name))
+		rt.check(levels.size() == 20,
+			"%d retail campaign levels installed, want 20" % levels.size())
+		for name in levels:
+			var path := "res://assets/maps/%s.json" % name
+			var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+			if not (parsed is Dictionary):
+				rt.check(false, "%s: unreadable" % name)
+				continue
+			var data: Dictionary = parsed
+			var w := int(data.width)
+			var h := int(data.height)
+			rt.check(w > 0 and h > 0 and data.tiles.size() == w * h,
+				"%s: %dx%d with %d tiles" % [name, w, h, data.tiles.size()])
+			var worst := 0
+			for t in data.tiles:
+				worst = maxi(worst, int(t))
+			rt.check(worst < 480, "%s: tile index %d outside the sheet" % [name, worst])
+			rt.check(data.zones.size() > 0, "%s: no territory zones" % name)
+			var fort_teams: Array = MapCatalog.fort_team_ids(data)
+			rt.check(fort_teams.size() == 2,
+				"%s: %d fort teams, want 2" % [name, fort_teams.size()])
+			var misplaced := 0
+			for o in data.objects:
+				var kind := String(o.type)
+				if kind != "robot" and kind != "vehicle" and kind != "cannon":
+					continue
+				var i := int(o.y) * w + int(o.x)
+				if i < 0 or i >= data.tiles.size():
+					continue
+				if int(data.water[i]) != 0 or int(data.passable[i]) == 0:
+					misplaced += 1
+			rt.check(misplaced == 0,
+				"%s: %d units start in water or in a wall" % [name, misplaced])
+		# the loaded map in front of us: if it is a retail level, both
+		# fort teams must have a crew (the preset stopgap)
+		var current := String(GameState.current_map)
+		if current.get_file().begins_with(MapCatalog.CAMPAIGN_PREFIX):
+			for b in BuildingRegistry.all():
+				if b is Building2D and b.is_fort and b.team != 0:
+					rt.check(not UnitRegistry.current.alive_of_team(b.team).is_empty(),
+						"team %d holds a fort with no units at all" % b.team)
+		rt.finish("%d levels" % levels.size())
 	if "--veteran-test" in args:
 		# VETERANCY: kills buy rank, rank buys damage and accuracy, the
 		# killing shot is credited to whoever fired it, and a veteran
@@ -1458,6 +1600,8 @@ static func run(ctx: Node) -> void:
 			var want_zones: int = jdata.zones.size()
 			var want_flags := 0
 			var want_owned := 0
+			var flagged_zones := {}
+			var owned_zones := {}
 			var want_buildings := 0
 			var want_robots := 0
 			for o in jdata.objects:
@@ -1468,10 +1612,17 @@ static func run(ctx: Node) -> void:
 					want_robots += 1
 				elif otype == "map_item" and int(o.id) == MapLoader.ZONE_FLAG_ID:
 					var cell := Vector2i(int(o.x), int(o.y))
-					for z in jdata.zones:
+					for zi in jdata.zones.size():
+						var z = jdata.zones[zi]
 						if Rect2i(int(z.x), int(z.y), int(z.w), int(z.h)).has_point(cell):
-							want_flags += 1
-							if int(o.get("owner", 0)) != 0:
+							# count ZONES that get a flag, not markers: a
+							# retail level can drop several markers in one
+							# zone, and a Zone node holds ONE flag tile
+							if not flagged_zones.has(zi):
+								flagged_zones[zi] = true
+								want_flags += 1
+							if int(o.get("owner", 0)) != 0 and not owned_zones.has(zi):
+								owned_zones[zi] = true
 								want_owned += 1
 							break
 			# what the SCENE carries (instantiated, never added to the
@@ -2514,10 +2665,38 @@ static func run(ctx: Node) -> void:
 		var camp_rig := TestRig.start("CAMPAIGN")
 		camp_rig.check(Campaign.missions.size() > 0, "the campaign has no missions")
 		camp_rig.check(first != "", "no first mission map")
+		camp_rig.check(ResourceLoader.exists(first) or FileAccess.file_exists(first),
+			"first mission map does not exist: %s" % first)
 		camp_rig.check(advanced, "advance() did not move to the next mission")
 		camp_rig.check(Campaign.mission == 1,
 			"resumed on mission %d after one advance" % Campaign.mission)
-		camp_rig.finish("%d missions" % Campaign.missions.size())
+		# THE ORIGINAL CHAIN: when the retail levels are installed the
+		# campaign must be those 20, in the game's own order — not 57 zod
+		# multiplayer maps in alphabetical filename order.
+		var retail := 0
+		for m in Campaign.missions:
+			if String(m).begins_with(MapCatalog.CAMPAIGN_PREFIX):
+				retail += 1
+		if retail > 0:
+			camp_rig.check(retail == Campaign.missions.size(),
+				"%d of %d missions are retail levels — the chain is mixed"
+				% [retail, Campaign.missions.size()])
+			camp_rig.check(Campaign.missions.size() == 20,
+				"retail campaign has %d missions, want 20" % Campaign.missions.size())
+			var last := 0
+			for m in Campaign.missions:
+				var num := int(String(m).substr(2, 2))
+				camp_rig.check(num > last,
+					"mission order breaks at %s (after %02d)" % [m, last])
+				last = num
+			camp_rig.check(String(Campaign.missions[0]).begins_with("zc01"),
+				"the campaign opens on %s" % Campaign.missions[0])
+			camp_rig.check(MapCatalog.display_title("zc01_virgin_soldiers")
+					== "VIRGIN SOLDIERS",
+				"level title reads '%s'" % MapCatalog.display_title(
+					"zc01_virgin_soldiers"))
+		camp_rig.finish("%d missions (%d retail)" % [
+			Campaign.missions.size(), retail])
 		Campaign.active = false
 		if not progress_backup.is_empty():
 			var rf := FileAccess.open(Campaign.PROGRESS_PATH, FileAccess.WRITE)

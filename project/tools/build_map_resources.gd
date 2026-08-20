@@ -110,7 +110,8 @@ func _build_scene(data: Dictionary) -> PackedScene:
 			# neutral with its flags at derived centre spots.
 			_apply_zone_flag(zones, o)
 			continue
-		var node: Node2D = _object_node(kind, id, int(o.owner), pos, planet)
+		var node: Node2D = _object_node(kind, id, int(o.owner), pos, planet,
+			Vector2i(int(o.get("span_w", 0)), int(o.get("span_h", 0))))
 		if node:
 			# unique sibling names (PackedScene anonymizes duplicates)
 			node.name = "%s_%d_%d" % [node.name, int(o.x), int(o.y)]
@@ -157,8 +158,10 @@ func _apply_zone_flag(zones: Array[Zone], o: Dictionary) -> void:
 		return
 
 
+## `span` is the map's own bridge span in tiles (retail campaign only —
+## the zod maps carry no size and fall back to the def).
 func _object_node(kind: String, id: int, owner_team: int, pos: Vector2,
-		planet: String) -> Node2D:
+		planet: String, span := Vector2i.ZERO) -> Node2D:
 	match kind:
 		"robot", "vehicle", "cannon":
 			var type_name := ContentDB.map_unit_name(kind, id)
@@ -194,6 +197,8 @@ func _object_node(kind: String, id: int, owner_team: int, pos: Vector2,
 				building = def.behaviour.new()
 			building.set("building_id", id)
 			building.set("team", 0 if id == 6 or id == 7 else owner_team)
+			if span != Vector2i.ZERO:
+				building.set("bridge_span_override", span)
 			building.set("planet", planet)
 			building.position = pos
 			building.name = "Building_T%d_%d" % [owner_team, id]

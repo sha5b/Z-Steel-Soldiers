@@ -57,6 +57,21 @@ static func apply(root: Control) -> void:
 	root.theme = theme
 
 
+## The in-game HUD's own typeface — the chunky white bitmap set the
+## original prints the clock and the army counts in. The gold menu font
+## is for menus; on a 20px HUD slot it reads as decoration.
+const HUD_FONT_PATH := "res://assets/z/ui/font/z_big_white.fnt"
+static var _hud_font: FontFile
+
+
+static func hud_font() -> FontFile:
+	if _hud_font == null and ResourceLoader.exists(HUD_FONT_PATH):
+		_hud_font = load(HUD_FONT_PATH)
+		if _hud_font != null and _hud_font.fallbacks.is_empty():
+			_hud_font.fallbacks = [ThemeDB.fallback_font]
+	return _hud_font
+
+
 static func font() -> FontFile:
 	if _font == null and ResourceLoader.exists(FONT_PATH):
 		_font = load(FONT_PATH)

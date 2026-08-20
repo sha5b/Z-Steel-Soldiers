@@ -33,7 +33,9 @@ shipped 2026-08 — see the bottom section.
 
 - [x] Title screen (splash art), map select (57 maps), ESC pause menu
 - [x] Save/load (pause Save, title Continue)
-- [x] Campaign: 57-mission chain, briefings, persistent progress
+- [x] Campaign: briefings, persistent progress — now the ORIGINAL
+      20 levels in the game's own order (tools/gog/level_to_json.py),
+      with the zod pack as the fallback chain
 - [x] AI difficulty (Easy/Normal/Hard)
 
 ## Phase 4 — the 2026-08-20 correctness pass ✅
@@ -66,13 +68,25 @@ shipped 2026-08 — see the bottom section.
   loopback
 - Verified open bugs live in `docs/BUGS.md` (root-caused, with
   file:line evidence) — keep that file current instead of the roadmap
-- Remaining polish: the original production-menu chrome (42 of 48 files)
-  and the full main_hud frame — both look-and-feel rebuilds that cannot
-  be verified headlessly. (Control-group hotkeys, ambient birds and the
-  HUD selected-object trio all shipped in the correctness pass above.)
-  Shipped in that sweep instead: pop-cap meter (top bar), missile
-  target-leading (original EstimateMissileTarget feel), robot order
-  acknowledgement barks.
+- SHIPPED (2026-08-20), and it was verifiable headlessly after all: the
+  full **main_hud frame** and the **production-menu chrome**. The
+  floating panels are gone — the game now runs inside the original's
+  100px sidebar and 36px bottom bar, with the animated SHEADBI head
+  portraits, the equipment/name/weapon plates, the 74px health bar, the
+  A/T/D/Z + R/V/B/G/Menu buttons, the radar in its own window and the
+  unit_amount_bar army gauges; the factory popup is the original's
+  112x80 window with its Time/Cancel/Ok readouts. `--ui-test` asserts
+  every piece and that `view_rect()` really excludes the chrome, so a
+  missing conversion fails the run instead of silently drawing nothing.
+  Hotkeys were rebound to the letters printed on the plates.
+  Gameplay that came with it: auto-deselect on order, centre-on-select,
+  distress barks under fire, and production changing hands on capture
+  (`--capture-test`). Earlier in that sweep: pop-cap meter, missile
+  target-leading, order acknowledgement barks, control-group hotkeys,
+  ambient birds.
+- Remaining polish: true phoneme lip-sync on the portraits (the
+  PHRASES.BIN per-frame stream is undecoded — see RESEARCH 2e) and the
+  portrait gesture pieces (salute/thumbs-up hands, placement unknown).
 - CLOSED (was "impossible", then "rebuildable", now SHIPPED):
   water/terrain animation. The zod `planets/<planet>.tileinfo` records carry
   `is_effect` + `next_tile_in_effect`, which form closed 4-frame tile

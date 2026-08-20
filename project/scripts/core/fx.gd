@@ -141,7 +141,29 @@ const CHATTER_LAST := 75
 
 
 func chatter() -> void:
-	_play_wav("bark_%02d" % (randi_range(CHATTER_FIRST, CHATTER_LAST)), -9.0)
+	_bark("bark_%02d" % (randi_range(CHATTER_FIRST, CHATTER_LAST)), -9.0)
+
+
+## A robot SPEAKING, with how long the line runs. The HUD portrait wires
+## itself to this and moves the head's mouth for exactly that long — the
+## original's faces talk when their robot does, and only the sound site
+## knows the clip length.
+signal barked(seconds: float)
+
+
+func _bark(name: String, volume_db: float) -> void:
+	var stream: AudioStream = _play_wav(name, volume_db)
+	if stream != null:
+		barked.emit(stream.get_length())
+
+
+## The distress calls the original barks when a unit is being shot at
+## ("we're under attack", "help", "they're all over us"). WHICH of the
+## unlabelled lines those are is still unknown (see docs/RESEARCH.md
+## 2e), so this draws from the same pool as idle chatter — what it adds
+## is the CUE: a unit under fire now speaks up instead of staying silent.
+func distress() -> void:
+	_bark("bark_%02d" % (randi_range(CHATTER_FIRST, CHATTER_LAST)), -6.0)
 
 
 ## Robot small-arms fire: instant hit, visual tracer only.
@@ -231,7 +253,13 @@ func shell(from: Vector2, to: Vector2, proj: ProjectileDef) -> void:
 ## per DISPATCH (Commands calls it once per click), voice-capped like
 ## every other speech.
 func acknowledge() -> void:
-	_play_wav("acknowledge_%02d" % (randi() % 10), -4.0)
+	_bark("acknowledge_%02d" % (randi() % 10), -4.0)
+
+
+## The reporting-in line a unit gives when you SELECT it (the original's
+## selected_* set, distinct from the order acknowledgement).
+func selected_bark() -> void:
+	_bark("selected_%02d" % (randi() % 12), -4.0)
 
 
 func gunfire(sound_name: String) -> void:
@@ -266,12 +294,22 @@ var _announce_gates := {}
 signal announced(event: String)
 
 
-func announce(event: String) -> void:
+## Events worth flying the camera to — what the sidebar's A button jumps
+## at. A "robot manufactured" is news, not an emergency.
+const ALERTS := ["fort_under_attack", "territory_lost", "youre_losing"]
+
+## Where the last ALERT happened, Vector2.INF until one does.
+var last_alert_at := Vector2.INF
+
+
+func announce(event: String, at := Vector2.INF) -> void:
 	if event == "":
 		return
 	var until := int(_announce_gates.get(event, 0))
 	if until > Time.get_ticks_msec():
 		return
+	if at != Vector2.INF and ALERTS.has(event):
+		last_alert_at = at
 	_announce_gates[event] = Time.get_ticks_msec() + int(ANNOUNCE_THROTTLE.get(event, 10000))
 	announced.emit(event)
 	if event == "youre_losing":
@@ -287,12 +325,15 @@ func play_set(set_name: String, volume_db := 0.0) -> void:
 	_play_wav(String(names[randi() % names.size()]), volume_db)
 
 
-func _play_wav(name: String, volume_db: float) -> void:
+## Returns the stream that started playing (null when the sound was
+## gated, missing or muted) so a caller that has to match the CLIP LENGTH
+## — the talking portrait — can ask for it here instead of guessing.
+func _play_wav(name: String, volume_db: float) -> AudioStream:
 	if not _gate_allows(name):
-		return
+		return null
 	var path := "%s/%s.wav" % [SOUNDS_DIR, name]
 	if not ResourceLoader.exists(path):
-		return
+		return null
 	_enforce_voice_cap()
 	var player := AudioStreamPlayer.new()
 	player.bus = GameSettings.SFX_BUS  # volume slider lives on the bus
@@ -301,6 +342,7 @@ func _play_wav(name: String, volume_db: float) -> void:
 	add_child(player)
 	player.finished.connect(player.queue_free)
 	player.play()
+	return player.stream
 
 ## Too many simultaneous one-shots exhausts the audio server's slots
 ## (the rare `slot >= slot_max` error under big firefights) — stop the

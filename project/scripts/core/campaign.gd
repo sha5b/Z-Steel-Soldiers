@@ -31,8 +31,8 @@ func current_map_path() -> String:
 func current_title() -> String:
 	if missions.is_empty():
 		return "Mission"
-	return "Mission %d / %d — %s" % [
-		mission + 1, missions.size(), missions[clampi(mission, 0, missions.size() - 1)]]
+	return "Mission %d / %d — %s" % [mission + 1, missions.size(),
+		MapCatalog.display_title(missions[clampi(mission, 0, missions.size() - 1)])]
 
 
 ## Returns true if there is a next mission.

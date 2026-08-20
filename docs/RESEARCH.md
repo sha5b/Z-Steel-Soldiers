@@ -123,9 +123,9 @@ per-type `Init`/`DoRender`) against the actual sprite pixels:
 
 Ambient life (birds 228, hut_animals 734), planet impact art (craters
 65, rock_effects 256, bridge_effects 60), ground track marks
-(`track_effects/`, per planet), tank_dirt, HUD portraits (24 animated
-faces), comp_messages announcer art, remaining factory/production GUI
-and cursors, `fort_old` BMPs, team palette BMPs.
+(`track_effects/`, per planet), tank_dirt, the portrait GESTURE pieces
+(the 64x64/48x64 salute and thumbs-up hands — placement unknown, 2e.1),
+the factory_gui scrollbar set, `fort_old` BMPs, team palette BMPs.
 
 ## 2d. Original engine code sweep — features we have NOT rebuilt (2026-08-18)
 
@@ -141,10 +141,17 @@ chance + explosive splash radii + snipe chances (zsettings). Also done
 since (2026-08-19): radar gates minimap intel, ground track marks +
 craters + hut animals, fort tower cannon slots (manned, capped),
 contextual animated cursors, R/V/G production roster tabs, native-scale
-world render, map previews with roads + building footprints. Still
-missing (non-blocking): HUD selected-object trio + pop-cap meter
-(unit_amount_bar), robot portraits (SHEADBI), EXIT_C eject cursor,
-ROB voice barks, birds, unit-group formations, missile target-leading.
+world render, map previews with roads + building footprints. Also done since (2026-08-20): the whole in-game HUD FRAME (the
+original's 100px sidebar + 36px bottom bar, replacing our floating
+panels — clock, animated portrait, name plate, equipment art, grenade
+tally, 74px health bar, weapon plate, A/T/D/Z and R/V/B/G/Menu buttons,
+the radar in its own window, and the unit_amount_bar army gauges),
+robot portraits (SHEADBI, baked — see 2e), the build menu on the
+original's 112x80 window with its Time/Cancel/Ok readouts, distress
+barks under fire, auto-deselect on order, centre-on-select, and
+production changing hands on capture. Still missing (non-blocking):
+EXIT_C eject cursor, birds, unit-group formations, missile
+target-leading, and the per-file mapping of ROB23-75 (see 2e).
 The list below is kept as the original reference.
 
 Full function-level sweep of the zod engine source (137 cpp files,
@@ -245,8 +252,101 @@ ROB01–75 robot barks, COMP01–20 + comp_* announcer lines, radar ping.
 ### Out of scope for us
 
 multiplayer/server stack (zserver sockets, mysql ladder), map editor,
-zportrait lip-synced HUD faces (11k lines — candidate if we ever want
-talking portraits; art = 24 animated face folders, not yet copied).
+zportrait lip-synced HUD faces: the 11k-line engine module stays out of
+scope, but the ART is in and the faces DO animate — blink and talk
+cycles baked from the 24 folders (see 2e.1). True phoneme lip-sync
+driven by PHRASES.BIN's per-frame stream is the part still undone.
+
+## 2e. `PHRASES.BIN` — the phrase/expression table (2026-08-20)
+
+`PHRASES.BIN` (35328 b) is **64 records of 552 bytes** after an 8-byte
+header: a 31-char name, then a per-frame animation stream. It is the
+table behind BOTH the robots' voice lines and their animated HUD faces,
+and the names are plain English, so it tells us the original's whole
+expression and bark vocabulary:
+
+- **order/selection lines** (22): `yes-sir-1-and-2`, `yes-sir-3`,
+  `unit-reporting-1/2`, `<type>s-reporting` for all six robots,
+  `were-on-our-way`, `here-we-go`, `youve-got-it`, `moving-in`, `okay`,
+  `alright`, `no-problem`, `over-n-out`, `affirmative`, `going-in`,
+  `lets-do-it`, `lets-get-em`
+- **distress** (4): `we're-under-attack`, `i-said-we're-under-attack`,
+  `help-help`, `theyer-all-over-us`
+- **losing** (4): `wereloseing-it` x2, `for-chris-sake`, `you're-joking`
+- **combat/results** (11): `target-destroyed`, `good-hit`, `nice-one`,
+  `oh-yeah`, `gotche`, `smookin`, `cool`, `wipe-out`, `no-way`,
+  `forget-it`, `get-outta-here`
+- **events** (5): `territory-taken`, `fire-extinguished`,
+  `gun-captueed`, `vehicle-captueed`, `grenades-collected` (sic)
+- **PORTRAIT EXPRESSIONS** (17, no audio): `blink`, `wink`, `surprise`,
+  `anger`, `grin`, `scared`, `eyes-{left,right,up,down}`, `whistle`,
+  `look-{left,right}`, `salute`, `thumbsup`, `yes-sir-salute`,
+  `goingin-thumbsup`
+
+That last group is what the 64x64 and 48x64 gesture cut-outs in each
+portrait folder are for — the salute/thumbs-up hand.
+
+**We did NOT get a bark mapping out of it.** The obvious hypothesis is
+that the voiced records run in the same order as `ROB01-75`, and the
+group boundary supports it: the first 22 voiced records are exactly the
+selection/order lines, and `ROB01-22` are exactly the 12 `selected_*` +
+10 `acknowledge_*` files zod had already named. But it fails on clip
+LENGTH — `bark_24` would have to be `i-said-we're-under-attack`, the
+longest line in its group, and it is the shortest at 0.50 s. So
+`ROB23-75` stay an unlabelled pool (`Fx.chatter`/`Fx.distress` draw
+from it) and the per-file mapping is still unknown. The per-frame stream
+in each record is not decoded either.
+
+### 2e.1 Animated portraits — recovering the piece offsets
+
+The pack ships 24 `portraits/<type>_<team>/` folders of 40 pieces each,
+and the same signature every time: 3 heads (~80x60), 16 mouths (32x32),
+11 eye bands (48x16), plus the gesture pieces above. The original does
+not ship whole faces — the engine composites the cut-outs onto a base
+head at fixed offsets, and those offsets live in the engine, not the
+pack.
+
+`tools/zod/build_hud.py` recovers them the same way 6.6b cracked the
+rock stamps: slide each piece over the base head and score the mean
+error over pixels both images draw. Two things make the answer
+trustworthy rather than a coincidence:
+
+- the group is scored **jointly** — one cut-out can be almost all key
+  colour (a wide-open mouth barely overlaps the closed one the base
+  head draws), so its own best position is noisy, but summing every
+  member's error over the same candidate offset puts all the evidence
+  behind one decision;
+- the base head is **chosen by the same score**, per unit TYPE. Two of
+  the three 80x6x frames are the same face on canvases 16px apart, so
+  they score almost equally; picking by "draws the most pixels" chose a
+  different crop per team and shifted that team's offsets with it.
+
+Grunt locks hardest (mouth (27,24), eyes (19,8), runner-up ~1.4x worse);
+the alternate head needs its OWN offsets, since it is usually that
+16px-shifted crop. Whole frames are then baked to
+`ui/portraits/<type>_<team>/{base,hurt,blink_nNN,talk_nNN}.png` so the
+runtime plays a flipbook and never knows a piece offset. `hurt` is the
+second head, shown below 45% HP.
+
+## 2f. The HUD frame's slots came out of the frame art
+
+The frame art draws a plate in every slot it does not own, and draws the
+lettered buttons in place — so template-matching the loose button plates
+against it recovers their positions at **0.00 error**: A (8,8), then
+T/D/Z at (8|38|68, 264) on the sidebar; R/V/B/G at (8|38|68|98, 10) and
+Menu at right+64,10 on the bottom bar. Note which STATE the art embeds:
+the sidebar's four are drawn *inactive* and the bottom bar's five
+*active*, which is the original telling us the sidebar letters are mode
+toggles and the bottom-bar letters are actions.
+
+The dark windows in the art give the rest: portrait (8,44) 86x74 — the
+same 86x74 as the `backdrop_*` art — health bar (14,210) **74** wide,
+which is the original's HP scale of 74 (2d) at one pixel per hit point,
+and the radar at (6,298) 94x98.
+
+What the letters MEAN is not recorded in anything the release ships. The
+bindings in `hud_frame.gd` / `selection_filters.gd` are therefore ours,
+and flagged as such in those files.
 
 ## 3. Game facts to recreate (Z, 1996)
 
@@ -303,7 +403,8 @@ zod's edits do not appear in it.
 |---|---|---|---|
 | 0 | 1 | unknown (0xF7 on LEVEL01) | GUESSED |
 | 1 | 6656 | byte-identical copy of the region array at 43377 | VERIFIED |
-| 6657 | 3440 | 138-byte-stride array, 3-4 used records + a constant table | UNKNOWN |
+| 6657 | 2760 | rock array, 20 × 138 bytes | VERIFIED |
+| 9417 | 680 | 4 × 138 bytes + 128 × 0xFF, identical in every level | UNKNOWN |
 | 10097 | 13 | `char` tileset-1 name, e.g. `DESERT.LBM` | VERIFIED |
 | 10110 | 1 | `u8` = 1 on all 25 files | VERIFIED |
 | 10111 | 13 | `char` tileset-2 name, e.g. `DESERT2.LBM` | VERIFIED |
@@ -404,6 +505,32 @@ wide bounding box and ≥ 90 cells: **100 cells is a north-facing fort**
   `Maps/LEVEL1.png`, where the north fort carries a blue plaque and the
   south fort a red one. It is a convention, not a field we read.
 
+### 6.6b Rocks — 20 × 138 bytes at 6657, a 32×32 bit stamp each
+
+| Offset | Field |
+|---|---|
+| +0 | `u16 x`, `u16 y` — PIXELS, top-left of the stamp |
+| +4 | `u8`, `u8` — (2,0) on 116 of the 147 in-use records, also (0,0)/(2,5)/(2,1). UNKNOWN |
+| +6 | `u16` — 0 on 106 records, else 624…3184. UNKNOWN |
+| +10 | 128 bytes = a **32×32 bit mask**, row-major, 4 bytes per row, MSB first |
+
+A set bit is a rock on cell `(x/16 + col, y/16 + row)`. A slot is free
+when `x` is 0xFFFF, when `x` and `y` are both 0, or when the point falls
+outside the map.
+
+Rocks are **objects**, not terrain: all 151 of LEVEL01's rocks sit on
+passable plain ground (tiles 105/121/120/85/122), which is why a bare
+tile render shows bare ground where the thumbnail shows rock walls.
+VERIFIED against the 20 zod maps: **5963 true positives, 75 false
+positives, 27 false negatives** out of 5990 rock objects — precision
+98.76%, recall 99.55%. Levels 02/07/10/18 carry almost all of the error,
+and that is where zod's 2-player edits are.
+
+The layout was found by brute force: for every start offset 4…23 and
+every row width 8…72 bits, score the reconstructed cell set against the
+zod rock set. `start=10, width=32` scores 76/76 and 75/75 on LEVEL01's
+two stamps with **zero** false positives; nothing else comes close.
+
 ### 6.7 `OBJECT{NN}.DAT` — 1500 b = 150 × 10
 
 `u16 x, u16 y` in pixels (0xFFFF = free slot), `u8 type`, `u8 sub-value`,
@@ -471,8 +598,16 @@ zod `blevel` scatters 0-5 with nothing to predict it, so the tool writes
 
 `u16 x, y` in pixels (0xFFFF = free), `u16 w, h` in pixels (4×6 … 10×4
 tiles), `u16 health`, `u16 max health` (300/500/600), `u16` 0-or-16.
-Orientation from the span: `w > h` is `bridge_horz` (zod building id 7),
-`h > w` is `bridge_vert` (id 6). Included in the 257/0 count above.
+ORIENTATION comes from which dimension measures 4 TILES, not from
+`w > h`: a bridge is always 4 tiles ACROSS and 3-12 long, so `w == 4`
+means VERTICAL (zod id 6) and `h == 4` HORIZONTAL (id 7). Verified on
+the 44 bridges that have a zod twin — every `w == 4` record is id 6 and
+every `h == 4` record is id 7, no exceptions, across lengths 3,4,5,6,7,
+8,9,10,12 (a 4x4 bridge reads as vertical, which both of its twins
+confirm). `w > h` gets 43 of 44 right and mislabels the one 4x3 bridge
+on LEVEL15. The span is emitted per bridge as `span_w`/`span_h` (tiles);
+`Building2D.bridge_span_override` honours it and the zod maps, which
+carry no size, fall back to the def. Included in the 257/0 count above.
 
 ### 6.10 `levels.dat` — 12240 b = 51 records × 240, record N = level N
 
@@ -501,13 +636,12 @@ against the zod maps' own arrays: **98.28%** agreement on `passable` and
 **99.98%** on `water` over 218,000 cells; the residual tracks the 3.8%
 of tiles zod edited.
 
-Rock objects are NOT derivable from the GOG per-level files. In the
-original, rocks are terrain — every one of the 5,990 rock objects in the
-zod maps sits on a rock/cliff tile that our tile array already carries
-(86.6% on an identical tile index), and no tile set, plane-2 value or
-`.DAT` record predicts which cells zod turned into `orock` objects. Rock
-terrain still blocks movement through `passable`, so nothing is lost
-except the separate destructible-rock entities.
+Rocks come from the bit stamps in 6.6b, so `passable` does NOT have to
+carry them — `map_loader.gd` marks every `map_item 1` cell solid itself.
+Note for the record that the earlier guess "rocks are baked into the
+terrain" was WRONG: zod rock cells keep the same tile index in both files
+86.6% of the time precisely because the rock is drawn on top of untouched
+ground.
 
 ### 6.12 Still unknown / not in the release
 
@@ -521,8 +655,10 @@ except the separate destructible-rock entities.
   `Z.exe`, `CHARS.BIN` and `PHRASES.BIN` for a coordinate within 80 px
   of either LEVEL01 fort (found by template-matching the fort sprite in
   `Maps/LEVEL1.png` at r=0.82): **0 hits**.
-- `LEVEL.MAP` byte 0, the 138-stride array at 6657, plane 2 bits 0-6,
-  and most of each 136-byte region record.
+- `LEVEL.MAP` byte 0; the rock record's bytes +4/+5/+6; the four
+  138-byte records plus 128 bytes of 0xFF at 9417, which are identical in
+  every level; plane 2 bits 0-6; and most of each 136-byte region
+  record.
 - `robots.dat` (25000 b): a 44-byte-stride roster of named robots
   ("Grant", "Tough", "Sniper") with 5-byte stat blocks. Shared by every
   level, so it is a name/stat pool, not per-level placement. Not parsed.
@@ -541,3 +677,41 @@ Writes `zc01_virgin_soldiers.json` … `zc20_z.json` plus
 `zs26_desert.json` … `zs31_city_1.json` (25 files). The third argument is
 the tileinfo directory; without it `passable`/`water` come out `null`,
 which `map_loader.gd` treats as fully passable.
+
+Verified end to end on 2026-08-20 with Godot 4.7.1 headless, running
+against a throwaway copy of `project/` with two converted files dropped
+into `assets/maps/`:
+
+- `MapCatalog.meta()` reads `zc01_virgin_soldiers` as 64×86 desert,
+  `players = 2`, `fort_team_ids = [1, 2]`; `zc02_psychos` as 72×90.
+- Building the same `TileSetAtlasSource` `MapLoader._build_terrain`
+  builds and calling `set_cell` for every entry of `tiles` paints
+  5504/5504 and 6480/6480 cells — no index falls outside the 20×24 sheet.
+- `tiles`, `passable` and `water` are all exactly `width × height`, every
+  index is in `[0, 480)`, and every object coordinate is inside the map.
+- `AStarGrid2D` built from `passable` marks 1215 / 1198 cells solid.
+
+What that run does NOT cover: `MapLoader.load_map` itself. Godot's
+`--script` mode uses a bare `SceneTree` and never instantiates the
+autoloads, so `map_loader.gd` fails to compile there on `ContentDB`
+(`project.godot` line 20). Exercising the spawn half needs the game
+booted normally with a real map in `assets/maps/`, which is a project
+change and out of scope for the converter.
+
+Object totals across the 20 campaign levels, scored against the zod maps
+by exact `(x, y, type, id)`: **7455 of 7768 emitted objects (96.0%)**.
+
+### 6.14 Score summary
+
+| Check | Result |
+|---|---|
+| Tile index vs zod ground truth | 96.172% of 218,000 cells |
+| Render vs `Maps/LEVEL*.png`, mean Pearson r | 0.7295 (0.8105 ignoring fort footprints); plane 1 alone 0.6129 |
+| `.BLK` → sheet tile rule | nearest match for 480/480 tiles × 5 planets |
+| Zone count vs zod | 20/20 levels; 101/249 rects bit-identical |
+| Forts | 38/40 exact including id; 2 forts on all 25 levels |
+| Rocks | precision 98.76%, recall 99.55% of 5,990 |
+| Buildings + bridges | 257 exact, 0 wrong id, 27 with no zod twin |
+| `OBJECT.DAT` id table | 1198/1261 mapped records exact (95.0%) |
+| `passable` / `water` vs zod | 98.28% / 99.98% |
+| All objects, exact `(x,y,type,id)` | 7455/7768 (96.0%) |

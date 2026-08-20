@@ -65,6 +65,34 @@ static func _audit_bridges(ctx: Node, rig: TestRig) -> void:
 		rig.check(b._sprite.region_rect == Building2D.bridge_region(false),
 			"%s repaired but still shows the wreck frame" % def.bname)
 		b.queue_free()
+		# A PER-BRIDGE SPAN (the retail campaign gives one): the art must
+		# cover exactly the bridge's own tiles, never the neighbour's
+		# water, and the footprint must follow the span
+		for length in [3, 6, 12]:
+			var sized: Building2D = def.behaviour.new()
+			sized.setup(id, 0, "desert")
+			sized.bridge_span_override = Vector2i(4, length) if id == 6 \
+					else Vector2i(length, 4)
+			sized.position = Vector2(2400, 2400)
+			ctx.add_child(sized)
+			var want_rows: int = mini(length, 8)
+			rig.check(sized.bridge_span() == sized.bridge_span_override,
+				"%s ignored its span override" % def.bname)
+			rig.check(is_equal_approx(sized._sprite.region_rect.size.y,
+					want_rows * TILE),
+				"%s len %d shows %d px of frame, want %d" % [def.bname, length,
+					sized._sprite.region_rect.size.y, want_rows * TILE])
+			# the FOOTPRINT is the true span (the bridge really carries
+			# that much road, and clicks/targeting must agree), while the
+			# ART is capped at the 8-tile frame
+			var art2 := sized.art_world_rect()
+			var along: float = art2.size.y if id == 6 else art2.size.x
+			var across: float = art2.size.x if id == 6 else art2.size.y
+			rig.check(is_equal_approx(along, length * TILE),
+				"%s len %d footprint measures %s" % [def.bname, length, art2.size])
+			rig.check(is_equal_approx(across, 4 * TILE),
+				"%s is %.0f px across, want 64" % [def.bname, across])
+			sized.queue_free()
 
 
 ## The art that WAS in the pack with nothing referencing it. Each check

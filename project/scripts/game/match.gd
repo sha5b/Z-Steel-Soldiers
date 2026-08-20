@@ -100,10 +100,22 @@ func _apply_facility_save(child: Node, facilities: Array) -> void:
 
 
 ## Test helper: capture the viewport after N seconds and quit.
+## `--select-first` picks one of the player's units on the way, so a
+## screenshot can show the sidebar's portrait/name/weapon/health readouts
+## instead of the empty frame they sit in.
 func _screenshot(delay_text: String) -> void:
 	var delay := float(delay_text)
 	Input.warp_mouse(DisplayServer.window_get_size() * 0.5)
 	await get_tree().create_timer(delay).timeout
+	var shot_all := OS.get_cmdline_args() + OS.get_cmdline_user_args()
+	if "--select-first" in shot_all:
+		_select_first_unit()
+		await get_tree().process_frame
+		await get_tree().process_frame
+	if "--select-factory" in shot_all:
+		_select_first_factory()
+		await get_tree().process_frame
+		await get_tree().process_frame
 	if "--dump-visible" in (OS.get_cmdline_args() + OS.get_cmdline_user_args()):
 		_dump_ground_nodes()
 	var image := get_viewport().get_texture().get_image()
@@ -111,6 +123,25 @@ func _screenshot(delay_text: String) -> void:
 	image.save_png(out_path)
 	print("SCREENSHOT: saved ", out_path, " ", image.get_size())
 	get_tree().quit()
+
+
+func _select_first_unit() -> void:
+	for u in UnitRegistry.current.world_units():
+		if u.alive and u.team == MatchState.current.player_team and u.kind == "robot":
+			SelectionManager.current.select_single(u)
+			camera.pan_to(u.global_position)
+			return
+
+
+## Screenshot aid: a producer of the player's, so the build menu is up.
+func _select_first_factory() -> void:
+	for b in get_tree().get_nodes_in_group(Groups.FACILITIES):
+		if b is Building2D and b.alive and b.produces_anything() \
+				and b.owner_team == MatchState.current.player_team:
+			SelectionManager.current.toggle_select(b, false)
+			b.queue_unit("robot:grunt", true)
+			camera.pan_to((b as Node2D).global_position)
+			return
 
 
 ## TEMP diagnostic: ground-layer nodes (decals, wrecks, building art)
@@ -255,26 +286,34 @@ func _unhandled_input(event: InputEvent) -> void:
 			and event.keycode == KEY_M:
 		_cycle_map()
 		return
-	# stance hotkeys: Q attack-move, E defend, R plain move, T toggles
-	# smart idle (auto-man) — reflected by the stance bar next to the
-	# minimap
+	# HOTKEYS = THE HUD'S OWN LETTERS. They used to be Q/E/R for the
+	# stances, which no button in the original's frame is labelled with;
+	# now every key is the letter printed on the plate it presses, so the
+	# HUD teaches its own keyboard: T/D/Z down the sidebar, R/V/B/G along
+	# the bottom bar.
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_Q:
-				SelectionManager.current.set_stance(SelectionManager.OrderStance.ATTACK_MOVE)
-				Fx.ui_click()
-				return
-			KEY_E:
-				SelectionManager.current.set_stance(SelectionManager.OrderStance.DEFEND)
-				Fx.ui_click()
-				return
-			KEY_R:
-				SelectionManager.current.set_stance(SelectionManager.OrderStance.MOVE)
-				Fx.ui_click()
-				return
 			KEY_T:
 				GameSettings.set_auto_idle(not GameSettings.auto_idle)
 				Fx.ui_click()
+				return
+			KEY_D:
+				_toggle_stance(SelectionManager.OrderStance.DEFEND)
+				return
+			KEY_Z:
+				_toggle_stance(SelectionManager.OrderStance.ATTACK_MOVE)
+				return
+			KEY_R:
+				SelectionFilters.activate("robot")
+				return
+			KEY_V:
+				SelectionFilters.activate("vehicle")
+				return
+			KEY_B:
+				SelectionFilters.activate("building")
+				return
+			KEY_G:
+				SelectionFilters.activate("group")
 				return
 			KEY_X:
 				Commands.eject()  # get garrisoned/crewed units back out
@@ -292,6 +331,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			pause.toggle()
 		return
 	if event is InputEventMouseButton:
+		# the chrome is not the battlefield: a press that starts on the
+		# sidebar or the bottom bar is never a world click (the panels eat
+		# their own clicks, but a release can still land here)
+		if event.pressed and not HudFrame.view_rect().has_point(event.position):
+			return
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				SelectionManager.current.begin_drag(event.position)
@@ -308,6 +352,16 @@ func _unhandled_input(event: InputEvent) -> void:
 			SelectionManager.current.issue_order(SelectionManager.current.screen_to_world(event.position))
 	elif event is InputEventMouseMotion and SelectionManager.current.is_dragging:
 		SelectionManager.current.move_drag(event.position)
+
+
+## D and Z are TOGGLES, like the plates they press: pressing the active
+## one drops back to the plain move stance, which is the state the frame
+## art draws with neither button lit.
+func _toggle_stance(stance: SelectionManager.OrderStance) -> void:
+	var sel := SelectionManager.current
+	sel.set_stance(SelectionManager.OrderStance.MOVE \
+			if sel.order_stance == stance else stance)
+	Fx.ui_click()
 
 
 ## Digit keys to control-group slots: 1-9 -> 0-8, 0 -> 9. Anything else
@@ -353,10 +407,27 @@ func _pick_select(screen_pos: Vector2) -> void:
 	# hover and this click can no longer disagree
 	var hit := Pick.selectable_at(world, MatchState.current.player_team)
 	if hit:
-		SelectionManager.current.toggle_select(hit, Input.is_key_pressed(KEY_SHIFT))
+		var additive := Input.is_key_pressed(KEY_SHIFT)
+		SelectionManager.current.toggle_select(hit, additive)
+		# THE ORIGINAL CENTRES THE CAMERA ON A UNIT YOU CLICK. It reads
+		# oddly at first and then becomes the thing that makes the game
+		# playable at this zoom: the unit you just picked is always the
+		# one in the middle of the screen. Shift-adding to a squad does
+		# NOT move the camera — that would yank the view around mid-drag.
+		if GameSettings.centre_on_select and not additive and hit is Node2D \
+				and hit in SelectionManager.current.selected:
+			camera.pan_to((hit as Node2D).global_position)
+		if hit is Unit2D:
+			Fx.selected_bark()  # the unit reports in, and its portrait talks
 	else:
 		SelectionManager.current.clear_selection()
 
 
 func _on_order(world_position: Vector2) -> void:
 	Commands.dispatch(world_position)
+	# AND THE ORIGINAL DROPS THE SELECTION once the order is away. That is
+	# deliberate in Z — it is what makes the game reward decisive clicking
+	# and punish dithering — and it is why the original never needed a
+	# "stop giving my squad new orders" affordance.
+	if GameSettings.auto_deselect:
+		SelectionManager.current.clear_selection()

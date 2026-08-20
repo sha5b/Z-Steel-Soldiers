@@ -9,22 +9,22 @@ commit that fixed them — do not delete history.
 Each of these was confirmed by reading the code or counting the data.
 They are listed in the order I would tackle them.
 
-1. **The shipped map set is the zod MULTIPLAYER pack, not the original
-   campaign** — reading each JSON's internal `name`, 56 of 57 read
-   `clone_map` (orig01-35 = 2P, p03m01-10, p04m01-10) and
-   `p08_sc_hunters` reads `Starcraft_Hunters`. The actual 20-level
-   Bitmap Brothers campaign lives in `assets_original/gog/` as
-   `LEVEL{01-20,26-29,31}.MAP` plus 100 `OBJECT/BUILD/BRIDGE/CPUPLR##.DAT`
-   object tables and `levels.dat`/`robots.dat`/`mult.dat`. `Campaign`
-   therefore chains the map list in alphabetical filename order with no
-   planet progression. Format work in progress (see docs/RESEARCH.md):
-   all 25 `.MAP` files are exactly 56,433 bytes; a 136-byte RECORD ARRAY
-   starts at offset 1 and its first records are ZONES (u16 x1,y1,x2,y2 in
-   pixels, then a u16 centre CELL index, then neighbour ids terminated by
-   0xff); that centre index proves the campaign grid is **128 tiles
-   wide** (zone 0 of LEVEL01: rect (160,288)-(272,400), centre tile
-   (13,21), stored 2701 = 21*128+13). `Maps/LEVEL{1..25}.png` are
-   rendered top-down images of each level and serve as the oracle.
+1. **The retail campaign's STARTING ARMIES are not in the release.**
+   Every `levels.dat` record names `preset1.wal` / `preset2.wal` and
+   NEITHER FILE SHIPS (Z.exe holds only the strings). Searched for a
+   coordinate within +-80px of either LEVEL01 fort across
+   `LEVEL01.MAP`, all four `*01.DAT`, `levels/robots/mult.dat`, `Z.exe`,
+   `CHARS.BIN` and `PHRASES.BIN`: **0 hits**. So a converted level
+   arrives with forts, factories, bridges, rocks, scenery and derelict
+   hardware, but no crew. Stopgap: each fort team that starts a map with
+   no units at all gets `MatchRulesDef.starting_squad` grunts (3) at its
+   fort — without it the original no-units rule ends the mission on the
+   first robot lost. Also still open from that conversion: building
+   LEVEL is inferred from max-HP (97.1% agreement with the zod twins,
+   no byte predicts it), and 144 volcanic OBJECT records of types 13-16
+   have no zod counterpart and are emitted as invisible `map_item 0`
+   rather than guessing a sprite. `robots.dat` (a 44-byte named-robot
+   roster) and `mult.dat` are unparsed.
 
 2. **The full original HUD frame is still unreferenced** —
    `ui/hud/main_hud*.png` (10 files: the side panel per team, the bottom
@@ -75,6 +75,35 @@ They are listed in the order I would tackle them.
     derived from the art alone.
 
 ## Fixed
+- 2026-08-20 — **THE ORIGINAL 20-LEVEL CAMPAIGN IS IN.**
+  `tools/gog/level_to_json.py` reads the retail data in
+  `assets_original/gog/` and writes our map schema, so `map_loader.gd`
+  loads it unchanged: `zc01_virgin_soldiers` … `zc20_z` (the levels'
+  OWN names, out of `levels.dat`) plus 5 skirmish maps (`zs26`-`zs31`).
+  `Campaign` chains those 20 in the game's order instead of 57 zod
+  clone maps in alphabetical filename order, and menus show the level
+  name. Format (docs/RESEARCH.md §6, VERIFIED/UNKNOWN marked per
+  field): `LEVEL##.MAP` is 56,433 bytes with `u16` width/height at
+  10125, two 128x128 byte PLANES at 10129 and 26513 where
+  `tile = plane1 + 240 * (plane2 >> 7)`, a 20x138-byte ROCK array at
+  6657 whose records carry a 32x32 BIT MASK, forts cut out of the tile
+  grid as plane-1 value 238, and a 96x136-byte region adjacency array;
+  `CPUPLR##.DAT` is the territory grid, `OBJECT/BUILD/BRIDGE##.DAT` the
+  objects.
+  The correction that made it rigorous: the shipped `p02_bb_orig01..20`
+  maps — which this tracker called "the zod multiplayer pack" — ARE
+  these 20 levels, edited for 2 players, so they are a per-cell oracle:
+  **96.17% of 218,000 tiles agree exactly** (66% for plane 1 alone), and
+  every id table was read off that instead of guessed. Independently:
+  mean Pearson r 0.73 against the retail `Maps/LEVEL*.png` thumbnails
+  (0.81 ignoring fort footprints), forts 38/40 exact including id, rocks
+  98.8% precision / 99.6% recall of 5,990, buildings + bridges 257 exact
+  with 0 wrong ids, all objects 96.0% exact, `passable`/`water` 98.3% /
+  99.98%. Verified on this side too: `verify_map_planets.py` finds 0
+  mis-tagged planets across all 83 maps, all 25 levels boot in the real
+  engine with no errors, and `--retail-test` asserts every level's size,
+  tile range, territory grid, two opposing fort teams and unit placement.
+
 - 2026-08-20 — **the release's TUTORIAL pages were unreachable.** Seven
   512px "how to play" pages ship in the GOG set and nothing converted or
   showed them, so the remake had no instructions at all. Converted
@@ -114,6 +143,22 @@ They are listed in the order I would tackle them.
   breaks the 2 ambiguous ties on the art; `--terrain-test` now audits
   every shipped map so it cannot come back. The map SCENES were
   regenerated, which is what puts the right tileset in the editor.
+- 2026-08-20 — **bridge spans are PER BRIDGE, not one number.** The
+  retail campaign stores each bridge's own footprint, and it is always
+  4 tiles ACROSS with a length of 3 to 12 — so the fixed 4x8 span
+  cleared water a short bridge does not cover and left cells solid in
+  the middle of a long one. It also fixes the ORIENTATION rule: the
+  dimension that measures 4 tells which way a bridge runs, and `w > h`
+  does not (a 4x3 bridge is VERTICAL). Verified against the 44 bridges
+  that have a zod twin: 44/44 orientations agree with the swapped rule
+  (43/44 before), and the map audit's wet-span count fell from 13 to 0
+  once the real spans were used. `Building2D.bridge_span_override`
+  carries it; the zod maps have no size field and keep the def span.
+  KNOWN LIMIT: the art is ONE 4x8 frame, so 6 of the 65 retail bridges
+  are longer than it and 8 are shorter — the art is capped at the
+  frame and anchored at the near end while the FOOTPRINT stays the true
+  span. Slicing the frame to length would need to know where its ramps
+  stop, which is not established.
 - 2026-08-20 — **every bridge drew itself twice.**
   `bridge_<planet>.png` is 64x256 = TWO stacked 4x8-tile frames, the
   intact bridge over its own WRECK (verified per planet: the lower half

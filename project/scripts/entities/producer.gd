@@ -96,15 +96,29 @@ func cancel_at(index: int) -> void:
 	MatchState.current.deposit(b.owner_team, stats.cost)
 
 
-## A capture scraps the old owner's queue — payment is upfront and
-## cancellation refunds, so the outgoing team gets its money back too.
+## A CAPTURE HANDS THE UNIT ON THE LINE TO WHOEVER TOOK THE SECTOR.
+##
+## This is one of the original's real tactical hooks: "capture a sector
+## just before the clock completes and you become the beneficiary of
+## whatever it was producing" — so WHEN you attack matters as much as
+## what you attack. We used to scrap the whole queue on capture, which
+## threw that away and made timing the assault pointless.
+##
+## The item in progress keeps its elapsed time and changes hands. The
+## rest of the queue is scrapped and refunded to the outgoing team,
+## because those were never started.
 func scrap_queue() -> void:
-	if b.team != 0 and not queue.items.is_empty():
-		for item in queue.items:
-			var parts: PackedStringArray = item.split(":")
+	var inherited: String = queue.items[0] if not queue.items.is_empty() else ""
+	if b.team != 0 and queue.items.size() > 1:
+		for i in range(1, queue.items.size()):
+			var parts: PackedStringArray = String(queue.items[i]).split(":")
 			MatchState.current.deposit(b.team,
 				ContentDB.def_for(parts[0], parts[1]).cost)
+	var kept := queue.elapsed
 	queue.clear()
+	if inherited != "":
+		queue.enqueue(inherited)
+		queue.elapsed = kept
 
 
 ## Cap gate: alive + queued + this unit must fit under the team cap.

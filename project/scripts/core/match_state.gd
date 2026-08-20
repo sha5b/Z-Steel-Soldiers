@@ -22,6 +22,11 @@ func _exit_tree() -> void:
 signal money_changed(team: int, amount: int)
 signal zone_captured(team: int)
 signal tech_level_changed
+## A crate upgrade landed. The HUD's grenade tally and the top bar's
+## crate icons follow this — they used to repaint only when money or a
+## zone happened to change, so picking up a crate showed nothing until
+## something else moved.
+signal upgrade_gained(team: int, key: String)
 
 const TICK_SECONDS := 1.0
 
@@ -164,6 +169,7 @@ func grant_upgrade(team: int, key: String) -> void:
 	if not upgrades.has(team):
 		upgrades[team] = {}
 	upgrades[team][key] = true
+	upgrade_gained.emit(team, key)
 
 
 func has_upgrade(team: int, key: String) -> bool:

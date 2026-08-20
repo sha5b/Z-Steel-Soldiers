@@ -66,6 +66,14 @@ func toggle_select(unit: Node, additive: bool) -> void:
 	selection_changed.emit(selected)
 
 
+## Publish a selection built up by pushing onto `selected` directly (the
+## R/V select-all filters do that). Prunes dead entries, marks the
+## survivors selected and fires the one signal the HUD listens to.
+func commit() -> void:
+	_cleanup()
+	selection_changed.emit(selected)
+
+
 func clear_selection() -> void:
 	for u in selected:
 		if is_instance_valid(u):

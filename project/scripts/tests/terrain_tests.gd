@@ -81,8 +81,13 @@ static func _map_planets(rig: TestRig) -> void:
 			var bdef := ContentDB.building_def(int(o.id))
 			if bdef == null or bdef.bridge_span == Vector2i.ZERO:
 				continue
-			for bx in bdef.bridge_span.x:
-				for by in bdef.bridge_span.y:
+			# the retail campaign gives every bridge its OWN span
+			# (4 across, 3-12 long); the zod maps carry none
+			var span := bdef.bridge_span
+			if int(o.get("span_w", 0)) > 0 and int(o.get("span_h", 0)) > 0:
+				span = Vector2i(int(o.span_w), int(o.span_h))
+			for bx in span.x:
+				for by in span.y:
 					var cx := int(o.x) + bx
 					var cy := int(o.y) + by
 					if cx < 0 or cy < 0 or cx >= w or cy >= h:

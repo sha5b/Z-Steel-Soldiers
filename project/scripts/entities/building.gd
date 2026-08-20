@@ -165,10 +165,32 @@ func _exit_tree() -> void:
 ## it — an 8-tile bridge rendered as a 16-tile double. The wrecked state
 ## then had no art to swap to and faked it by dimming the whole sprite.
 const BRIDGE_FRAME := Vector2(64.0, 128.0)
+## A bridge's own span in TILES, from the map data. The retail campaign
+## stores it per bridge — always 4 tiles ACROSS, 3 to 12 long (verified
+## against the 44 bridges that have a zod twin: every record 4 wide is a
+## vertical bridge, every record 4 tall a horizontal one, no exceptions).
+## The zod maps carry no size at all, so they fall back to the def.
+@export var bridge_span_override := Vector2i.ZERO
 
 
-static func bridge_region(destroyed: bool) -> Rect2:
-	return Rect2(Vector2(0.0, BRIDGE_FRAME.y if destroyed else 0.0), BRIDGE_FRAME)
+func bridge_span() -> Vector2i:
+	if bridge_span_override != Vector2i.ZERO:
+		return bridge_span_override
+	var def := ContentDB.building_def(building_id)
+	return def.bridge_span if def != null else Vector2i.ZERO
+
+
+## The frame region for a bridge of this span: the sheet holds ONE
+## 4x8-tile frame per state, so a shorter bridge shows only its own
+## tiles (it must not paint cells it does not own) and a longer one
+## shows the 8 the art has. KNOWN LIMIT: 6 of the 65 retail bridges are
+## longer than the frame and 8 are shorter, so those lose art at the far
+## end — the frame's internal layout (where the ramps stop and the deck
+## begins) is not established, and slicing it on a guess would be worse.
+static func bridge_region(destroyed: bool, length_tiles := 8) -> Rect2:
+	var rows: float = clampf(float(length_tiles), 1.0, BRIDGE_FRAME.y / 16.0)
+	return Rect2(Vector2(0.0, BRIDGE_FRAME.y if destroyed else 0.0),
+		Vector2(BRIDGE_FRAME.x, rows * 16.0))
 
 
 func _build_sprite() -> void:
@@ -177,9 +199,17 @@ func _build_sprite() -> void:
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_art_size = _sprite.texture.get_size() if _sprite.texture else Vector2.ZERO
 	if is_bridge() and _art_size.y >= BRIDGE_FRAME.y * 2.0:
+		var span := bridge_span()
+		# the LENGTH runs along the frame's y; the horizontal bridge is
+		# the same frame rotated, so its length is the span's x
+		var length: int = span.y if building_id == 6 else span.x
+		if length <= 0:
+			length = int(BRIDGE_FRAME.y / 16.0)
 		_sprite.region_enabled = true
-		_sprite.region_rect = bridge_region(false)
-		_art_size = BRIDGE_FRAME
+		_sprite.region_rect = bridge_region(false, length)
+		# the ART is the frame (capped at 8 tiles); the FOOTPRINT is the
+		# span the map gave us, which clicks and targeting must use
+		_art_size = Vector2(BRIDGE_FRAME.x, float(length) * 16.0)
 	var ts: Vector2 = _art_size
 	_sprite.centered = false
 	# MAP ANCHOR CONTRACT (zod): the map object's tile (x,y) is the ART
@@ -344,7 +374,8 @@ func _set_building_texture(path: String) -> void:
 func set_bridge_wrecked(wrecked: bool) -> void:
 	if _sprite == null or not is_bridge() or not _sprite.region_enabled:
 		return
-	_sprite.region_rect = bridge_region(wrecked)
+	_sprite.region_rect = bridge_region(wrecked,
+		int(_sprite.region_rect.size.y / 16.0))
 
 
 ## The art's on-screen rect in world pixels (art renders 1:1): top-left
@@ -716,7 +747,9 @@ func _follow_zone_owner() -> void:
 	team = owner_team
 	update_flag(owner_team)
 	if produces_anything():
-		producer.scrap_queue()  # refund the outgoing team, scrap the queue
+		# the unit on the line changes hands; the rest of the queue is
+		# refunded to the team that just lost the sector
+		producer.scrap_queue()
 
 
 	if team == MatchState.current.player_team and building_id == 2:
@@ -824,7 +857,7 @@ func take_damage(amount: int, at := Vector2.INF) -> void:
 		return
 	hp -= amount
 	if is_fort and team == MatchState.current.player_team:
-		Fx.announce("fort_under_attack")  # forts only — factories have
+		Fx.announce("fort_under_attack", global_position)  # forts only — factories have
 		# their own distinct original voice lines
 	_hit_flash(at)
 	if _hp_bar:
@@ -833,7 +866,7 @@ func take_damage(amount: int, at := Vector2.INF) -> void:
 		_hp_bar.visible = true
 	if is_fort and team == MatchState.current.player_team and hp > 0 \
 			and float(hp) / float(max_hp) < 0.35:
-		Fx.announce("youre_losing")
+		Fx.announce("youre_losing", global_position)
 	if hp <= 0:
 		alive = false
 		_death_visuals()

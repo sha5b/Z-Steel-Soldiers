@@ -52,6 +52,7 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 				and int(o.owner) != 0:
 			ai_teams[int(o.owner)] = true
 	_init_zone_owners(parent)
+	_grant_starting_squads(parent)
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
 		MatchState.current.grant_ledger(t)
@@ -280,9 +281,13 @@ static func _spawn_building(parent: Node, o: Dictionary, pos: Vector2, planet: S
 		node.setup(id, int(o.owner), planet, int(o.get("level", 0)))
 	node.position = pos
 	node.name = "Building_T%d_%d" % [int(o.owner), id]
+	# the RETAIL campaign gives every bridge its own span (4 across,
+	# 3-12 long); set it before _ready so the art matches the span
+	if int(o.get("span_w", 0)) > 0 and int(o.get("span_h", 0)) > 0:
+		node.bridge_span_override = Vector2i(int(o.span_w), int(o.span_h))
 	parent.add_child(node)
 	if def.bridge_span != Vector2i.ZERO:
-		var span: Vector2i = def.bridge_span
+		var span: Vector2i = node.bridge_span()
 		# same MAP ANCHOR CONTRACT as building art: the object tile is the
 		# span's TOP-LEFT (zod loc semantics), not its centre
 		var lo := Vector2i(int(o.x), int(o.y))
@@ -389,6 +394,7 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 			if def.is_fort and child.team != 0:
 				ai_teams[child.team] = true
 	_init_zone_owners(parent)
+	_grant_starting_squads(parent)
 	# every fort team gets a ledger entry (income + spend work for all)
 	for t in ai_teams:
 		MatchState.current.grant_ledger(t)
@@ -407,6 +413,37 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 		"zones": MatchState.current.zones.size(),
 		"objects": map.get_child_count(),
 	}
+
+
+## A fort team that owns NO units gets a small squad at its fort.
+##
+## The retail campaign levels keep their starting armies in
+## `preset1.wal` / `preset2.wal`, and neither file ships in the release —
+## so a converted campaign map has forts, factories and derelict
+## hardware, but nobody standing on it. That is not just thin: the
+## original no-units rule destroys a team's forts the moment its last
+## unit dies, so the first lost robot would end the mission. Teams that
+## bring their own roster (every zod map) are left untouched.
+static func _grant_starting_squads(parent: Node) -> void:
+	var count: int = ContentDB.rules.starting_squad
+	if count <= 0 or UnitRegistry.current == null:
+		return
+	var forts := {}  # team -> a fort of theirs
+	for b in BuildingRegistry.all():
+		if b is Building2D and b.alive and b.is_fort and b.team != 0 \
+				and not forts.has(b.team):
+			forts[b.team] = b
+	for team in forts:
+		if not UnitRegistry.current.alive_of_team(team).is_empty():
+			continue
+		var anchor: Vector2 = (forts[team] as Building2D).world_footprint().get_center()
+		for i in count:
+			var spot := NavWorld.current.find_free_spot(
+				anchor + Vector2(0, 96.0) + Vector2(24.0 * (i - count * 0.5), 0.0),
+				"robot")
+			if spot == Vector2.INF:
+				continue
+			Spawner.spawn(parent, "robot", "grunt", team, spot)
 
 
 ## Original ZServer::InitZones: every FORT claims the zone it stands in
@@ -436,7 +473,7 @@ static func _init_zone_owners(root: Node) -> void:
 static func _clear_bridge(bridge: Building2D, def: BuildingDef,
 		grid: AStarGrid2D, vgrid: AStarGrid2D) -> void:
 	var tile := Vector2i(((bridge.global_position - Vector2(8, 8)) / TILE).floor())
-	var span: Vector2i = def.bridge_span
+	var span: Vector2i = bridge.bridge_span()
 	# object tile = span TOP-LEFT (zod loc semantics — same as the JSON path)
 	var lo := tile
 	for bx in span.x:

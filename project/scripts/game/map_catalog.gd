@@ -54,18 +54,41 @@ static func _register(map_name: String, path: String, is_json: bool) -> void:
 	})
 
 
-## Campaign missions: everything except sandbox/test maps, alphabetical.
+## The ORIGINAL CAMPAIGN. `zc01_..zc20_` are the 20 Bitmap Brothers
+## levels converted from the retail data (tools/gog/level_to_json.py),
+## named after the levels themselves and numbered in the game's own
+## order; `zs26_..zs31_` are its skirmish maps.
+const CAMPAIGN_PREFIX := "zc"
+
+
+## Campaign missions IN THE ORIGINAL ORDER. This used to be every
+## non-sandbox map in alphabetical FILENAME order — 57 zod multiplayer
+## clone maps with no planet progression — because the retail campaign
+## had no converter. The retail chain wins when it is installed; the zod
+## pack is the fallback, since `assets_original/` is a gitignored
+## per-contributor copy and a contributor without the retail data must
+## still get a campaign.
 static func campaign_missions() -> PackedStringArray:
 	var out := PackedStringArray()
+	for e in entries():
+		if not e.sandbox and String(e.name).begins_with(CAMPAIGN_PREFIX):
+			out.append(String(e.name))  # entries() is sorted: zc01..zc20
+	if not out.is_empty():
+		return out
 	for e in entries():
 		if not e.sandbox:
 			out.append(String(e.name))
 	return out
 
 
-## Map titles for menus ("p02_bb_orig07" -> "P02 BB Orig07").
+## Map titles for menus ("p02_bb_orig07" -> "P02 BB Orig07"). A retail
+## level shows its OWN name: "zc01_virgin_soldiers" -> "VIRGIN SOLDIERS".
 static func display_title(map_name: String) -> String:
-	return " ".join(map_name.split("_")).to_upper()
+	var parts := map_name.split("_")
+	if parts.size() > 1 and (parts[0].begins_with(CAMPAIGN_PREFIX)
+			or parts[0].begins_with("zs")) and parts[0].length() == 4:
+		parts.remove_at(0)
+	return " ".join(parts).to_upper()
 
 
 ## Size + terrain + player count, read from the JSON once and cached.

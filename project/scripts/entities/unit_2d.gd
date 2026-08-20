@@ -527,11 +527,20 @@ func _shoot(target: Node2D, to_target: Vector2) -> void:
 	Combat.fire(self, def, muzzle, target, amount)
 
 
+## How badly hurt a robot has to be before it shouts, and how long it
+## then keeps quiet. Without the gate a squad under sustained fire talks
+## over itself every frame.
+const DISTRESS_AT := 0.6
+const DISTRESS_GAP := 9.0
+var _distress_quiet_until := 0.0
+
+
 func take_damage(amount: int) -> void:
 	if not alive:
 		return
 	hp -= amount
 	damaged.emit(amount)
+	_maybe_call_for_help()
 	if ring:
 		ring.visible = true
 		ring.queue_redraw()
@@ -887,6 +896,23 @@ func _smart_idle(delta: float) -> void:
 		if global_position.distance_to(center) < AUTO_RADIUS:
 			move_to(center)
 			return
+
+
+## THE ROBOTS CALL FOR HELP. The original barks a distress line at the
+## player when one of their units is being shot at ("we're under attack",
+## "help", "they're all over us") — ours took hits in total silence, so a
+## fight off-screen announced itself with nothing at all. Player team
+## only, and only once the unit is genuinely hurt.
+func _maybe_call_for_help() -> void:
+	if kind != "robot" or not alive or team != MatchState.current.player_team:
+		return
+	if float(hp) / float(maxi(max_hp, 1)) > DISTRESS_AT:
+		return
+	var now := float(Time.get_ticks_msec()) / 1000.0
+	if now < _distress_quiet_until:
+		return
+	_distress_quiet_until = now + DISTRESS_GAP
+	Fx.distress()
 
 
 ## DEFEND stance: a unit pushed off its post walks back and re-holds it.

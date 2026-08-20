@@ -12,7 +12,7 @@ signal move_order(world_position: Vector2)
 const PANEL_BG := Color(0.05, 0.06, 0.05, 0.9)
 const PANEL_EDGE := Color(0.35, 0.38, 0.3)
 const ZONE_TINT_WEIGHT := 0.4
-const PAD := 2.0  # panel edge inset
+const PAD := 0.0  # the sidebar window IS the frame — no inset of our own
 
 var map_size := Vector2i(64, 86)
 
@@ -90,8 +90,11 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
+	# NO chrome of its own: the radar sits in the sidebar's own window
+	# (frame art, 94x98 at (6,298)), so a second panel edge here drew a
+	# box inside a box. Only the black backing stays, for maps whose
+	# aspect leaves letterbox inside the window.
 	draw_rect(Rect2(Vector2.ZERO, size), PANEL_BG)
-	draw_rect(Rect2(Vector2.ZERO, size), PANEL_EDGE, false, 1.0)
 	if _texture == null or _map_rect.size == Vector2.ZERO:
 		return
 	draw_texture_rect(_texture, _map_rect, false)

@@ -6,7 +6,7 @@ schema `tools/zod/map_to_json.py` emits, so `map_loader.gd` loads the
 result unchanged.
 
 Inputs per level NN (NN = 01..20 campaign, 26..29 + 31 skirmish):
-    LEVEL{NN}.MAP    terrain, size, tileset name, forts, a region graph
+    LEVEL{NN}.MAP    terrain, size, tileset name, forts, rocks
     CPUPLR{NN}.DAT   the territory rectangles = the schema's `zones`
     OBJECT{NN}.DAT   scenery, pickups, unmanned vehicles/cannons
     BUILD{NN}.DAT    radar / repair / robot factory / vehicle factory
@@ -22,7 +22,8 @@ VERIFIED offsets (checks and numbers in docs/RESEARCH.md §6):
     0                u8    unknown (0xf7 on LEVEL01)
     1     .. 6656    region array, byte-identical copy of the one at 43377
                      (verified: d[1:6657] == d[43377:50033] on all 25 files)
-    6657  .. 10096   two arrays we did not crack — see UNKNOWN below
+    6657  .. 9416    rock array: 20 records x 138 bytes
+    9417  .. 10096   constant table, identical in every level — UNKNOWN
     10097 .. 10109   char[13] tileset 1 name, e.g. "DESERT.LBM"
     10110            u8 = 1 on all 25 files
     10111 .. 10123   char[13] tileset 2 name, e.g. "DESERT2.LBM"
@@ -86,14 +87,32 @@ exactly, id included; LEVEL03's fort_back and LEVEL16's fort_front are
 one row off because a stray 238 cell extends the bounding box. Every one
 of the 25 levels yields exactly 2 forts.
 
+ROCKS live at 6657 as 20 records of 138 bytes (so the array ends at 9417):
+
+    +0  u16 x, +2 u16 y   PIXELS, top-left of the stamp; a slot is free
+                          when x is 0xFFFF, when x and y are both 0, or
+                          when the point is outside the map
+    +4  u8, +5 u8         (2,0) on 116 of the 147 in-use records, also
+                          (0,0)/(2,5)/(2,1) — meaning UNKNOWN
+    +6  u16               0 on 106 records, otherwise 624..3184 — UNKNOWN
+    +10 .. +137           128 bytes = a 32x32 BIT MASK, row-major,
+                          4 bytes per row, most-significant bit first;
+                          a set bit is a rock on cell (x/16 + col,
+                          y/16 + row)
+
+Rocks are objects in the original, not terrain — in LEVEL01 all 151 of
+them sit on passable plain ground. VERIFIED against the 20 zod maps:
+5963 true positives, 75 false positives, 27 false negatives out of 5990
+rock objects — precision 98.76%, recall 99.55%. Levels 02/07/10/18 hold
+almost all of the error, which is where zod's 2-player edits are.
+
 UNKNOWN in the .MAP:
   * byte 0.
-  * 6657..10096: a 138-byte-stride array whose first 3-4 records hold a
-    pixel coordinate + a 1-bit shape mask, then 16 empty records, then a
-    4-record constant table identical in every level. Not needed for
-    anything in the schema.
+  * 9417..10096: four more 138-byte records plus 128 bytes of 0xFF,
+    byte-identical in every level, so a constant table of some kind.
   * plane 2 bits 0..6 (above).
   * most of each 136-byte region record past the neighbour list.
+  * the rock record's bytes +4, +5 and +6.
 
 =============================================================================
 CPUPLR{NN}.DAT — 2217 bytes = 73 records x 30 bytes + a 27-byte tail
@@ -194,13 +213,17 @@ from pathlib import Path
 TILE_PX = 16
 GRID_STRIDE = 128          # both planes are 128x128 regardless of map size
 NAME1_OFF = 10097
-NAME2_OFF = 10111
 SIZE_OFF = 10125
 PLANE1_OFF = 10129
 PLANE2_OFF = 26513
 PLANE_LEN = GRID_STRIDE * GRID_STRIDE
 SHEET1_TILES = 240         # plane 2's top bit adds this
 FORT_GROUND_TILE = 238     # plane-1 value under a fort, all planets
+ROCKS_OFF = 6657
+ROCK_STRIDE = 138
+ROCK_SLOTS = 20
+ROCK_MASK_OFF = 10         # 32x32 bits, 4 bytes per row, MSB first
+ROCK_MASK_SIDE = 32
 
 LEVELS_DAT_STRIDE = 240
 OBJECT_STRIDE = 10
@@ -382,6 +405,35 @@ def read_forts(ground: list[int], width: int, height: int) -> list[dict]:
     return out
 
 
+def read_rocks(raw: bytes, width: int, height: int) -> list[dict]:
+    """Rocks, from the 20 32x32 bit stamps at 6657. Emitted as zod
+    `map_item` id 1, which `map_loader.gd` autotiles and marks solid."""
+    out = []
+    seen = set()
+    for slot in range(ROCK_SLOTS):
+        off = ROCKS_OFF + slot * ROCK_STRIDE
+        x, y = struct.unpack_from("<HH", raw, off)
+        if x == 0xFFFF or (x == 0 and y == 0):
+            continue           # free slot
+        if x >= width * TILE_PX or y >= height * TILE_PX:
+            continue
+        ax, ay = x // TILE_PX, y // TILE_PX
+        mask = off + ROCK_MASK_OFF
+        for row in range(ROCK_MASK_SIDE):
+            for col in range(ROCK_MASK_SIDE):
+                if not raw[mask + row * 4 + col // 8] >> (7 - col % 8) & 1:
+                    continue
+                cell = (ax + col, ay + row)
+                if cell in seen or not (0 <= cell[0] < width
+                                        and 0 <= cell[1] < height):
+                    continue
+                seen.add(cell)
+                out.append({"x": cell[0], "y": cell[1], "owner": 0,
+                            "type": "map_item", "id": 1, "level": 0,
+                            "health": 100})
+    return out
+
+
 def read_objects(raw: bytes, planet: str, width: int, height: int) -> list[dict]:
     table = dict(OBJ_COMMON)
     table.update(OBJ_PLANET.get(planet, {}))
@@ -426,15 +478,36 @@ def read_buildings(raw: bytes, width: int, height: int) -> list[dict]:
     return out
 
 
+# A bridge's ACROSS width is always 4 tiles and its LENGTH varies (3-12
+# tiles) — so the dimension that measures 4 tells the orientation, and
+# `w > h` does NOT: a 4x3 bridge is VERTICAL (4 across, 3 long) even
+# though w > h. Verified against the 44 bridges that have a zod twin
+# (p02_bb_orig01..20, the same levels hand-edited for 2 players): every
+# record with w == 4 tiles is zod id 6 and every record with h == 4 is
+# id 7, with zero exceptions, across lengths 3,4,5,6,7,8,9,12.
+BRIDGE_ACROSS_TILES = 4
+
+
 def read_bridges(raw: bytes, width: int, height: int) -> list[dict]:
     out = []
     for off in range(0, len(raw) - BRIDGE_STRIDE + 1, BRIDGE_STRIDE):
         x, y, span_w, span_h = struct.unpack_from("<4H", raw, off)
         if x == 0xFFFF or x >= width * TILE_PX or y >= height * TILE_PX:
             continue
-        bid = 7 if span_w > span_h else 6     # horz / vert
+        if span_w == 0 or span_h == 0 or span_w > 0xFF00 or span_h > 0xFF00:
+            continue
+        tiles_w = max(span_w // TILE_PX, 1)
+        tiles_h = max(span_h // TILE_PX, 1)
+        # vertical when the 4-tile dimension is the WIDTH (4x4 reads as
+        # vertical, which is what the two zod twins of that shape say)
+        vertical = tiles_w == BRIDGE_ACROSS_TILES
         out.append({"x": x // TILE_PX, "y": y // TILE_PX, "owner": 0,
-                    "type": "building", "id": bid, "level": 0, "health": 100})
+                    "type": "building", "id": 6 if vertical else 7,
+                    "level": 0, "health": 100,
+                    # the span is PER BRIDGE here, unlike the zod maps
+                    # (which carry no size): the loader honours it and
+                    # falls back to the def when it is absent
+                    "span_w": tiles_w, "span_h": tiles_h})
     return out
 
 
@@ -446,6 +519,7 @@ def convert(gog: Path, number: int, tileinfo_dir: Path | None = None) -> dict:
         if cpuplr.exists() else []
 
     objects = read_forts(ground, width, height)
+    objects += read_rocks(raw, width, height)
     for name, reader in (("BUILD", read_buildings), ("BRIDGE", read_bridges)):
         path = gog / f"{name}{number:02d}.DAT"
         if path.exists():

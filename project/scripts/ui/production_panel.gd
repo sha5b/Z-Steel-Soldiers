@@ -1,229 +1,282 @@
 class_name ProductionPanel
 extends Control
-## Production panel: shown when the player selects one of their factories.
-## Robot factories (and the fort) offer every buildable robot from
-## ContentDB; vehicle factories offer buildable vehicles — new unit types
-## appear here automatically. Built from the original UI art: the GOG box
-## panel, zod `object_button` chrome, factory labels and entry-bar
-## progress. Payment is upfront.
+## The factory window, rebuilt on the original's own 112x80 `base_image`
+## chrome instead of the 384x256 menu panel we had been borrowing.
+##
+## Slots measured out of that art (see the screenshots: "Robot Factory
+## 100%", the object window with its name bar, then Building / Time 2:10
+## / Cancel / Ok stacked down the right):
+##
+##   title plate (4,2) 64x10     health gauge (74,6) 34x9
+##   object window (7,18) 42x40  object name (6,59) 45x13
+##   status (66,18) 42x12        time (66,32) 42x12
+##   Cancel (68,46) 40x14        Ok (68,62) 40x15
+##
+## THE TIME READOUT IS THE POINT. Z has no resource to spend — time is
+## the currency, so "2:10 until this rolls out" is the single number the
+## player is actually budgeting, and our old panel showed a bare progress
+## bar with no figure on it at all.
+##
+## Drawn at SCALE because the art is a 640x480-era window with a 6px
+## font; at native size on a modern display nothing in it is readable.
+##
+## Choosing WHAT to build is the roster flyout: click the object window
+## and the level-gated build list opens above it, on the original's
+## `object_button` plates. The original scrolls a list in the same slot;
+## a flyout shows a level-5 fort's whole roster at once instead of
+## paging it.
 
 signal queue_requested(type_name: String)
 
-## Button footprints. The original HUD unit icons are landscape (roughly
-## 2:1 after cropping), so both slots are WIDER than tall — a square slot
-## letterboxes the icon down to a few pixels of height. The queue row
-## holds ProductionQueue.MAX_ITEMS of these across the panel's 240px of
-## inner width.
-const QUEUE_SLOT := Vector2(46, 30)
-const ROSTER_SLOT := Vector2(56, 60)
-const TAB_SLOT := Vector2(24, 24)
-## The 384x256 panel art minus these insets is the whole layout budget.
-## Everything below has to FIT: title + tabs + two roster rows + the
-## progress bar + the queue row. It used to come to 245 of 240 available,
-## so the VBox overran its bottom margin and the queue row sat on the
-## panel's bottom bevel, flush with the screen edge.
-const PANEL_INSET_X := 72
-const PANEL_INSET_Y := 8
-const TITLE_HEIGHT := 16
-const PROGRESS_SIZE := Vector2(180, 14)
-const ROW_SEPARATION := 4
-
+const PROD_DIR := "res://assets/z/ui/production"
+const SCALE := 2.0
+const WINDOW := Vector2(112.0, 80.0)
+const TITLE_PLATE := Rect2(4, 2, 64, 10)
+const HEALTH_GAUGE := Rect2(74, 6, 34, 9)
+const OBJECT_WINDOW := Rect2(7, 18, 42, 40)
+const OBJECT_NAME := Rect2(6, 59, 45, 13)
+const STATUS_PLATE := Rect2(66, 18, 42, 12)
+const TIME_SLOT := Rect2(66, 32, 42, 12)
+const CANCEL_BUTTON := Rect2(68, 46, 40, 14)
+const OK_BUTTON := Rect2(68, 62, 40, 15)
+## Roster flyout: object_button plates, four to a row, above the window.
+const ROSTER_SLOT := Vector2(45, 51)
+const ROSTER_COLUMNS := 4
+const ROSTER_GAP := 2.0
 
 var _wired: Node = null
 var _title: TextureRect
-var _box: GridContainer
-var _queue_row: HBoxContainer
-var _progress: ProgressBar
+var _health: TextureRect
+var _object: TextureRect
+var _object_name: TextureRect
+var _status: TextureRect
+var _time: Label
+var _health_pct: Label
+var _queue_count: Label
+var _roster: Control
+var _roster_open := false
 var _built_for := ""
-var _queue_cache: Array = []
-var _page := "robot"  # active R/V/G roster page
-var _tabs := {}       # kind token -> tab Button
-var _eject: Button    # "EXIT n" — shown only for a fort holding a garrison
 
 
 func _ready() -> void:
-	UiTheme.apply(self)
-	# bottom-center, on the narrow 384x256 original panel
-	set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	OriginalPanel.attach(self, true)
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", PANEL_INSET_X)
-	margin.add_theme_constant_override("margin_right", PANEL_INSET_X)
-	margin.add_theme_constant_override("margin_top", PANEL_INSET_Y)
-	margin.add_theme_constant_override("margin_bottom", PANEL_INSET_Y)
-	add_child(margin)
-	var col := VBoxContainer.new()
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", ROW_SEPARATION)
-	margin.add_child(col)
-	_title = TextureRect.new()
-	_title.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
-	_title.custom_minimum_size = Vector2(0, TITLE_HEIGHT)
-	col.add_child(_title)
-	# the ORIGINAL's R/V/G roster pages: a level-5 fort carries 18 items
-	# — one unfiltered grid overflows the 384x256 panel. Tabs filter the
-	# roster to robots / vehicles / guns (empty tabs hide, and the page
-	# auto-falls back when the roster drops its kind)
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 4)
-	tabs.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_child(tabs)
-	for spec in [["R", "robot", "Robots"], ["V", "vehicle", "Vehicles"],
-			["G", "cannon", "Guns"]]:
-		var tab := Button.new()
-		tab.text = String(spec[0])
-		tab.tooltip_text = String(spec[2])
-		tab.toggle_mode = true
-		tab.custom_minimum_size = TAB_SLOT
-		# slim plate: the default theme chrome adds 6px of content margin
-		# top AND bottom, which pushed a 24px tab out to 35 and blew the
-		# panel's height budget
-		_object_button_chrome(tab, 1.0)
-		var kind_token: String = String(spec[1])
-		tab.toggled.connect(func(on):
-			tab.modulate = Color(1.0, 0.85, 0.45) if on else Color.WHITE
-			if on:
-				_page = kind_token
-				for k in _tabs:
-					_tabs[k].button_pressed = _tabs[k] == tab
-				if _wired:
-					_build_buttons(_wired))
-		_tabs[String(spec[1])] = tab
-		tabs.add_child(tab)
-	# EXIT: hand the fort's garrison back. Lives in the tab row so it
-	# costs the panel no extra height, and it only appears when there IS
-	# something inside — a robot ordered into a fort used to vanish with
-	# no affordance anywhere in the HUD to explain where it went.
-	_eject = Button.new()
-	_eject.tooltip_text = "Send the garrison back out (X)"
-	_eject.custom_minimum_size = Vector2(52, TAB_SLOT.y)
-	_object_button_chrome(_eject, 1.0)
-	_eject.visible = false
-	_eject.pressed.connect(func(): Commands.eject())
-	tabs.add_child(_eject)
-	_box = GridContainer.new()
-	# CENTRED: a GridContainer packs its children to the left, so a
-	# low-level roster (a level-0 fort's robot page is ONE item) sat
-	# hard against the panel's left edge with a wall of empty plate to
-	# its right, which reads as a misaligned panel rather than a short
-	# list. Every other row in this column already centres itself.
-	_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	(_box as GridContainer).columns = 4
-	_box.add_theme_constant_override("h_separation", ROW_SEPARATION)
-	_box.add_theme_constant_override("v_separation", ROW_SEPARATION)
-	col.add_child(_box)
-	_progress = ProgressBar.new()
-	_progress.custom_minimum_size = PROGRESS_SIZE
-	_progress.show_percentage = false
-	_progress.visible = false
-	_progress.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_entry_bar_chrome(_progress)
-	col.add_child(_progress)
-	_queue_row = HBoxContainer.new()
-	_queue_row.add_theme_constant_override("separation", ROW_SEPARATION)
-	_queue_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_child(_queue_row)
+	set_anchors_preset(Control.PRESET_TOP_LEFT)
+	custom_minimum_size = WINDOW * SCALE
+	size = WINDOW * SCALE
+	var frame := TextureRect.new()
+	frame.texture = _tex("base_image")
+	frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(frame)
+
+	_title = _plate(TITLE_PLATE)
+	# the health gauge is the fort HP bar art, cropped to what is left
+	_health = _plate(HEALTH_GAUGE)
+	_health.stretch_mode = TextureRect.STRETCH_KEEP
+	_health.clip_contents = true
+	_object = _plate(OBJECT_WINDOW)
+	_object_name = _plate(OBJECT_NAME)
+	_status = _plate(STATUS_PLATE)
+
+	# RIGHT-aligned: the window art already draws the word "Time" at the
+	# left of this slot, so a centred value printed straight over it
+	_time = _label(Rect2(TIME_SLOT.position.x, TIME_SLOT.position.y,
+			TIME_SLOT.size.x - 3.0, TIME_SLOT.size.y),
+			HORIZONTAL_ALIGNMENT_RIGHT, 14)
+	# the building's condition, printed on its gauge like the original's
+	_health_pct = _label(Rect2(HEALTH_GAUGE.position.x, HEALTH_GAUGE.position.y - 1.0,
+			HEALTH_GAUGE.size.x, HEALTH_GAUGE.size.y + 2.0),
+			HORIZONTAL_ALIGNMENT_CENTER)
+	_queue_count = _label(Rect2(OBJECT_NAME.position.x, 2,
+			OBJECT_NAME.size.x, 10), HORIZONTAL_ALIGNMENT_LEFT)
+
+	# the object window is the picker: clicking it opens the roster
+	var pick := Button.new()
+	pick.position = OBJECT_WINDOW.position * SCALE
+	pick.size = OBJECT_WINDOW.size * SCALE
+	pick.tooltip_text = "Choose what this factory builds"
+	pick.focus_mode = Control.FOCUS_NONE
+	pick.flat = true
+	for state in ["normal", "hover", "pressed", "focus"]:
+		pick.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+	pick.pressed.connect(_toggle_roster)
+	add_child(pick)
+
+	_art_button(CANCEL_BUTTON, "cancel_button",
+			"Cancel the unit on the line").pressed.connect(_on_cancel)
+	_art_button(OK_BUTTON, "ok_button",
+			"Close").pressed.connect(func():
+		Fx.ui_click()
+		SelectionManager.current.clear_selection())
+
+	_roster = Control.new()
+	_roster.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_roster.visible = false
+	add_child(_roster)
+
 	SelectionManager.current.selection_changed.connect(_on_selection_changed)
 	MatchState.current.zone_captured.connect(func(_t): _check_roster())
 	MatchState.current.tech_level_changed.connect(_check_roster)
 	hide()
 
 
-## Factory wiring follows the selection; the queue row follows the
-## producer's queue.changed signal — nothing polls.
+# ---- pieces -----------------------------------------------------------
+
+func _plate(at: Rect2) -> TextureRect:
+	var r := TextureRect.new()
+	r.position = at.position * SCALE
+	r.size = at.size * SCALE
+	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(r)
+	return r
+
+
+func _label(at: Rect2, align: int, font_size := 16) -> Label:
+	var l := Label.new()
+	l.position = at.position * SCALE
+	l.size = at.size * SCALE
+	l.horizontal_alignment = align
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	HudFrame._apply_hud_font(l, font_size)
+	add_child(l)
+	return l
+
+
+## A button whose whole face is the original's plate art.
+func _art_button(at: Rect2, art: String, tooltip: String) -> Button:
+	var btn := Button.new()
+	btn.position = at.position * SCALE
+	btn.size = at.size * SCALE
+	btn.tooltip_text = tooltip
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.flat = true
+	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		btn.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+	var face := TextureRect.new()
+	face.texture = _tex(art)
+	face.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	face.set_anchors_preset(Control.PRESET_FULL_RECT)
+	btn.add_child(face)
+	var pressed := _tex("%s_pressed" % art)
+	if pressed != null:
+		btn.button_down.connect(func(): face.texture = pressed)
+		btn.button_up.connect(func(): face.texture = _tex(art))
+	add_child(btn)
+	return btn
+
+
+# ---- wiring -----------------------------------------------------------
+
 func _on_selection_changed(_units: Array) -> void:
 	var factory := _selected_factory()
 	visible = factory != null
 	if factory != _wired:
-		if _wired:
-			if queue_requested.is_connected(_on_queue_requested):
-				queue_requested.disconnect(_on_queue_requested)
-			# the queue row follows the producer — unwind the old wire or
-			# captured factories keep invoking _check_roster forever
-			if _wired.queue.changed.is_connected(_on_queue_changed):
-				_wired.queue.changed.disconnect(_on_queue_changed)
+		if _wired and is_instance_valid(_wired) \
+				and _wired.queue.changed.is_connected(_on_queue_changed):
+			_wired.queue.changed.disconnect(_on_queue_changed)
 		_wired = factory
-		_queue_cache.clear()
+		_roster_open = false
 		if factory:
-			queue_requested.connect(_on_queue_requested)
-			# ONE handler for enqueue/cancel/complete: the roster AND the
-			# queue row must both refresh (the row used to miss pure
-			# enqueues — the queue showed nothing until reselecting)
 			factory.queue.changed.connect(_on_queue_changed)
 			_check_roster()
 	if factory:
-		_update_queue(factory)
+		_place_over(factory)
+		_sync_readouts()
+
+
+## The window opens ON the factory, like the original's, and is nudged
+## back inside the world view so the sidebar never clips it.
+func _place_over(factory: Node) -> void:
+	if not (factory is Node2D):
+		return
+	var canvas: Transform2D = get_viewport().get_canvas_transform()
+	var screen: Vector2 = canvas * (factory as Node2D).global_position
+	var view := HudFrame.view_rect()
+	var want := screen + Vector2(-size.x * 0.5, -size.y - 24.0)
+	position = Vector2(
+		clampf(want.x, view.position.x + 4.0, view.end.x - size.x - 4.0),
+		clampf(want.y, view.position.y + 4.0, view.end.y - size.y - 4.0))
 
 
 func _on_queue_changed() -> void:
 	_check_roster()
-	if _wired and is_instance_valid(_wired):
-		_update_queue(_wired)
+	_sync_readouts()
 
 
-## Button row rebuild: on selection change and whenever the producer's
-## queue or level may have moved the roster.
 func _check_roster() -> void:
-	if _wired and _built_for != "%s:%d:%s" % [
-			_wired.kind_key(), _wired.level, _page]:
-		_build_buttons(_wired)
-		if _wired:
-			_update_queue(_wired)
+	if _wired and _built_for != "%s:%d" % [_wired.kind_key(), _wired.level]:
+		_build_roster(_wired)
 
 
-## Only the progress bar animates per frame.
 func _process(_delta: float) -> void:
 	if _wired == null or not visible:
 		return
-	var prog: float = _wired.progress()
+	_place_over(_wired)
+	_sync_readouts()
+	# ONE writer for the flyout. It used to be set from three places
+	# (_ready, the rebuild, the toggle) and a rebuild that landed after a
+	# selection change left it on screen with nobody having opened it.
+	_roster.visible = _roster_open and _roster.get_child_count() > 0
+
+
+func _sync_readouts() -> void:
+	if _wired == null or not is_instance_valid(_wired):
+		return
+	_title.texture = _load(FactoryLabels.path_for(_wired.kind_key()))
+	_sync_health()
 	var q: Array = _wired.queue_items()
-	_progress.visible = not q.is_empty() and prog > 0.0
-	_progress.value = prog * 100.0
-	# garrison size has no signal (robots arrive on their own), so the
-	# EXIT button follows it here — the panel already ticks for progress
-	var held := 0
-	if _wired is FortBuilding:
-		for member in (_wired as FortBuilding).garrison:
-			if is_instance_valid(member) and member.alive:
-				held += 1
-	_eject.visible = held > 0
-	if held > 0:
-		_eject.text = "EXIT %d" % held
+	var head: String = String(q[0]) if not q.is_empty() else ""
+	# the object window shows WHAT is on the line (or the next thing the
+	# factory will take, when it is idle)
+	if head != "":
+		var parts: PackedStringArray = head.split(":")
+		_object.texture = object_art(parts[0], parts[1],
+				MatchState.current.player_team)
+		# the red bar in the window art is the unit NAME plate ("Grunt"),
+		# not the weapon plate — those are two different slots
+		_object_name.texture = _load(SelectedObject.plate_path(parts[1],
+				MatchState.current.player_team))
+	else:
+		_object.texture = null
+		_object_name.texture = null
+	_status.texture = _tex("building_label" if head != "" else "buildingless_label")
+	_time.text = _time_left(head)
+	_queue_count.text = "" if q.size() < 2 else "+%d" % (q.size() - 1)
 
 
-func _update_queue(factory: Node) -> void:
-	var q: Array = factory.queue_items()
-	if q != _queue_cache:
-		_queue_cache = q.duplicate()
-		for c in _queue_row.get_children():
-			c.queue_free()
-		for idx in q.size():
-			var btn := Button.new()
-			# WIDE slots (the icon art is ~2:1) with slim content margins:
-			# the default theme plate eats 10px each side, which is what
-			# starved the icon down to a sliver in the old 40x44 square
-			btn.custom_minimum_size = QUEUE_SLOT
-			btn.tooltip_text = "%s — right-click to cancel" % [
-				String(q[idx]).split(":")[-1].capitalize()]
-			_object_button_chrome(btn, 2.0)
-			var parts: PackedStringArray = String(q[idx]).split(":")
-			btn.icon = icon_for(parts[0], parts[1], MatchState.current.player_team)
-			btn.expand_icon = btn.icon != null
-			var i := idx
-			btn.gui_input.connect(func(ev):
-				if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT:
-					factory.cancel_at(i))
-			_queue_row.add_child(btn)
+## Seconds remaining on the unit being built, as m:ss — the original's
+## "Time 2:10". Empty while nothing is on the line.
+func _time_left(head: String) -> String:
+	if head == "":
+		return ""
+	var total: float = _wired.produce_seconds(head)
+	var left: int = int(ceilf(maxf(total * (1.0 - _wired.progress()), 0.0)))
+	return "%d:%02d" % [left / 60, left % 60]
 
 
+## Building condition, in the top-right gauge — the original prints the
+## factory's health beside its name, and a factory being shelled while
+## you queue units is exactly when you want to know.
+func _sync_health() -> void:
+	var art := "res://assets/z/ui/hud/unit_amount_bar_%s.png" % AnimLibrary.team_name(
+			_wired.owner_team)
+	_health.texture = _load(art)
+	var frac := clampf(float(_wired.hp) / float(maxi(_wired.max_hp, 1)), 0.0, 1.0)
+	_health.size.x = maxf(roundf(HEALTH_GAUGE.size.x * SCALE * frac), 1.0)
+	_health_pct.text = "%d%%" % roundi(frac * 100.0)
 
-## Build request: apply locally AND relay (no-op offline). One seam —
-## the direct factory.queue_unit wire used to bypass the network.
-func _on_queue_requested(item: String) -> void:
-	if _wired != null and is_instance_valid(_wired):
-		_wired.queue_unit(item)
-		Net.relay_queue(_wired, item)
+
+func _on_cancel() -> void:
+	Fx.ui_click()
+	if _wired and is_instance_valid(_wired) and not _wired.queue_items().is_empty():
+		_wired.cancel_at(0)
+	else:
+		Fx.cap_denied()
 
 
 func _selected_factory() -> Node:
@@ -239,89 +292,60 @@ func _selected_factory() -> Node:
 	return null
 
 
-func _build_buttons(factory: Node) -> void:
-	_built_for = "%s:%d:%s" % [factory.kind_key(), factory.level, _page]
-	var label_path := FactoryLabels.path_for(factory.kind_key())
-	_title.texture = load(label_path) if label_path != "" else null
-	# tab availability from the FULL roster (tabs hide when this level
-	# carries none of that kind); switch pages when ours emptied out
-	var full: Array = factory.build_options()
-	for kind_token in _tabs:
-		var tab: Button = _tabs[kind_token]
-		tab.visible = full.any(func(i): return String(i).begins_with(kind_token + ":"))
-		if tab.visible and _page == kind_token:
-			tab.button_pressed = true
-			tab.modulate = Color(1.0, 0.85, 0.45)
-	if not _tabs.get(_page, null) or not _tabs[_page].visible:
-		for kind_token in ["robot", "vehicle", "cannon"]:
-			if _tabs[kind_token].visible:
-				_page = kind_token
-				_tabs[kind_token].button_pressed = true
-				break
-	for c in _box.get_children():
+# ---- the roster flyout ------------------------------------------------
+
+func _toggle_roster() -> void:
+	Fx.ui_click()
+	_roster_open = not _roster_open
+
+
+func _build_roster(factory: Node) -> void:
+	_built_for = "%s:%d" % [factory.kind_key(), factory.level]
+	for c in _roster.get_children():
 		c.queue_free()
-	# the level-gated roster from the original build lists — mixed
-	# kinds: "robot:grunt", "vehicle:jeep", "cannon:gatling"...
-	for item in full:
-		if not String(item).begins_with(_page + ":"):
-			continue
-		var parts: PackedStringArray = String(item).split(":")
-		var kind := parts[0]
-		var type_name := parts[1]
-		var stats := ContentDB.def_for(kind, type_name)
+	var items: Array = factory.build_options()
+	var rows: int = maxi(int(ceilf(float(items.size()) / float(ROSTER_COLUMNS))), 1)
+	_roster.size = Vector2(
+		float(ROSTER_COLUMNS) * (ROSTER_SLOT.x + ROSTER_GAP),
+		float(rows) * (ROSTER_SLOT.y + ROSTER_GAP))
+	# above the window, so it never covers the readouts it is feeding
+	_roster.position = Vector2(0.0, -_roster.size.y - 4.0)
+	for i in items.size():
+		var item := String(items[i])
+		var parts: PackedStringArray = item.split(":")
+		var stats := ContentDB.def_for(parts[0], parts[1])
 		var btn := Button.new()
-		btn.custom_minimum_size = ROSTER_SLOT
-		btn.tooltip_text = "%s (%s) L%d\nHP %d  DMG %d\n$%d" % [
-			type_name.capitalize(), kind, factory.level,
-			stats.hp, stats.damage, stats.cost]
-		btn.text = "%d" % stats.cost
-		btn.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		btn.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		btn.position = Vector2(float(i % ROSTER_COLUMNS) * (ROSTER_SLOT.x + ROSTER_GAP),
+				float(i / ROSTER_COLUMNS) * (ROSTER_SLOT.y + ROSTER_GAP))
+		btn.size = ROSTER_SLOT
+		btn.tooltip_text = "%s — %d s, HP %d, DMG %d" % [
+			parts[1].capitalize(), int(stats.build_time), stats.hp, stats.damage]
+		btn.focus_mode = Control.FOCUS_NONE
 		_object_button_chrome(btn)
-		btn.icon = icon_for(kind, type_name, MatchState.current.player_team)
+		btn.icon = icon_for(parts[0], parts[1], MatchState.current.player_team)
 		btn.expand_icon = btn.icon != null
-		btn.pressed.connect(func(): queue_requested.emit(String(item)))
-		_box.add_child(btn)
+		btn.pressed.connect(func():
+			queue_requested.emit(item)
+			_wired.queue_unit(item)
+			Net.relay_queue(_wired, item)
+			_roster_open = false)
+		_roster.add_child(btn)
 
 
-## zod `entry_bar` art (102x12 at 2x) as the progress bar chrome.
-func _entry_bar_chrome(bar: ProgressBar) -> void:
-	var grey := "res://assets/z/ui/production/entry_bar_grey.png"
-	var green := "res://assets/z/ui/production/entry_bar_green.png"
-	if not ResourceLoader.exists(grey):
-		return
-	var bg := StyleBoxTexture.new()
-	bg.texture = load(grey)
-	bg.texture_margin_left = 4
-	bg.texture_margin_right = 4
-	bar.add_theme_stylebox_override("background", bg)
-	if ResourceLoader.exists(green):
-		var fill := StyleBoxTexture.new()
-		fill.texture = load(green)
-		fill.texture_margin_left = 4
-		fill.texture_margin_right = 4
-		bar.add_theme_stylebox_override("fill", fill)
-
-
-## zod `object_button` chrome (45x51 at 2x) behind each unit button.
-## `pad` is the CONTENT inset: the frame art still draws at its 6px
-## corners, but the icon gets nearly the whole plate. Without an explicit
-## content margin a StyleBoxTexture inherits its texture margins, so the
-## small queue slots lost 12 of their 48 pixels to invisible padding.
-func _object_button_chrome(btn: Button, pad := 6.0) -> void:
-	var path := "res://assets/z/ui/production/object_button.png"
+## zod `object_button` plate behind each roster entry.
+static func _object_button_chrome(btn: Button, pad := 4.0) -> void:
+	var path := "%s/object_button.png" % PROD_DIR
 	if not ResourceLoader.exists(path):
 		return
-	var ppath := "res://assets/z/ui/production/object_button_pressed.png"
-	var normal := _plate(path, pad)
-	btn.add_theme_stylebox_override("normal", normal)
-	btn.add_theme_stylebox_override("hover", _plate(path, pad))
+	var pressed := "%s/object_button_pressed.png" % PROD_DIR
+	btn.add_theme_stylebox_override("normal", _stylebox(path, pad))
+	btn.add_theme_stylebox_override("hover", _stylebox(path, pad))
 	btn.add_theme_stylebox_override("pressed",
-		_plate(ppath if ResourceLoader.exists(ppath) else path, pad))
+		_stylebox(pressed if ResourceLoader.exists(pressed) else path, pad))
 	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 
 
-static func _plate(path: String, pad: float) -> StyleBoxTexture:
+static func _stylebox(path: String, pad: float) -> StyleBoxTexture:
 	var box := StyleBoxTexture.new()
 	box.texture = load(path)
 	for side in ["left", "right", "top", "bottom"]:
@@ -330,13 +354,31 @@ static func _plate(path: String, pad: float) -> StyleBoxTexture:
 	return box
 
 
-## THE unit icon for every producer surface (roster grid, queue row,
-## facility quick bar). The original HUD icons ship on a fixed 96px-wide
-## canvas with the unit drawn small and off-centre inside it, so the raw
-## texture in an `expand_icon` Button scaled to the CANVAS: a grunt came
-## out ~20x7px, an unreadable smear — the "queue shows no icons" bug.
-## Cropping to the opaque region first (UiTheme.trimmed, the same fix
-## the menu art needed) recovers 2-3x the linear size. Cached per path.
+static func _tex(name: String) -> Texture2D:
+	return _load("%s/%s.png" % [PROD_DIR, name])
+
+
+static func _load(path: String) -> Texture2D:
+	return load(path) if path != "" and ResourceLoader.exists(path) else null
+
+
+## What the object window shows: a ROBOT's own head — the same baked
+## portrait the sidebar animates — because that is what the original puts
+## in this slot. Hardware has no head, so it falls back to the icon.
+static func object_art(kind: String, type_name: String, team := 1) -> Texture2D:
+	if kind == "robot":
+		var face := "res://assets/z/ui/portraits/%s_%s/base.png" % [
+				type_name, AnimLibrary.team_name(team if team > 0 else 1)]
+		if ResourceLoader.exists(face):
+			return load(face)
+	return icon_for(kind, type_name, team)
+
+
+## THE unit icon for every producer surface. The original HUD icons ship
+## on a fixed 96px canvas with the unit drawn small and off-centre, so a
+## raw texture in an `expand_icon` Button scales to the CANVAS and comes
+## out an unreadable smear — crop to the opaque region first (cached per
+## path by UiTheme.trimmed).
 static func icon_for(kind: String, type_name: String, team := 1) -> Texture2D:
 	var path := _icon_path(kind, type_name, team)
 	if path == "" or not ResourceLoader.exists(path):
@@ -345,7 +387,6 @@ static func icon_for(kind: String, type_name: String, team := 1) -> Texture2D:
 
 
 static func _icon_path(kind: String, type_name: String, team := 1) -> String:
-	# original HUD icons exist for every type and team
 	var tn := AnimLibrary.team_name(team)
 	var hud := "res://assets/z/ui/hud/icon_%s_%s.png" % [type_name, tn]
 	if ResourceLoader.exists(hud):
@@ -358,16 +399,14 @@ static func _icon_path(kind: String, type_name: String, team := 1) -> String:
 ## First existing UNMANNED hull image for a vehicle/cannon type. The
 ## original names this art three different ways — `empty_<team>_r###`,
 ## `empty_<team>`, plain `empty` — and only 3 of the 11 hardware types
-## ship any one of them, so every caller has to walk the list. Shared by
-## the production icons and Unit2D.portrait_path (which probed a single
-## `empty_r270` and came up blank for 8 types).
+## ship any one of them, so every caller has to walk the list. Shared
+## with Unit2D.portrait_path.
 static func hardware_art(kind: String, type_name: String) -> String:
 	var dir := ContentDB.def_for(kind, type_name).asset_dir
 	for probe in ["%s/empty_r270.png" % dir, "%s/empty_r180.png" % dir,
 			"%s/empty_null.png" % dir, "%s/empty.png" % dir]:
 		if ResourceLoader.exists(probe):
 			return probe
-	# team-painted hulls: any facing beats a blank slot
 	for tn in ["red", "blue", "green", "yellow", "null"]:
 		for probe in ["%s/empty_%s_r270.png" % [dir, tn],
 				"%s/empty_%s_r180.png" % [dir, tn], "%s/empty_%s.png" % [dir, tn]]:
