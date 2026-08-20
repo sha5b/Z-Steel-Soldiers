@@ -2358,6 +2358,72 @@ static func run(ctx: Node) -> void:
 					% empty_start + "even ordered a robot onto one")
 			tac_rig.check(int(after_t.zones) > 0,
 				"the AI holds no territory after the sim")
+			# ADAPTIVE POSTURE (ZBot::GoAllOut_3). The commitment table
+			# must follow the share of the map held, not sit on one
+			# setting: holding a fair share means a SMALL slice on a SLOW
+			# cadence with a WIDER target list; falling behind means
+			# re-tasking a third of the army every few seconds.
+			var seen_postures := {}
+			var zone_list: Array = MatchState.current.zones
+			var saved_owners: Array = []
+			for z5 in zone_list:
+				saved_owners.append(z5.owner_team)
+			for want in [0, zone_list.size()]:
+				for zi in zone_list.size():
+					zone_list[zi].owner_team = t if zi < want else 0
+				var post: Dictionary = ai2.posture()
+				seen_postures[float(post.commit)] = post
+				if want == zone_list.size():
+					tac_rig.check(bool(post.all_out),
+						"holding the whole map did not go all out")
+					tac_rig.check(float(post.commit) < 0.2
+							and float(post.delay) > 8.0,
+						"all-out posture commits %.2f every %.0fs, want a "
+						% [float(post.commit), float(post.delay)]
+						+ "small slice on a slow cadence")
+				else:
+					tac_rig.check(not bool(post.all_out),
+						"holding nothing still went all out")
+					tac_rig.check(float(post.commit) > 0.3
+							and float(post.delay) < 5.0,
+						"losing posture commits %.2f every %.0fs, want a "
+						% [float(post.commit), float(post.delay)]
+						+ "big slice on a fast cadence")
+			for zi in zone_list.size():
+				zone_list[zi].owner_team = saved_owners[zi]
+			tac_rig.check(seen_postures.size() >= 2,
+				"posture never changed with the map share")
+			# MUTUAL-NEAREST assignment must SPREAD the army: given more
+			# targets than units, no two units may land on the same
+			# non-building target (the old code walked everyone to one
+			# ring, which is what "it just swarms" looked like).
+			var spread_units: Array[Node] = []
+			for u7 in tree.get_nodes_in_group(Groups.UNITS):
+				if u7 is Unit2D and u7.alive and u7.team == t \
+						and not u7.carried and u7.damage > 0:
+					spread_units.append(u7)
+				if spread_units.size() >= 4:
+					break
+			if spread_units.size() >= 2:
+				var fake: Array = []
+				for k in 8:
+					fake.append({"at": Vector2(600.0 + k * 320.0, 600.0),
+						"node": null, "kind": "flag", "slots": 1,
+						"bias": 1.0, "zone": zone_list[0]})
+				var issued: int = ai2._match_and_order(spread_units, fake)
+				tac_rig.check(issued > 0, "mutual-nearest matched nothing")
+				var dests := {}
+				for u8 in spread_units:
+					if u8.has_move_target():
+						dests[u8.move_target] = int(
+							dests.get(u8.move_target, 0)) + 1
+				var piled := 0
+				for d2 in dests:
+					if int(dests[d2]) > 1:
+						piled += 1
+				tac_rig.check(piled == 0,
+					"%d destinations took more than one unit with 8 "
+					% piled + "targets for %d units" % spread_units.size())
 			# HOLDING GROUND. Every chokepoint the brain offers must be a
 			# real bridge (they are the only place armour crosses a Z
 			# map), and a posted guard must actually be on DEFEND and be

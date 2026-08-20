@@ -11,9 +11,11 @@ extends Node
 ## - MAN empty hardware (vehicles and cannons — the biggest firepower
 ##   upgrade on any Z map); cranes repair, damaged vehicles visit the
 ##   repair shop
-## - EXPAND continuously: idle robots AND vehicles claim neutral and
-##   enemy zones — frontier zones, zones with buildings and zones the
-##   team recently lost score higher; unreachable zones are blacklisted
+## - ASSIGN the rest (the ZBot Stage1AI_3 port, see "assignment" below):
+##   read a POSTURE off how much of the map we hold, collect targets in
+##   the original's priority order, and match units to them by MUTUAL
+##   NEAREST — so the army spreads over objectives instead of swarming
+##   one point, and only a fraction of it is re-tasked per cycle
 ## - ATTACK in force once the army fits the MAP (small maps push early,
 ##   large maps build up first) or the AI clearly outnumbers its foes;
 ##   fresh units stream to the push through factory rally points
@@ -31,7 +33,6 @@ const RETAKE_MS := 45000  # a lost zone stays a priority target this long
 var team := 2
 var _profile: AiProfileDef
 var _accum := 0.0
-var _zone_claims: Dictionary = {}      # zone node -> unit assigned
 var _zone_blacklist: Dictionary = {}   # zone node -> msec until skipped
 var _retake_at: Dictionary = {}        # zone node -> msec lost at
 var _owned_snapshot: Dictionary = {}   # zone node -> true (last think)
@@ -110,14 +111,13 @@ func _think() -> void:
 	if robots.is_empty() and vehicles.is_empty():
 		return
 	_track_lost_zones()
-	_prune_claims()
 	_produce()
 	_defend(robots, vehicles)
 	_man_hardware(robots, empty_hardware)
 	_maintenance(vehicles)
-	_capture_zones(robots, vehicles)
 	_hold_chokepoints(robots, vehicles)
 	_attack(robots, vehicles, enemy_army)
+	_assign(robots, vehicles)
 	_update_rallies()
 
 
@@ -460,58 +460,6 @@ func _maintenance(vehicles: Array[Node]) -> void:
 
 # ------------------------- zone capture -------------------------
 
-## Idle robots AND vehicles spread over neutral/enemy zones. Scoring
-## favours the frontier (zones touching our territory), zones with
-## buildings (they flip income AND production) and zones lost recently.
-func _capture_zones(robots: Array[Node], vehicles: Array[Node]) -> void:
-	if _attack_mode:
-		return  # the push supersedes spreading
-	var not_ours: Array[Node] = []
-	for z in MatchState.current.zones:
-		if z.owner_team != team:
-			not_ours.append(z)
-	if not_ours.is_empty():
-		return
-	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
-	# more claims on bigger maps, fewer on easy
-	var max_claims: int = clampi(MatchState.current.zones.size() / 3, 2, _p().max_claims)
-	var idle := _idle_of(robots) + _idle_of(vehicles)
-	for u in idle:
-		if _zone_claims.size() >= max_claims:
-			return
-		if u.enter_target != null:
-			continue
-		var best_zone: Node = null
-		var best_d := INF
-		for z in not_ours:
-			if _zone_claims.has(z) or _blacklisted(z):
-				continue
-			var d: float = u.global_position.distance_squared_to(_zone_center(z))
-			# zones that hold buildings are worth a much longer walk
-			if _zone_has_building(z):
-				d *= 0.4
-			# frontier: touching our territory — easy to take, easy to keep
-			if _zone_touches_owned(z):
-				d *= 0.7
-			# a zone we just lost is a priority retake
-			if _retake_at.has(z):
-				d *= 0.5
-			# neutral land before a fight
-			if z.owner_team != 0:
-				d *= 1.5
-			if d < best_d:
-				best_d = d
-				best_zone = z
-		if best_zone == null:
-			return
-		_order(u, Order.move_attack(_zone_center(best_zone)))
-		if u.waypoints.is_empty():
-			# no route (island/enclosed): skip this zone for a while
-			_zone_blacklist[best_zone] = Time.get_ticks_msec() + BLACKLIST_MS
-		else:
-			_zone_claims[best_zone] = u
-
-
 ## Remember zones that flipped away from us — they stay juicy targets.
 func _track_lost_zones() -> void:
 	var now_owned: Dictionary = {}
@@ -525,6 +473,261 @@ func _track_lost_zones() -> void:
 		if Time.get_ticks_msec() > int(_retake_at[z]) or now_owned.has(z):
 			_retake_at.erase(z)
 	_owned_snapshot = now_owned
+
+
+# ------------------------- assignment (ZBot Stage1AI_3) -------------------------
+# The original bot does NOT pick one focus and send everyone at it. Per
+# order cycle it:
+#   1. reads a POSTURE off how much of the map it holds (GoAllOut_3),
+#      which sets what FRACTION of the idle army is re-tasked and how
+#      long until the next cycle;
+#   2. collects TARGETS in a fixed priority order (CollectOurTargets_3):
+#      map items, then buildings, then empty hardware, and enemy UNITS
+#      only once it is "all out";
+#   3. matches units to targets by MUTUAL NEAREST (MatchTargets_3 +
+#      GiveOutOrders_3) — a pair is ordered only when the unit is that
+#      target's nearest candidate AND that target is the unit's nearest.
+#      A unit with no mutual partner is LEFT ALONE this cycle.
+#
+# Step 3 is what stops the swarm. Our old _capture_zones handed one unit
+# per zone by nearest-first and _attack walked every remaining idle unit
+# to a single ring, so the army pinballed between objectives and the
+# ground behind it emptied.
+
+## POSTURE, from ZBot::GoAllOut_3. `share` is our fraction of the map's
+## zones; `fair` is 1/teams. Read the table the right way round: holding
+## MORE than a fair share does not mean throwing everything forward — it
+## means the map is already ours, so the bot commits a SMALL slice on a
+## SLOW cadence and instead WIDENS what it will shoot at (`all_out` adds
+## enemy units and robots to the target list). Falling behind means
+## re-tasking a third of the army every few seconds.
+const POSTURE_ALL_OUT := {"commit": 0.15, "delay": 12.0, "all_out": true}
+const POSTURE_HOLDING := {"commit": 0.25, "delay": 5.0, "all_out": false}
+const POSTURE_LOSING := {"commit": 0.35, "delay": 4.0, "all_out": false}
+## How many units may pile onto ONE target in a cycle. Buildings soak a
+## squad (this is the focus fire we had none of); everything else takes
+## one, so the army fans out.
+const SLOTS_BUILDING := 4
+## A unit under this share of its HP breaks off and heads for a repair
+## shop instead of taking an objective — the original lists its own
+## repair stations as valid targets for exactly this.
+const RETREAT_AT := 0.4
+
+var _next_assign_ms := 0
+var _last_posture := "losing"
+
+
+func posture() -> Dictionary:
+	var teams := {}
+	var held := 0
+	for z in MatchState.current.zones:
+		if z.owner_team != 0:
+			teams[z.owner_team] = true
+		if z.owner_team == team:
+			held += 1
+	var total: int = maxi(MatchState.current.zones.size(), 1)
+	var fair := 1.0 / float(maxi(teams.size(), 2))
+	var share := float(held) / float(total)
+	if share >= fair:
+		return POSTURE_ALL_OUT
+	if share >= fair * 0.25:
+		return POSTURE_HOLDING
+	return POSTURE_LOSING
+
+
+## Everything worth walking to, in the original's priority order. Each
+## entry is {at, node, kind, slots} — `node` is null for a zone flag
+## (a place, not a thing). Priority is the ORDER of the list; the
+## matching then decides who goes where.
+func _collect_targets(all_out: bool) -> Array:
+	var out: Array = []
+	# 1. MAP ITEMS: the zone flags we do not own, and loose crates.
+	#    Zone scoring survives from the old grab — a flag next to
+	#    buildings, on the frontier, or one we just lost is worth a
+	#    longer walk, expressed as a distance BIAS on the match.
+	var flags: Array = []
+	for z in MatchState.current.zones:
+		if z.owner_team == team or _blacklisted(z):
+			continue
+		var bias := 1.0
+		if _zone_has_building(z):
+			bias *= 0.4
+		if _zone_touches_owned(z):
+			bias *= 0.7
+		if _retake_at.has(z):
+			bias *= 0.5
+		if z.owner_team != 0:
+			bias *= 1.5  # neutral land before a fight
+		flags.append({"at": _zone_center(z), "node": null, "kind": "flag",
+			"slots": 1, "bias": bias, "zone": z})
+	# the profile's max_claims keeps its old meaning — how many zone
+	# grabs may be in flight — as a cap on the FLAG targets offered per
+	# cycle, best-biased first (an easy brain spreads itself thinner)
+	flags.sort_custom(func(a, b): return float(a.bias) < float(b.bias))
+	out.append_array(flags.slice(0, _p().max_claims))
+	for c in get_tree().get_nodes_in_group(Groups.PICKUPS):
+		if c is Node2D:
+			out.append({"at": (c as Node2D).global_position, "node": c,
+				"kind": "crate", "slots": 1, "bias": 0.8})
+	# 2. BUILDINGS: enemy structures, and OUR repair shop as a fallback
+	#    for anything limping (the retreat leg).
+	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
+		if not (b is Building2D) or not b.alive or (b as Building2D).is_bridge():
+			continue
+		var bld := b as Building2D
+		if bld.team == team:
+			continue  # _maintenance owns our own repair traffic
+		if bld.team == 0:
+			continue
+		# a factory denies production, a fort ends the game
+		out.append({"at": bld.visual_center(), "node": bld, "kind": "building",
+			"slots": SLOTS_BUILDING, "bias": 0.6 if bld.produces_anything() else 0.9})
+	# 3+4. ENEMY UNITS, only when the posture says all out.
+	if all_out:
+		for u in UnitRegistry.current.world_units():
+			if not (u is Unit2D) or not u.alive or u.carried:
+				continue
+			if u.team == team or u.team == 0:
+				continue
+			out.append({"at": u.global_position, "node": u, "kind": "unit",
+				"slots": 1, "bias": 1.0})
+	return out
+
+
+## Can this unit take this target at all? The original filters the same
+## way before matching (robots enter hardware, cranes repair, and so on).
+func _can_take(u: Node, t: Dictionary) -> bool:
+	var kind := String(t.kind)
+	# A limping tank is NOT re-tasked onto a fresh objective — it is left
+	# for _maintenance to walk into the repair shop. Without this the
+	# assignment kept overwriting the retreat with the next attack.
+	if float(u.hp) / float(maxi(u.max_hp, 1)) < RETREAT_AT and u is Vehicle2D:
+		return false
+	match kind:
+		"crate":
+			return u.kind == "robot"
+		"unit":
+			return u.damage > 0
+		"building":
+			return u.damage > 0
+		_:
+			return true
+
+
+## MUTUAL-NEAREST matching. Build each unit's candidate list and each
+## target's, then keep ordering the pairs that are each other's nearest
+## until no mutual pair is left. Returns how many orders went out.
+func _match_and_order(units: Array[Node], targets: Array) -> int:
+	if units.is_empty() or targets.is_empty():
+		return 0
+	# candidate lists, capability- and reach-filtered
+	var cands: Array = []  # per unit: array of target indices
+	for u in units:
+		var mine: Array = []
+		for ti in targets.size():
+			if _can_take(u, targets[ti]):
+				mine.append(ti)
+		cands.append(mine)
+	var slots: Array = []
+	for t in targets:
+		slots.append(int(t.slots))
+	var taken: Array = []  # unit index -> ordered?
+	taken.resize(units.size())
+	taken.fill(false)
+	var orders := 0
+	# each pass orders every MUTUAL nearest pair it finds; a pass that
+	# finds none is the end (no infinite loop even with odd geometry)
+	while true:
+		# unit -> its nearest live candidate
+		var pick: Array = []
+		pick.resize(units.size())
+		pick.fill(-1)
+		for ui in units.size():
+			if taken[ui]:
+				continue
+			var best := -1
+			var best_d := INF
+			for ti in cands[ui]:
+				if int(slots[ti]) <= 0:
+					continue
+				var d: float = units[ui].global_position.distance_to(
+					targets[ti].at) * float(targets[ti].bias)
+				if d < best_d:
+					best_d = d
+					best = ti
+			pick[ui] = best
+		# target -> its nearest suitor among the units that picked it
+		var claimed: Dictionary = {}  # target index -> unit index
+		for ui in units.size():
+			if taken[ui] or pick[ui] < 0:
+				continue
+			var ti: int = pick[ui]
+			if not claimed.has(ti):
+				claimed[ti] = ui
+				continue
+			var rival: int = int(claimed[ti])
+			var d_new: float = units[ui].global_position.distance_to(targets[ti].at)
+			var d_old: float = units[rival].global_position.distance_to(targets[ti].at)
+			if d_new < d_old:
+				claimed[ti] = ui
+		if claimed.is_empty():
+			break
+		for ti in claimed:
+			var ui: int = int(claimed[ti])
+			_issue(units[ui], targets[ti])
+			taken[ui] = true
+			slots[ti] = int(slots[ti]) - 1
+			orders += 1
+		if orders >= units.size():
+			break
+	return orders
+
+
+## Turn a matched target into the right ORDER for its kind.
+func _issue(u: Node, t: Dictionary) -> void:
+	match String(t.kind):
+		"crate":
+			_order(u, Order.move(Vector2(t.at)))  # walking over it picks it up
+		"unit":
+			_order(u, Order.attack(t.node))
+		"building":
+			_order(u, Order.attack(t.node))
+		_:
+			_order(u, Order.move_attack(Vector2(t.at)))
+			if String(t.kind) == "flag" and u.waypoints.is_empty():
+				# no route (island/enclosed): park this zone for a while
+				_zone_blacklist[t.zone] = Time.get_ticks_msec() + BLACKLIST_MS
+
+
+## One assignment cycle, gated by the posture's own order delay.
+func _assign(robots: Array[Node], vehicles: Array[Node]) -> void:
+	var now := Time.get_ticks_msec()
+	if now < _next_assign_ms:
+		return
+	var post := posture()
+	_last_posture = "all_out" if bool(post.all_out) \
+		else ("holding" if float(post.commit) < 0.3 else "losing")
+	# difficulty rides the CADENCE, not the original's fractions: an easy
+	# brain re-tasks less often, a hard one at the source's own rate
+	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
+	_next_assign_ms = now + int(float(post.delay) * 1000.0
+		* (1.3 - 0.15 * float(diff)))
+	# guards hold their crossing; units walking into hardware keep going
+	var guards := guard_units()
+	var free: Array[Node] = []
+	for u in _idle_of(robots) + _idle_of(vehicles):
+		if guards.has(u) or u.enter_target != null:
+			continue
+		free.append(u)
+	if free.is_empty():
+		return
+	# commit only the posture's slice, chosen at random like
+	# ReduceUnitsToPercent does (nearest-first would always send the same
+	# front rank and leave the back rank idle forever)
+	free.shuffle()
+	var commit := maxi(1, int(round(float(post.commit) * free.size())))
+	free = free.slice(0, commit)
+	_match_and_order(free, _collect_targets(bool(post.all_out)))
 
 
 # ------------------------- attacking -------------------------
@@ -550,7 +753,6 @@ func _attack(robots: Array[Node], vehicles: Array[Node], enemy_army: int) -> voi
 		if army < threshold and zones_left > 1 and not outnumber:
 			return
 		_attack_mode = true
-		_zone_claims.clear()
 	_attack_focus = _refresh_attack_focus(_attack_focus)
 	if _attack_focus == Vector2.INF:
 		_attack_mode = false
@@ -659,20 +861,6 @@ func _own_fort() -> Node2D:
 		if b is Node2D and b.alive and b.is_fort and b.team == team:
 			return b
 	return null
-
-
-func _prune_claims() -> void:
-	for z in _zone_claims.keys():
-		var u = _zone_claims[z]  # untyped: may hold a freed instance
-		var stale: bool = (not is_instance_valid(u)) or (not u.alive) \
-			or z.owner_team == team  # captured — release the claim
-		if not stale and u.carried:
-			stale = true  # riding an APC: not holding anything
-		if not stale and not u.has_move_target() \
-				and u.global_position.distance_to(_zone_center(z)) > 48.0:
-			stale = true  # idle but never got there — order failed
-		if stale:
-			_zone_claims.erase(z)
 
 
 func _blacklisted(z: Node) -> bool:
