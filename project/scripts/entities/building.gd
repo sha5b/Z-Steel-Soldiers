@@ -217,13 +217,13 @@ func _ready() -> void:
 		return
 	# every building registers here: the elimination cascade and the
 	# no-units rule need forts AND factories/radar/repair alike
-	add_to_group("all_buildings")
+	add_to_group(Groups.ALL_BUILDINGS)
 	if is_fort:
-		add_to_group("buildings")
+		add_to_group(Groups.BUILDINGS)
 	# producers register for the facility quick bar
 	var bdef := ContentDB.building_def(building_id)
 	if (bdef != null and bdef.produces) or is_fort:
-		add_to_group("facilities")
+		add_to_group(Groups.FACILITIES)
 		MatchState.current.register_facility(self)
 	if not is_bridge():
 		apply_footprint()
@@ -714,8 +714,8 @@ func try_start_repair(unit: Node2D) -> bool:
 	unit.velocity = Vector2.ZERO
 	unit.move_target = Vector2.ZERO
 	unit.waypoints = PackedVector2Array()
-	unit.remove_from_group("selectable")
-	unit.remove_from_group("units")
+	unit.remove_from_group(Groups.SELECTABLE)
+	unit.remove_from_group(Groups.UNITS)
 	# out of the world while inside (same contract as APC/garrison
 	# cargo): not targetable through the shop walls, holds no territory
 	unit.carried = true
@@ -740,8 +740,8 @@ func _repair_tick(delta: float) -> void:
 			Fx.announce("vehicle_repaired")
 		done.visible = true
 		done.carried = false
-		done.add_to_group("selectable")
-		done.add_to_group("units")
+		done.add_to_group(Groups.SELECTABLE)
+		done.add_to_group(Groups.UNITS)
 		# validated exit: the fixed +44 nudge half-spawned 16px vehicle
 		# boxes back inside the shop's own wall
 		var exit_spot := NavWorld.current.find_free_spot(
@@ -786,8 +786,8 @@ func take_damage(amount: int) -> void:
 ## cascade: destroyed texture, overlays/flag/HP bar away, deselect.
 func _death_visuals() -> void:
 	died.emit()
-	remove_from_group("buildings")
-	remove_from_group("facilities")
+	remove_from_group(Groups.BUILDINGS)
+	remove_from_group(Groups.FACILITIES)
 	SelectionManager.current.drop_from_selection(self)
 	if has_method("kill_garrison"):
 		call("kill_garrison")

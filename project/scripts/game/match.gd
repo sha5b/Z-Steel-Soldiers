@@ -48,7 +48,7 @@ func _ready() -> void:
 	camera.position = Vector2(int(data.width), int(data.height)) * 8.0
 	# start on the player's fort when the map has one (group scan: scene
 	# maps nest everything one level deeper, under the ZMap instance)
-	for b in get_tree().get_nodes_in_group("buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.BUILDINGS):
 		if b is FortBuilding and b.team == MatchState.current.player_team:
 			camera.position = b.visual_center()
 			break
@@ -72,7 +72,7 @@ func _ready() -> void:
 		print("MAP OK: %dx%d terrain-cells=%d zones=%d units=%d" % [
 			data.width, data.height, terrain_cells,
 			MatchState.current.zones.size(),
-			get_tree().get_nodes_in_group("units").size()])
+			get_tree().get_nodes_in_group(Groups.UNITS).size()])
 		await SelfTests.run(self)
 		# the suite is value-driven and fast — don't idle the match out
 		# to --quit-after once it's done (that linger ate minutes per run)
@@ -119,9 +119,9 @@ func _dump_ground_nodes() -> void:
 	var xform: Transform2D = get_canvas_transform()
 	var view := Rect2(xform.affine_inverse() * Vector2.ZERO,
 		get_viewport().get_visible_rect().size / xform.get_scale().abs()).grow(64)
-	for node in get_tree().get_nodes_in_group("craters") \
-			+ get_tree().get_nodes_in_group("tracks") \
-			+ get_tree().get_nodes_in_group("all_buildings"):
+	for node in get_tree().get_nodes_in_group(Groups.CRATERS) \
+			+ get_tree().get_nodes_in_group(Groups.TRACKS) \
+			+ get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if node is not CanvasItem or not (node as CanvasItem).is_visible_in_tree():
 			continue
 		var wpos: Vector2 = (node as CanvasItem).get_global_transform() * Vector2()
@@ -176,7 +176,7 @@ func _apply_load() -> void:
 		for i in mini(owners.size(), MatchState.current.zones.size()):
 			MatchState.current.zones[i].set_owner_team(int(owners[i]))
 	# replace spawned units with the saved roster
-	for u in get_tree().get_nodes_in_group("units"):
+	for u in get_tree().get_nodes_in_group(Groups.UNITS):
 		u.queue_free()
 	var facilities: Array = save.get("facilities", [])
 	for child in get_children():
@@ -273,18 +273,18 @@ func _pick_select(screen_pos: Vector2) -> void:
 	var world := SelectionManager.current.screen_to_world(screen_pos)
 	# player factories and fort first (selecting opens the production
 	# panel) — group scans, so scene maps (nested under ZMap) work too
-	for c in get_tree().get_nodes_in_group("facilities"):
+	for c in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == MatchState.current.player_team \
 				and c.art_world_rect().has_point(world):
 			SelectionManager.current.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
-	for c in get_tree().get_nodes_in_group("buildings"):
+	for c in get_tree().get_nodes_in_group(Groups.BUILDINGS):
 		if c is FortBuilding and c.team == MatchState.current.player_team \
 				and c.art_world_rect().has_point(world):
 			SelectionManager.current.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
 	var best: Node2D = null
-	for unit in get_tree().get_nodes_in_group("selectable"):
+	for unit in get_tree().get_nodes_in_group(Groups.SELECTABLE):
 		if unit is Unit2D and unit.alive and not unit.carried \
 				and unit.team == MatchState.current.player_team \
 				and unit.global_position.distance_to(world) < 8.0:

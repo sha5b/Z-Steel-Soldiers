@@ -95,7 +95,7 @@ func _on_unit_died(unit: Node) -> void:
 func select_area(world_rect: Rect2) -> void:
 	if not Input.is_key_pressed(KEY_SHIFT):
 		clear_selection()
-	for unit in get_tree().get_nodes_in_group("selectable"):
+	for unit in get_tree().get_nodes_in_group(Groups.SELECTABLE):
 		# own units only — enemy hardware is never selectable/orderable
 		if not (unit is Unit2D) or not unit.alive or unit.carried \
 				or unit.team != MatchState.current.player_team:

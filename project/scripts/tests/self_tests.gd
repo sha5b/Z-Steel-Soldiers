@@ -282,7 +282,7 @@ static func run(ctx: Node) -> void:
 					else "discovery + room + start + host-lost all ok"))
 	if "--capture-test" in args:
 		var u: Unit2D = null
-		for unit in tree.get_nodes_in_group("units"):
+		for unit in tree.get_nodes_in_group(Groups.UNITS):
 			if unit.team == MatchState.current.player_team:
 				u = unit
 				break
@@ -295,7 +295,7 @@ static func run(ctx: Node) -> void:
 			# a zone with a LIVE enemy fort never flips — the fort is the
 			# win objective, its garrison holds the ground
 			var enemy_fort: Building2D = null
-			for b in tree.get_nodes_in_group("buildings"):
+			for b in tree.get_nodes_in_group(Groups.BUILDINGS):
 				if b is FortBuilding and b.alive \
 						and b.team != 0 and b.team != MatchState.current.player_team:
 					enemy_fort = b
@@ -341,7 +341,7 @@ static func run(ctx: Node) -> void:
 		# _process treats the zone capture as new and scraps the queue
 		f.owner_team = MatchState.current.player_team
 		f.team = MatchState.current.player_team
-		var before := tree.get_nodes_in_group("units").size()
+		var before := tree.get_nodes_in_group(Groups.UNITS).size()
 		var money_before := MatchState.current.player_money()
 		MatchState.current.set_money(MatchState.current.player_team, 500)
 		for i in 3:
@@ -350,13 +350,13 @@ static func run(ctx: Node) -> void:
 			f._process(0.5)
 		# a destroyed factory is a RUIN: nothing crawls out of the
 		# rubble (the alive-guard in _process is load-bearing)
-		var units_at_death := tree.get_nodes_in_group("units").size()
+		var units_at_death := tree.get_nodes_in_group(Groups.UNITS).size()
 		f.take_damage(f.hp + 9999)
 		for fi in 20:
 			f._process(0.5)
-		var ruin_spawned := tree.get_nodes_in_group("units").size() - units_at_death
+		var ruin_spawned := tree.get_nodes_in_group(Groups.UNITS).size() - units_at_death
 		print("FACTORY: units %d -> %d money %d -> %d queue=%d ruin_spawned=%d" % [
-			before, tree.get_nodes_in_group("units").size(),
+			before, tree.get_nodes_in_group(Groups.UNITS).size(),
 			money_before, MatchState.current.player_money(), f.queue.items.size(), ruin_spawned])
 	if "--ai-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
@@ -364,7 +364,7 @@ static func run(ctx: Node) -> void:
 		if ai:
 			var moved := 0
 			var roster := {"robots": 0, "idle": 0, "vehicles": 0, "facilities": 0}
-			for u2 in tree.get_nodes_in_group("units"):
+			for u2 in tree.get_nodes_in_group(Groups.UNITS):
 				if u2 is Node2D and u2.team == 2 and u2.move_target != Vector2.ZERO:
 					moved += 1
 			for u2 in UnitRegistry.current.world_units():
@@ -375,7 +375,7 @@ static func run(ctx: Node) -> void:
 							roster.idle += 1
 					elif u2.kind == "vehicle":
 						roster.vehicles += 1
-			for f in tree.get_nodes_in_group("facilities"):
+			for f in tree.get_nodes_in_group(Groups.FACILITIES):
 				if f.team == 2:
 					roster.facilities += 1
 			print("AI ROSTER: robots=%d idle=%d vehicles=%d facilities=%d money=%d zones_owned=%d" % [
@@ -384,7 +384,7 @@ static func run(ctx: Node) -> void:
 				MatchState.current.zones.filter(func(z): return z.owner_team == 2).size()])
 			ai._think()
 			var moved_after := 0
-			for u2 in tree.get_nodes_in_group("units"):
+			for u2 in tree.get_nodes_in_group(Groups.UNITS):
 				if u2 is Node2D and u2.team == 2 and u2.move_target != Vector2.ZERO:
 					moved_after += 1
 			print("AI: enemy robots with orders %d -> %d" % [moved, moved_after])
@@ -406,7 +406,7 @@ static func run(ctx: Node) -> void:
 						elif u3 is Vehicle2D:
 							unmanned2 += 1
 				var f2 := 0
-				for b2 in tree.get_nodes_in_group("facilities"):
+				for b2 in tree.get_nodes_in_group(Groups.FACILITIES):
 					if b2 is Building2D and b2.alive and b2.team == 2:
 						f2 += 1
 						q2 += b2.queue.items.size()
@@ -992,7 +992,7 @@ static func run(ctx: Node) -> void:
 					bproblems.append("%s:%s costs nothing" % [kind, name])
 		# InitZones: every fort claims its home zone — nobody starts broke
 		var fort_teams := {}
-		for b in tree.get_nodes_in_group("buildings"):
+		for b in tree.get_nodes_in_group(Groups.BUILDINGS):
 			if b is FortBuilding and b.alive and b.team != 0:
 				fort_teams[b.team] = true
 		for t in fort_teams:
@@ -1085,7 +1085,7 @@ static func run(ctx: Node) -> void:
 						"%dx%d" % [hull_tex.get_width(), hull_tex.get_height()] if hull_tex else "NONE",
 						"%dx%d" % [layer_tex.get_width(), layer_tex.get_height()] if layer_tex else "NONE",
 						v9._layer.position if v9._layer else Vector2.INF])
-				v9.remove_from_group("units")  # deferred frees must not eat pop cap
+				v9.remove_from_group(Groups.UNITS)  # deferred frees must not eat pop cap
 				v9.queue_free()
 		var pose_missing := 0
 		for line in lines:
@@ -1148,16 +1148,16 @@ static func run(ctx: Node) -> void:
 			# player some zones for headroom before producing
 			for z5 in MatchState.current.zones:
 				z5.owner_team = MatchState.current.player_team
-			var units_before := tree.get_nodes_in_group("units").size()
+			var units_before := tree.get_nodes_in_group(Groups.UNITS).size()
 			if not fort_lv.queue_unit("vehicle:jeep"):
 				lproblems.append("fort refused to build a jeep")
 			if not fort_lv.queue_unit("cannon:gatling"):
 				lproblems.append("fort refused to build a gatling")
 			for i in 120:
 				fort_lv._process(0.5)
-			var new_units := tree.get_nodes_in_group("units").size() - units_before
+			var new_units := tree.get_nodes_in_group(Groups.UNITS).size() - units_before
 			var unmanned := 0
-			for u9 in tree.get_nodes_in_group("units"):
+			for u9 in tree.get_nodes_in_group(Groups.UNITS):
 				if u9 is Vehicle2D and not u9.manned:
 					unmanned += 1
 			if new_units < 2:
@@ -1198,7 +1198,7 @@ static func run(ctx: Node) -> void:
 			shop._process(0.1)
 		if wrecked_jeep.hp < wrecked_jeep.max_hp:
 			rproblems.append("jeep not repaired: %d/%d" % [wrecked_jeep.hp, wrecked_jeep.max_hp])
-		if not wrecked_jeep.visible or not wrecked_jeep.is_in_group("units"):
+		if not wrecked_jeep.visible or not wrecked_jeep.is_in_group(Groups.UNITS):
 			rproblems.append("jeep never left the shop")
 		# crane repairs a damaged radar
 		var radar2: Building2D = Building2D.new()
@@ -1294,11 +1294,11 @@ static func run(ctx: Node) -> void:
 		gren.grenades = 2
 		# isolate: earlier tests leave enemy units roaming that would
 		# steal the grenade target — clear the neighbourhood
-		for u10 in tree.get_nodes_in_group("units"):
+		for u10 in tree.get_nodes_in_group(Groups.UNITS):
 			if u10 is Unit2D and u10.alive and u10.team == 2 \
 					and u10 != target_tank and u10.global_position.distance_to(gren.position) < 300.0:
 				u10.alive = false
-				u10.remove_from_group("units")
+				u10.remove_from_group(Groups.UNITS)
 				u10.queue_free()
 		var hp_before := target_tank.hp
 		var gren_threw := false
@@ -1333,7 +1333,7 @@ static func run(ctx: Node) -> void:
 		# --- area damage crumbles a rock ---
 		var rock_found := false
 		var rock_cleared := false
-		var rocks := tree.get_nodes_in_group("rocks")
+		var rocks := tree.get_nodes_in_group(Groups.ROCKS)
 		if not rocks.is_empty():
 			rock_found = true
 			var rock: Node2D = rocks[0]
@@ -1395,7 +1395,7 @@ static func run(ctx: Node) -> void:
 				var robots2 := 0
 				var manned2 := 0
 				var zones2 := 0
-				for u3 in tree.get_nodes_in_group("units"):
+				for u3 in tree.get_nodes_in_group(Groups.UNITS):
 					if u3 is Unit2D and u3.alive and u3.team == t:
 						if u3 is Vehicle2D:
 							if u3.manned:
@@ -1409,7 +1409,7 @@ static func run(ctx: Node) -> void:
 			var before_t: Dictionary = count.call()
 			var manned_peak := 0
 			var empty_start := 0
-			for u4 in tree.get_nodes_in_group("units"):
+			for u4 in tree.get_nodes_in_group(Groups.UNITS):
 				if u4 is Vehicle2D and not u4.manned:
 					empty_start += 1
 			# simulate a few minutes: think cycles + factory, unit and
@@ -1421,7 +1421,7 @@ static func run(ctx: Node) -> void:
 					if c3 is RobotFactory or c3 is VehicleFactory or c3 is FortBuilding:
 						for j in 8:
 							c3._process(0.5)
-				for u6 in tree.get_nodes_in_group("units"):
+				for u6 in tree.get_nodes_in_group(Groups.UNITS):
 					if u6 is Unit2D and u6.alive:
 						for j in 8:
 							u6._process(0.5)
@@ -1433,7 +1433,7 @@ static func run(ctx: Node) -> void:
 			var after_t: Dictionary = count.call()
 			var man_orders := 0
 			var dbg := ""
-			for u5 in tree.get_nodes_in_group("units"):
+			for u5 in tree.get_nodes_in_group(Groups.UNITS):
 				if u5 is Unit2D and u5.team == t and u5.kind == "robot" \
 						and u5.enter_target != null:
 					man_orders += 1
@@ -1532,15 +1532,15 @@ static func run(ctx: Node) -> void:
 				MatchState.current.set_money(MatchState.current.player_team, 500)
 				f2._process(0.1)  # sync owner from zone before queueing
 				var ok: bool = f2.queue_unit("robot:psycho")
-				var count_before := tree.get_nodes_in_group("units").size()
+				var count_before := tree.get_nodes_in_group(Groups.UNITS).size()
 				for i in 40:
 					f2._process(0.5)
 				var psychos := 0
-				for u3 in tree.get_nodes_in_group("units"):
+				for u3 in tree.get_nodes_in_group(Groups.UNITS):
 					if u3 is Unit2D and u3.unit_name == "psycho" and u3.team == MatchState.current.player_team:
 						psychos += 1
 				print("PROD: queued=%s units %d -> %d psychos=%d queue_left=%d" % [
-					ok, count_before, tree.get_nodes_in_group("units").size(),
+					ok, count_before, tree.get_nodes_in_group(Groups.UNITS).size(),
 					psychos, f2.queue.items.size()])
 	if "--fortprod-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
@@ -1557,15 +1557,15 @@ static func run(ctx: Node) -> void:
 			print("QUEUECAP: size=%d (want 5)" % fort2.queue.items.size())
 			for i in 4:  # cancel only the grunts, keep the psycho
 				fort2.cancel_at(fort2.queue.items.size() - 1)
-			var count0 := tree.get_nodes_in_group("units").size()
+			var count0 := tree.get_nodes_in_group(Groups.UNITS).size()
 			for i in 40:
 				fort2._process(0.5)
 			var psychos2 := 0
-			for u5 in tree.get_nodes_in_group("units"):
+			for u5 in tree.get_nodes_in_group(Groups.UNITS):
 				if u5 is Unit2D and u5.unit_name == "psycho" and u5.team == 1:
 					psychos2 += 1
 			print("FORTPROD: queued=%s units %d -> %d psychos=%d" % [
-				ok2, count0, tree.get_nodes_in_group("units").size(), psychos2])
+				ok2, count0, tree.get_nodes_in_group(Groups.UNITS).size(), psychos2])
 			# fort cannon SLOTS: guns mount on the tower points, capped by
 			# the slot count (no unlimited turret spam)
 			var accepted := 0
@@ -1577,7 +1577,7 @@ static func run(ctx: Node) -> void:
 			var mounted_guns := 0
 			var on_slot := 0
 			var fort_slots: Array = fort2.cannon_slots()
-			for u6 in tree.get_nodes_in_group("units"):
+			for u6 in tree.get_nodes_in_group(Groups.UNITS):
 				if u6 is Vehicle2D and u6.kind == "cannon" and u6.team == 1:
 					mounted_guns += 1
 					for s in fort_slots:
@@ -1710,7 +1710,7 @@ static func run(ctx: Node) -> void:
 			fort.take_damage(fort.hp)
 			if fort.alive:
 				wproblems.append("half-kill left the fort alive")
-			for b2 in ctx.get_tree().get_nodes_in_group("all_buildings"):
+			for b2 in ctx.get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 				if b2 is Building2D and b2.owner_team == 2 and b2.alive:
 					wproblems.append("cascade left a team-2 building")
 					break
@@ -1879,7 +1879,7 @@ static func run(ctx: Node) -> void:
 		# across the fort must detour around the solid cells
 		var nav_fails: PackedStringArray = []
 		var fort: Building2D = null
-		for b in ctx.get_tree().get_nodes_in_group("buildings"):
+		for b in ctx.get_tree().get_nodes_in_group(Groups.BUILDINGS):
 			if b is Building2D and b.alive and b.is_fort:
 				fort = b
 				break
@@ -1937,20 +1937,20 @@ static func run(ctx: Node) -> void:
 			var v: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 			v.setup_vehicle(spec[0], spec[1], spec[2])
 			v.position = origin + Vector2(-240 + x * 70, -80)
-			v.add_to_group("parade")
+			v.add_to_group(Groups.PARADE)
 			ctx.add_child(v)
 			x += 1
 		var empty: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 		empty.setup_vehicle("vehicle", "jeep", 0)
 		empty.position = origin + Vector2(-240, 0)
-		empty.add_to_group("parade")
+		empty.add_to_group(Groups.PARADE)
 		ctx.add_child(empty)
 		# direction matrix: medium tanks facing all 8 directions
 		for i in 8:
 			var dt: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 			dt.setup_vehicle("vehicle", "medium", 1)
 			dt.position = origin + Vector2(-280 + i * 74, -170)
-			dt.add_to_group("parade")
+			dt.add_to_group(Groups.PARADE)
 			ctx.add_child(dt)
 			dt._last_dir = i
 			dt._play("base", i)
@@ -1977,7 +1977,7 @@ static func run(ctx: Node) -> void:
 		var missing_turret := 0
 		# count the parade's OWN hardware — earlier flags leave their
 		# manned vehicles all over the map
-		for c in tree.get_nodes_in_group("parade"):
+		for c in tree.get_nodes_in_group(Groups.PARADE):
 			if c is Vehicle2D and c.manned:
 				spawned += 1
 				if c.unit_name in ["light", "medium", "heavy"] \
@@ -2098,7 +2098,7 @@ static func run(ctx: Node) -> void:
 		await Engine.get_main_loop().process_frame
 		await Engine.get_main_loop().process_frame
 		var wrong_team_art: PackedStringArray = []
-		for u in ctx.get_tree().get_nodes_in_group("units"):
+		for u in ctx.get_tree().get_nodes_in_group(Groups.UNITS):
 			if u is Unit2D and u.team in [2, 3, 4]:
 				var path := String(u.sprite.sprite_frames \
 					.get_frame_texture("stand_0", 0).resource_path)

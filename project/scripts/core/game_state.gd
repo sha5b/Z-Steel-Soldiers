@@ -75,7 +75,7 @@ func report_fort_destroyed(losing_team: int) -> void:
 		if is_instance_valid(u) and u is Unit2D and u.team == losing_team and u.alive:
 			u.die()
 	for b in Engine.get_main_loop().root.get_tree() \
-			.get_nodes_in_group("all_buildings").duplicate():
+			.get_nodes_in_group(Groups.ALL_BUILDINGS).duplicate():
 		if is_instance_valid(b) and b is Building2D \
 				and b.owner_team == losing_team and b.alive:
 			b.kill()
@@ -93,7 +93,7 @@ func check_no_units(team: int) -> void:
 		return
 	var has_fort := false
 	for b in Engine.get_main_loop().root.get_tree() \
-			.get_nodes_in_group("all_buildings"):
+			.get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if is_instance_valid(b) and b is Building2D and b.alive and b.is_fort \
 				and b.team == team:
 			has_fort = true
@@ -118,7 +118,7 @@ func _settle_outcome(losing_team: int) -> void:
 		return
 	# the player wins when every OTHER team has been eliminated
 	for b in Engine.get_main_loop().root.get_tree() \
-			.get_nodes_in_group("all_buildings"):
+			.get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if is_instance_valid(b) and b is Building2D and b.alive and b.is_fort \
 				and b.team != 0 and b.team != MatchState.current.player_team:
 			return  # another team still fights on

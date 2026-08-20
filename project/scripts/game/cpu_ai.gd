@@ -104,7 +104,7 @@ func _produce() -> void:
 	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
 	var money := int(MatchState.current.money.get(team, 0))
 	var army_pop := MatchState.current.unit_pop(team)
-	for f in get_tree().get_nodes_in_group("facilities"):
+	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if not f.alive or f.team == 0 or f.team != team:
 			continue
 		if f.queue.items.size() >= 4:
@@ -226,7 +226,7 @@ func _maintenance(vehicles: Array[Node]) -> void:
 	var damaged_buildings: Array[Node] = []
 	# "all_buildings": the repair shop and the bridges sit in none of the
 	# narrower groups — scanning "facilities"/"buildings" never found them
-	for b in get_tree().get_nodes_in_group("all_buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if not (b is Building2D) or not b.alive:
 			continue
 		if b.is_bridge():
@@ -375,7 +375,7 @@ func _attack(robots: Array[Node], vehicles: Array[Node], enemy_army: int) -> voi
 ## destination when it doesn't (or when none was set yet).
 func _refresh_attack_focus(focus: Vector2) -> Vector2:
 	if focus != Vector2.INF:
-		for b in get_tree().get_nodes_in_group("buildings"):
+		for b in get_tree().get_nodes_in_group(Groups.BUILDINGS):
 			if b is Node2D and b.alive and b.team != 0 and b.team != team \
 					and b.visual_center().distance_to(focus) < 96.0:
 				return focus
@@ -392,7 +392,7 @@ func _attack_destination() -> Vector2:
 	var best := Vector2.INF
 	var best_d := INF
 	# "buildings" carries forts only — factories are in "all_buildings"
-	for b in get_tree().get_nodes_in_group("all_buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if not (b is Node2D) or not b.alive or b.team == 0 or b.team == team:
 			continue
 		if not b.is_fort and not (b is RobotFactory or b is VehicleFactory):
@@ -404,7 +404,7 @@ func _attack_destination() -> Vector2:
 			best_d = d
 			best = b.visual_center()
 	if best == Vector2.INF:
-		for b in get_tree().get_nodes_in_group("all_buildings"):
+		for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 			if b is Node2D and b.alive and b.is_fort and b.team != 0 and b.team != team:
 				return b.visual_center()
 	return best
@@ -417,7 +417,7 @@ func _attack_destination() -> Vector2:
 ## zone worth taking.
 func _update_rallies() -> void:
 	var objective := _attack_focus if _attack_mode else Vector2.INF
-	for f in get_tree().get_nodes_in_group("facilities"):
+	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if not (f is Building2D) or not f.alive or f.team != team:
 			continue
 		if objective == Vector2.INF:
@@ -451,7 +451,7 @@ func _idle_of(units: Array[Node]) -> Array[Node]:
 
 
 func _own_fort() -> Node2D:
-	for b in get_tree().get_nodes_in_group("buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.BUILDINGS):
 		if b is Node2D and b.alive and b.is_fort and b.team == team:
 			return b
 	return null
@@ -481,7 +481,7 @@ func _blacklisted(z: Node) -> bool:
 
 
 func _zone_has_building(z: Node) -> bool:
-	for f in get_tree().get_nodes_in_group("facilities"):
+	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if f is Node2D and z.world_rect().has_point(f.visual_center()):
 			return true
 	return false

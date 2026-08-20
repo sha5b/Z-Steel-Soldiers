@@ -71,8 +71,8 @@ func load_robot(robot: Unit2D) -> bool:
 	robot.waypoints = PackedVector2Array()
 	# out of the world until unloaded: not selectable, not targetable,
 	# doesn't hold zones or trip pickups
-	robot.remove_from_group("selectable")
-	robot.remove_from_group("units")
+	robot.remove_from_group(Groups.SELECTABLE)
+	robot.remove_from_group(Groups.UNITS)
 	SelectionManager.current.drop_from_selection(robot)
 	return true
 
@@ -84,8 +84,8 @@ func unload() -> void:
 			continue
 		robot.carried = false
 		robot.visible = true
-		robot.add_to_group("selectable")
-		robot.add_to_group("units")
+		robot.add_to_group(Groups.SELECTABLE)
+		robot.add_to_group(Groups.UNITS)
 		# validated drop: the fixed offsets once landed squads inside
 		# building walls (an APC dying beside a factory buried its cargo)
 		var spot := NavWorld.current.find_free_spot(global_position + Vector2(
@@ -705,8 +705,8 @@ func die() -> void:
 	velocity = Vector2.ZERO
 	set_selected(false)
 	SelectionManager.current.drop_from_selection(self)
-	remove_from_group("selectable")
-	remove_from_group("units")
+	remove_from_group(Groups.SELECTABLE)
+	remove_from_group(Groups.UNITS)
 	UnitRegistry.current.untrack(self)  # vehicle deaths count for the no-units rule
 	died.emit(self)
 	Fx.destroyed(global_position)

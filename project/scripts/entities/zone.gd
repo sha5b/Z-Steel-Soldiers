@@ -50,7 +50,7 @@ func _held_by_fort() -> bool:
 	if owner_team == 0:
 		return false
 	var r := world_rect()
-	for b in get_tree().get_nodes_in_group("buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.BUILDINGS):
 		if b is FortBuilding and is_instance_valid(b) and b.alive \
 				and b.team == owner_team \
 				and b.art_world_rect().intersection(r).get_area() > 0:
@@ -65,7 +65,7 @@ func _held_by_fort() -> bool:
 func _place_flag() -> void:
 	_flag_pending = false
 	var r := world_rect()
-	for b in get_tree().get_nodes_in_group("buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.BUILDINGS):
 		if b is FortBuilding and is_instance_valid(b) 				and b.art_world_rect().intersection(r).get_area() > 0:
 			return  # the fort flies the territory's flag
 	_flag = AnimatedSprite2D.new()

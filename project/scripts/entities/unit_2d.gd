@@ -57,8 +57,8 @@ func _ready() -> void:
 		_build_frames()
 		_play("stand", 4)
 		return
-	add_to_group("selectable")
-	add_to_group("units")
+	add_to_group(Groups.SELECTABLE)
+	add_to_group(Groups.UNITS)
 	if not Engine.is_editor_hint():
 		SelectionManager.current.listen(self)
 		UnitRegistry.current.track(self)
@@ -379,7 +379,7 @@ func _find_target_within(eff_range: float) -> Node2D:
 		global_position, eff_range, team)
 	var best_d: float = global_position.distance_to(best.global_position) \
 			if best != null else eff_range
-	for b in get_tree().get_nodes_in_group("all_buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		# dead buildings stay registered (elimination cascade) and test
 		# maps remove nodes without freeing — 'is' on a freed instance
 		# is a hard crash, so filter validity first
@@ -452,8 +452,8 @@ func die() -> void:
 	velocity = Vector2.ZERO
 	set_selected(false)
 	SelectionManager.current.drop_from_selection(self)
-	remove_from_group("selectable")
-	remove_from_group("units")
+	remove_from_group(Groups.SELECTABLE)
+	remove_from_group(Groups.UNITS)
 	Fx.explosion(global_position)
 	if sprite.sprite_frames and sprite.sprite_frames.has_animation("die"):
 		sprite.play("die")

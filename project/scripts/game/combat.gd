@@ -78,7 +78,7 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 	for u in UnitRegistry.current.in_radius(world_pos, radius):
 		if u.team != shooter_team and u.team != 0:
 			u.take_damage(_falloff(amount, u.global_position.distance_to(world_pos), radius))
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("all_buildings"):
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if b is Node2D and b is Building2D and b.alive \
 				and b.team != shooter_team and b.team != 0:
 			# distance to the RECT, not the centre — a shell bursting on
@@ -89,7 +89,7 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 			var d: float = cp.distance_to(world_pos)
 			if d <= radius:
 				b.take_damage(_falloff(amount, d, radius))
-	for rock in Engine.get_main_loop().root.get_tree().get_nodes_in_group("rocks"):
+	for rock in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ROCKS):
 		if rock is Node2D and rock.global_position.distance_to(world_pos) <= radius:
 			var cell := Vector2i(((rock.global_position - Vector2(8, 8)) / 16.0).floor())
 			if NavWorld.current.nav_grid and NavWorld.current.nav_grid.is_point_solid(cell):

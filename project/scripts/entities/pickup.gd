@@ -11,7 +11,7 @@ var _def: PickupDef = null
 
 
 func _ready() -> void:
-	add_to_group("pickups")
+	add_to_group(Groups.PICKUPS)
 	_def = ContentDB.pickup_def(pickup_type)
 	var sprite := Sprite2D.new()
 	if _def.texture != null:
@@ -24,7 +24,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _taken:
 		return
-	for u in get_tree().get_nodes_in_group("units"):
+	for u in get_tree().get_nodes_in_group(Groups.UNITS):
 		if u is Node2D and u.alive and u.team != 0 \
 				and u.global_position.distance_to(global_position) < 12.0:
 			if u is Unit2D:

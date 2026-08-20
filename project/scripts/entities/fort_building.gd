@@ -122,8 +122,8 @@ func garrison_robot(robot: Unit2D) -> bool:
 	robot.velocity = Vector2.ZERO
 	robot.move_target = Vector2.ZERO
 	robot.waypoints = PackedVector2Array()
-	robot.remove_from_group("selectable")
-	robot.remove_from_group("units")
+	robot.remove_from_group(Groups.SELECTABLE)
+	robot.remove_from_group(Groups.UNITS)
 	SelectionManager.current.drop_from_selection(robot)
 	return true
 
@@ -144,7 +144,7 @@ func _garrison_fire(delta: float) -> void:
 		return
 	var best: Node2D = null
 	var best_d := GARRISON_MISSILE_RANGE * GARRISON_MISSILE_RANGE
-	for u in get_tree().get_nodes_in_group("units"):
+	for u in get_tree().get_nodes_in_group(Groups.UNITS):
 		if u is Node2D and u is Unit2D and u.alive and not u.carried \
 				and u.team != 0 and u.team != team \
 				and visual_center().distance_squared_to(u.global_position) < best_d:

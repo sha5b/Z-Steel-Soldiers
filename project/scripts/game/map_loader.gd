@@ -126,7 +126,7 @@ static func _build_rocks(parent: Node, data: Dictionary, planet: String, grid: A
 		rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		rock.position = Vector2(cell) * TILE + Vector2(8, 8)
 		parent.add_child(rock)
-		rock.add_to_group("rocks")
+		rock.add_to_group(Groups.ROCKS)
 		grid.set_point_solid(cell, true)
 
 
@@ -342,7 +342,7 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 ## working home factories) instead of a fully neutral map.
 static func _init_zone_owners(root: Node) -> void:
 	var buildings: Array = []
-	for b in root.get_tree().get_nodes_in_group("all_buildings"):
+	for b in root.get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if root.is_ancestor_of(b) and b is Building2D and b.alive:
 			buildings.append(b)
 	for fort in buildings:

@@ -61,7 +61,7 @@ static func dispatch(world_position: Vector2) -> void:
 
 
 static func _find_apc(world_position: Vector2) -> Vehicle2D:
-	for v in Engine.get_main_loop().root.get_tree().get_nodes_in_group("units"):
+	for v in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.UNITS):
 		if v is Vehicle2D and v.is_apc() and v.manned and v.alive and v.team != 0 \
 				and v.global_position.distance_to(world_position) < 24.0:
 			return v
@@ -69,7 +69,7 @@ static func _find_apc(world_position: Vector2) -> Vehicle2D:
 
 
 static func _find_empty_vehicle(world_position: Vector2) -> Node2D:
-	for v in Engine.get_main_loop().root.get_tree().get_nodes_in_group("units"):
+	for v in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.UNITS):
 		if v is Vehicle2D and not v.manned and v.alive \
 				and v.global_position.distance_to(world_position) < 24.0:
 			return v
@@ -81,7 +81,7 @@ static func _find_empty_vehicle(world_position: Vector2) -> Node2D:
 static func _find_interactable_building(world_position: Vector2) -> Building2D:
 	# "all_buildings": the repair shop sits in none of the narrower
 	# groups — scanning "buildings"/"facilities" never found it
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("all_buildings"):
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if b is Building2D and b.alive \
 				and b.art_world_rect().has_point(world_position):
 			return b
@@ -90,7 +90,7 @@ static func _find_interactable_building(world_position: Vector2) -> Building2D:
 
 ## A fort under the click point belonging to the selected robots' team.
 static func _find_own_fort(world_position: Vector2) -> FortBuilding:
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("buildings"):
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.BUILDINGS):
 		if b is FortBuilding and b.alive and b.team != 0 \
 				and b.art_world_rect().has_point(world_position):
 			return b

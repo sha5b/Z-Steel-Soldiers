@@ -38,7 +38,7 @@ static func random_species(planet: String) -> String:
 
 
 func _ready() -> void:
-	add_to_group("animals")
+	add_to_group(Groups.ANIMALS)
 	_sprite = AnimatedSprite2D.new()
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_sprite.scale = Vector2.ONE  # native art scale

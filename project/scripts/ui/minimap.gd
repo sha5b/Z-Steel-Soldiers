@@ -90,7 +90,7 @@ func _draw() -> void:
 	if _texture == null or _map_rect.size == Vector2.ZERO:
 		return
 	draw_texture_rect(_texture, _map_rect, false)
-	for b in get_tree().get_nodes_in_group("buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.BUILDINGS):
 		if b is Node2D and b.alive:
 			# the fort node sits at the art's TOP edge (Y-sort lift) —
 			# blip the visual centre, which is where the structure is
@@ -111,7 +111,7 @@ func _draw() -> void:
 
 func _player_has_radar() -> bool:
 	# "all_buildings": radar sits in none of the narrower groups
-	for b in get_tree().get_nodes_in_group("all_buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if b is Building2D and b.alive and b.building_id == 2 \
 				and b.owner_team == MatchState.current.player_team:
 			return true

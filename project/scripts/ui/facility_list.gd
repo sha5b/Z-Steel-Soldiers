@@ -45,7 +45,7 @@ func _process(delta: float) -> void:
 
 func _sync() -> void:
 	var alive := {}
-	for c in get_tree().get_nodes_in_group("facilities"):
+	for c in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if c is Node2D and is_instance_valid(c) and c.alive \
 				and c.owner_team == MatchState.current.player_team:
 			alive[c] = true

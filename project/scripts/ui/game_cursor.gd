@@ -84,7 +84,7 @@ func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
 ## building art rects — same priority the click handlers use.
 func _hover_object(world: Vector2) -> Node2D:
 	var best: Node2D = null
-	for u in get_tree().get_nodes_in_group("units"):
+	for u in get_tree().get_nodes_in_group(Groups.UNITS):
 		if u is Unit2D and u.alive and not u.carried \
 				and (world - u.global_position).length() < 8.0:
 			if best == null or (world - u.global_position).length() \
@@ -92,10 +92,10 @@ func _hover_object(world: Vector2) -> Node2D:
 				best = u
 	if best:
 		return best
-	for p in get_tree().get_nodes_in_group("pickups"):
+	for p in get_tree().get_nodes_in_group(Groups.PICKUPS):
 		if p is Node2D and (world - p.global_position).length() < 8.0:
 			return p
-	for b in get_tree().get_nodes_in_group("all_buildings"):
+	for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if b is Building2D and b.alive and b.art_world_rect().has_point(world):
 			return b
 	return null

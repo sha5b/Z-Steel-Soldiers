@@ -18,11 +18,11 @@ const SAVE_PATH := "user://z_save.json"
 
 func capture_save() -> Dictionary:
 	var units := []
-	for u in Engine.get_main_loop().root.get_tree().get_nodes_in_group("units"):
+	for u in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.UNITS):
 		if u is Unit2D and u.alive:
 			units.append(u.to_dict())
 	var facilities := []
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("facilities"):
+	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if b is Building2D and b.alive and b.owner_team != 0:
 			var d: Dictionary = b.to_dict()
 			if not d.is_empty():
