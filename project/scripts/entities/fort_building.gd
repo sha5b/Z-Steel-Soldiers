@@ -124,7 +124,7 @@ func garrison_robot(robot: Unit2D) -> bool:
 	robot.waypoints = PackedVector2Array()
 	robot.remove_from_group("selectable")
 	robot.remove_from_group("units")
-	SelectionManager.drop_from_selection(robot)
+	SelectionManager.current.drop_from_selection(robot)
 	return true
 
 

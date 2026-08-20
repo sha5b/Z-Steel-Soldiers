@@ -1,5 +1,21 @@
+class_name SelectionManager
 extends Node
-## Autoload: owns unit selection, drag-rectangle state and order dispatch (2D).
+## Owns unit selection, drag-rectangle state, the order-stance (player
+## intent) and order dispatch (2D). A CHILD OF THE MATCH SCENE (not an
+## autoload) — see NavWorld for the locator pattern.
+
+## The active match's selection state (set on _ready, cleared on exit).
+static var current: SelectionManager
+
+
+func _ready() -> void:
+	current = self
+
+
+func _exit_tree() -> void:
+	if current == self:
+		current = null
+
 
 signal selection_changed(units: Array)
 signal order_issued(world_position: Vector2)

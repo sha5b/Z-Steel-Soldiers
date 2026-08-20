@@ -645,7 +645,7 @@ static func run(ctx: Node) -> void:
 				pfort = c
 				break
 		await tree.process_frame
-		SelectionManager.select_single(mine3)
+		SelectionManager.current.select_single(mine3)
 		# _determine takes VIEWPORT coords — push the world points
 		# through the camera's canvas transform first
 		var xform: Transform2D = tree.root.get_canvas_transform()
@@ -658,7 +658,7 @@ static func run(ctx: Node) -> void:
 			var got_fort: String = gcur._determine(xform * pfort.visual_center())
 			if got_fort != "place":
 				cproblems.append("garrison got %s" % got_fort)
-		SelectionManager.clear_selection()
+		SelectionManager.current.clear_selection()
 		var got_plain: String = gcur._determine(foe.global_position)
 		if got_plain != "cursor":
 			cproblems.append("plain got %s" % got_plain)
@@ -1453,8 +1453,8 @@ static func run(ctx: Node) -> void:
 		# the player's unit stays selected while it walks in to man the
 		# vehicle — it must leave the selection when consumed (regression:
 		# freed robot lingered in the selection bar)
-		SelectionManager.clear_selection()
-		SelectionManager.toggle_select(walker, false)
+		SelectionManager.current.clear_selection()
+		SelectionManager.current.toggle_select(walker, false)
 		walker.issue_order(Order.for_target(jeep3))
 		var instant: bool = jeep3.manned  # must NOT be manned before walking
 		for i in 400:
@@ -1463,7 +1463,7 @@ static func run(ctx: Node) -> void:
 			if jeep3.manned or not is_instance_valid(walker):
 				break
 		print("NEAR: instant=%s manned_after_walk=%s selection_left=%d" % [
-			instant, jeep3.manned, SelectionManager.selected.size()])
+			instant, jeep3.manned, SelectionManager.current.selected.size()])
 	if "--flag-test" in args:
 		var radar: Building2D = Building2D.new()
 		radar.setup(2, 0, "desert")
@@ -1965,8 +1965,8 @@ static func run(ctx: Node) -> void:
 						z.owner_team = MatchState.player_team
 						break
 				c.owner_team = MatchState.player_team
-				SelectionManager.clear_selection()
-				SelectionManager.toggle_select(c, false)
+				SelectionManager.current.clear_selection()
+				SelectionManager.current.toggle_select(c, false)
 				MatchState.set_money(MatchState.player_team, 600)
 				c.queue_unit("robot:grunt")
 				c.queue_unit("robot:psycho")

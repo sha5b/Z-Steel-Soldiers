@@ -8,7 +8,7 @@ extends Object
 
 static func dispatch(world_position: Vector2) -> void:
 	# a selected producing building: right-click sets its rally point
-	var selected := SelectionManager.selected
+	var selected := SelectionManager.current.selected
 	if selected.size() == 1 and is_instance_valid(selected[0]) 			and selected[0] is Building2D and selected[0].alive 			and (selected[0].is_fort or selected[0] is RobotFactory or selected[0] is VehicleFactory) 			and selected[0].owner_team == MatchState.player_team:
 		selected[0].set_rally(world_position)
 		Fx.ui_click()
@@ -18,13 +18,13 @@ static func dispatch(world_position: Vector2) -> void:
 	var target_building := _find_interactable_building(world_position)
 	var own_fort := _find_own_fort(world_position)
 	var movers: Array[Node] = []
-	for u in SelectionManager.selected:
+	for u in SelectionManager.current.selected:
 		if is_instance_valid(u) and u is Unit2D and u.alive:
 			movers.append(u)
 	# the stance (Q/E/R hotkeys or the stance bar) decides what a move
 	# order does; shift sprints the order (the entity never reads Input
 	# itself)
-	var stance: SelectionManager.OrderStance = SelectionManager.order_stance
+	var stance: SelectionManager.OrderStance = SelectionManager.current.order_stance
 	var sprint := Input.is_key_pressed(KEY_SHIFT)
 	# deterministic order (instance ids) so formations don't reshuffle
 	movers.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())

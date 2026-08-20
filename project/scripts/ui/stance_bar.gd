@@ -26,7 +26,7 @@ func _ready() -> void:
 		var btn := _make_button(String(d[0]), String(d[1]))
 		var stance: int = d[2]
 		btn.pressed.connect(func():
-			SelectionManager.set_stance(stance)
+			SelectionManager.current.set_stance(stance)
 			Fx.ui_click())
 		_buttons.append(btn)
 		add_child(btn)
@@ -39,14 +39,14 @@ func _ready() -> void:
 	add_child(_toggle)
 	# hotkeys change stance/idle outside the bar — signals keep the
 	# visuals honest (this used to poll every frame)
-	SelectionManager.stance_changed.connect(_sync_visuals)
+	SelectionManager.current.stance_changed.connect(_sync_visuals)
 	GameSettings.auto_idle_changed.connect(func(on: bool):
 		_toggle.set_pressed_no_signal(on))
 	_sync_visuals()
 
 
 func _sync_visuals() -> void:
-	var active := _buttons[SelectionManager.order_stance]
+	var active := _buttons[SelectionManager.current.order_stance]
 	for i in _buttons.size():
 		var selected: bool = _buttons[i] == active
 		_buttons[i].modulate = Color.WHITE if selected else Color(0.55, 0.55, 0.55)

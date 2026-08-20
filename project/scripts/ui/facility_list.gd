@@ -75,14 +75,14 @@ func _make_entry(node: Node) -> Button:
 		btn.icon = load(icon_path)
 		btn.expand_icon = false
 	btn.pressed.connect(func():
-		SelectionManager.clear_selection()
-		SelectionManager.toggle_select(node, false))
+		SelectionManager.current.clear_selection()
+		SelectionManager.current.toggle_select(node, false))
 	add_child(btn)
 	return btn
 
 
 func _update_entry(btn: Button, node: Node) -> void:
-	btn.modulate = Color(1.3, 1.3, 1.0) if SelectionManager.selected.has(node) else Color.WHITE
+	btn.modulate = Color(1.3, 1.3, 1.0) if SelectionManager.current.selected.has(node) else Color.WHITE
 	if btn.get_node_or_null("ProgressBar") != null:
 		return
 	var bar := TextureProgressBar.new()

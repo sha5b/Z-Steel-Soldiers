@@ -10,7 +10,7 @@ var _wired: Array = []  # [unit, callable] — disconnected on every rebuild
 
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
-	SelectionManager.selection_changed.connect(_sync)
+	SelectionManager.current.selection_changed.connect(_sync)
 
 
 func _sync(units: Array) -> void:

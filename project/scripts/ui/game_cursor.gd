@@ -37,13 +37,13 @@ func _process(_delta: float) -> void:
 
 ## zod DetermineCursor, mapped onto this remake's systems.
 func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
-	if SelectionManager.is_dragging or SelectionManager.selected.is_empty():
+	if SelectionManager.current.is_dragging or SelectionManager.current.selected.is_empty():
 		return "cursor"
-	var sel: Array = SelectionManager.selected.filter(
+	var sel: Array = SelectionManager.current.selected.filter(
 		func(u): return is_instance_valid(u) and u is Unit2D and u.alive)
 	if sel.is_empty():
 		return "cursor"
-	var world: Vector2 = SelectionManager.screen_to_world(mouse)
+	var world: Vector2 = SelectionManager.current.screen_to_world(mouse)
 	var can_attack := false
 	var can_move := false
 	var has_crane := false

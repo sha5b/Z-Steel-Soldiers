@@ -73,7 +73,7 @@ func load_robot(robot: Unit2D) -> bool:
 	# doesn't hold zones or trip pickups
 	robot.remove_from_group("selectable")
 	robot.remove_from_group("units")
-	SelectionManager.drop_from_selection(robot)
+	SelectionManager.current.drop_from_selection(robot)
 	return true
 
 
@@ -704,7 +704,7 @@ func die() -> void:
 	alive = false
 	velocity = Vector2.ZERO
 	set_selected(false)
-	SelectionManager.drop_from_selection(self)
+	SelectionManager.current.drop_from_selection(self)
 	remove_from_group("selectable")
 	remove_from_group("units")
 	UnitRegistry.current.untrack(self)  # vehicle deaths count for the no-units rule

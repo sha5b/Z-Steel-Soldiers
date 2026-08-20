@@ -60,7 +60,7 @@ func _ready() -> void:
 	add_to_group("selectable")
 	add_to_group("units")
 	if not Engine.is_editor_hint():
-		SelectionManager.listen(self)
+		SelectionManager.current.listen(self)
 		UnitRegistry.current.track(self)
 	var stats := ContentDB.stats_for(kind, unit_name)
 	hp = stats.hp
@@ -451,7 +451,7 @@ func die() -> void:
 	died.emit(self)
 	velocity = Vector2.ZERO
 	set_selected(false)
-	SelectionManager.drop_from_selection(self)
+	SelectionManager.current.drop_from_selection(self)
 	remove_from_group("selectable")
 	remove_from_group("units")
 	Fx.explosion(global_position)
@@ -612,7 +612,7 @@ func _try_enter() -> void:
 	enter_target = null
 	if v is Vehicle2D and v.alive:
 		if not v.manned and _entering == null:
-			SelectionManager.drop_from_selection(self)
+			SelectionManager.current.drop_from_selection(self)
 			move_target = Vector2.ZERO
 			velocity = Vector2.ZERO
 			_entering = v

@@ -719,7 +719,7 @@ func try_start_repair(unit: Node2D) -> bool:
 	# out of the world while inside (same contract as APC/garrison
 	# cargo): not targetable through the shop walls, holds no territory
 	unit.carried = true
-	SelectionManager.drop_from_selection(unit)
+	SelectionManager.current.drop_from_selection(unit)
 	return true
 
 
@@ -788,7 +788,7 @@ func _death_visuals() -> void:
 	died.emit()
 	remove_from_group("buildings")
 	remove_from_group("facilities")
-	SelectionManager.drop_from_selection(self)
+	SelectionManager.current.drop_from_selection(self)
 	if has_method("kill_garrison"):
 		call("kill_garrison")
 	Fx.destroyed(visual_center())

@@ -86,7 +86,7 @@ func _ready() -> void:
 	_queue_row.add_theme_constant_override("separation", 4)
 	_queue_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_child(_queue_row)
-	SelectionManager.selection_changed.connect(_on_selection_changed)
+	SelectionManager.current.selection_changed.connect(_on_selection_changed)
 	MatchState.zone_captured.connect(func(_t): _check_roster())
 	MatchState.tech_level_changed.connect(_check_roster)
 	hide()
@@ -159,7 +159,7 @@ func _update_queue(factory: Node) -> void:
 
 
 func _selected_factory() -> Node:
-	for node in SelectionManager.selected:
+	for node in SelectionManager.current.selected:
 		if not is_instance_valid(node) or not node.alive:
 			continue
 		if node is RobotFactory and node.owner_team == MatchState.player_team:

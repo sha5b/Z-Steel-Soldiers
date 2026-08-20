@@ -13,15 +13,9 @@ var _map_index := 0
 
 func _ready() -> void:
 	Engine.time_scale = GameSettings.game_speed()  # options-screen speed
-	# match-scoped subsystems: the match scene OWNS its navigation (and
-	# registry/economy — same pattern) so state dies with the scene and
-	# two matches can coexist in one tree (in-process MP loopback)
-	var nav := NavWorld.new()
-	nav.name = "NavWorld"
-	add_child(nav)
-	var registry := UnitRegistry.new()
-	registry.name = "UnitRegistry"
-	add_child(registry)
+	# match-scoped subsystems (NavWorld, UnitRegistry, SelectionManager)
+	# are SCENE CHILDREN above — they ready before the HUD connects and
+	# die with the scene (state per match; two matches can coexist)
 	# the ORIGINAL's animated, context-swapping team cursor, drawn in the
 	# stretched canvas so it scales with the window (a 16px OS cursor
 	# reads as a speck on a maximized window); the OS pointer hides for
@@ -29,7 +23,7 @@ func _ready() -> void:
 	GameCursor.install($CanvasLayer)
 	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
 	UiTheme.apply($CanvasLayer/HUD)
-	SelectionManager.order_issued.connect(_on_order)
+	SelectionManager.current.order_issued.connect(_on_order)
 	var chosen: String = GameState.next_map if GameState.next_map != "" else map_json
 	for arg in OS.get_cmdline_args() + OS.get_cmdline_user_args():
 		if String(arg).begins_with("--map="):  # test override: --map=res://assets/maps/x.json
@@ -60,7 +54,7 @@ func _ready() -> void:
 	if minimap:
 		var tileset: Texture2D = load(MapLoader.PLANET_TILESETS.get(String(data.terrain), MapLoader.PLANET_TILESETS.desert))
 		minimap.build(data, tileset)
-		minimap.move_order.connect(func(world: Vector2): SelectionManager.issue_order(world))
+		minimap.move_order.connect(func(world: Vector2): SelectionManager.current.issue_order(world))
 	MusicPlayer.play_battle()
 	var shot_args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	if SelfTests.should_run():
@@ -232,15 +226,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_Q:
-				SelectionManager.set_stance(SelectionManager.OrderStance.ATTACK_MOVE)
+				SelectionManager.current.set_stance(SelectionManager.OrderStance.ATTACK_MOVE)
 				Fx.ui_click()
 				return
 			KEY_E:
-				SelectionManager.set_stance(SelectionManager.OrderStance.DEFEND)
+				SelectionManager.current.set_stance(SelectionManager.OrderStance.DEFEND)
 				Fx.ui_click()
 				return
 			KEY_R:
-				SelectionManager.set_stance(SelectionManager.OrderStance.MOVE)
+				SelectionManager.current.set_stance(SelectionManager.OrderStance.MOVE)
 				Fx.ui_click()
 				return
 			KEY_T:
@@ -255,35 +249,35 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
-				SelectionManager.begin_drag(event.position)
+				SelectionManager.current.begin_drag(event.position)
 			else:
-				SelectionManager.end_drag()
-				var rect := SelectionManager.get_drag_rect()
+				SelectionManager.current.end_drag()
+				var rect := SelectionManager.current.get_drag_rect()
 				if rect.size.length() < 6.0:
 					_pick_select(event.position)
 				else:
-					var a := SelectionManager.screen_to_world(rect.position)
-					var b := SelectionManager.screen_to_world(rect.position + rect.size)
-					SelectionManager.select_area(Rect2(a, b - a).abs())
+					var a := SelectionManager.current.screen_to_world(rect.position)
+					var b := SelectionManager.current.screen_to_world(rect.position + rect.size)
+					SelectionManager.current.select_area(Rect2(a, b - a).abs())
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			SelectionManager.issue_order(SelectionManager.screen_to_world(event.position))
-	elif event is InputEventMouseMotion and SelectionManager.is_dragging:
-		SelectionManager.move_drag(event.position)
+			SelectionManager.current.issue_order(SelectionManager.current.screen_to_world(event.position))
+	elif event is InputEventMouseMotion and SelectionManager.current.is_dragging:
+		SelectionManager.current.move_drag(event.position)
 
 
 func _pick_select(screen_pos: Vector2) -> void:
-	var world := SelectionManager.screen_to_world(screen_pos)
+	var world := SelectionManager.current.screen_to_world(screen_pos)
 	# player factories and fort first (selecting opens the production
 	# panel) — group scans, so scene maps (nested under ZMap) work too
 	for c in get_tree().get_nodes_in_group("facilities"):
 		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == MatchState.player_team \
 				and c.art_world_rect().has_point(world):
-			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
+			SelectionManager.current.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
 	for c in get_tree().get_nodes_in_group("buildings"):
 		if c is FortBuilding and c.team == MatchState.player_team \
 				and c.art_world_rect().has_point(world):
-			SelectionManager.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
+			SelectionManager.current.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
 			return
 	var best: Node2D = null
 	for unit in get_tree().get_nodes_in_group("selectable"):
@@ -293,9 +287,9 @@ func _pick_select(screen_pos: Vector2) -> void:
 			if best == null or unit.global_position.distance_squared_to(world) < best.global_position.distance_squared_to(world):
 				best = unit
 	if best:
-		SelectionManager.toggle_select(best, Input.is_key_pressed(KEY_SHIFT))
+		SelectionManager.current.toggle_select(best, Input.is_key_pressed(KEY_SHIFT))
 	else:
-		SelectionManager.clear_selection()
+		SelectionManager.current.clear_selection()
 
 
 func _on_order(world_position: Vector2) -> void:

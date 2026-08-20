@@ -16,9 +16,13 @@ func reset_for_new_map() -> void:
 	over = false
 	_eliminated.clear()
 	MatchState.reset()
-	NavWorld.current.reset()
+	# match-scoped subsystems are per-instance now — a fresh scene starts
+	# clean; only an old instance (mid scene change) needs resetting
+	if NavWorld.current:
+		NavWorld.current.reset()
+	if SelectionManager.current:
+		SelectionManager.current.clear_selection()  # drop freed units
 	pending_load = {}
-	SelectionManager.clear_selection()  # drop freed units from the old map
 
 
 ## THE way into a match: apply a typed MatchConfig (skirmish, campaign,

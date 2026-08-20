@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/match.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/game/rts_camera2d.gd" id="2"]
@@ -10,10 +10,22 @@
 [ext_resource type="Script" path="res://scripts/ui/selection_bar.gd" id="7"]
 [ext_resource type="Script" path="res://scripts/ui/stance_bar.gd" id="9"]
 [ext_resource type="PackedScene" path="res://scenes/pause_menu.tscn" id="8"]
+[ext_resource type="Script" path="res://scripts/core/nav_world.gd" id="10"]
+[ext_resource type="Script" path="res://scripts/game/unit_registry.gd" id="11"]
+[ext_resource type="Script" path="res://scripts/core/selection_manager.gd" id="12"]
 
 [node name="Main" type="Node2D"]
 y_sort_enabled = true
 script = ExtResource("1")
+
+[node name="NavWorld" type="Node" parent="."]
+script = ExtResource("10")
+
+[node name="UnitRegistry" type="Node" parent="."]
+script = ExtResource("11")
+
+[node name="SelectionManager" type="Node" parent="."]
+script = ExtResource("12")
 
 [node name="RtsCamera2D" type="Camera2D" parent="."]
 script = ExtResource("2")
