@@ -8,12 +8,6 @@ extends VBoxContainer
 
 const FALLBACK_SWEEP_SECONDS := 2.0
 const PROGRESS_REFRESH := 0.25
-const LABELS := {
-	"fort": "res://assets/z/ui/production/fort_factory_label.png",
-	"fort_factory": "res://assets/z/ui/production/fort_factory_label.png",
-	"robot_factory": "res://assets/z/ui/production/fort_factory_label.png",
-	"vehicle_factory": "res://assets/z/ui/production/building_label.png",
-}
 
 var _sweep_accum := 0.0
 var _progress_accum := 0.0
@@ -70,7 +64,7 @@ func _make_entry(node: Node) -> Button:
 	var btn := Button.new()
 	btn.custom_minimum_size = Vector2(118, 24)
 	btn.tooltip_text = "Select building (right-click map with it selected to set the rally point)"
-	var icon_path: String = LABELS.get(node.kind_key(), "")
+	var icon_path: String = FactoryLabels.LABELS.get(node.kind_key(), "")
 	if icon_path != "" and ResourceLoader.exists(icon_path):
 		btn.icon = load(icon_path)
 		btn.expand_icon = false

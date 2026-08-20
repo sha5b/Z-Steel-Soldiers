@@ -271,27 +271,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _pick_select(screen_pos: Vector2) -> void:
 	var world := SelectionManager.current.screen_to_world(screen_pos)
-	# player factories and fort first (selecting opens the production
-	# panel) — group scans, so scene maps (nested under ZMap) work too
-	for c in get_tree().get_nodes_in_group(Groups.FACILITIES):
-		if (c is RobotFactory or c is VehicleFactory) and c.owner_team == MatchState.current.player_team \
-				and c.art_world_rect().has_point(world):
-			SelectionManager.current.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
-			return
-	for c in get_tree().get_nodes_in_group(Groups.BUILDINGS):
-		if c is FortBuilding and c.team == MatchState.current.player_team \
-				and c.art_world_rect().has_point(world):
-			SelectionManager.current.toggle_select(c, Input.is_key_pressed(KEY_SHIFT))
-			return
-	var best: Node2D = null
-	for unit in get_tree().get_nodes_in_group(Groups.SELECTABLE):
-		if unit is Unit2D and unit.alive and not unit.carried \
-				and unit.team == MatchState.current.player_team \
-				and unit.global_position.distance_to(world) < 8.0:
-			if best == null or unit.global_position.distance_squared_to(world) < best.global_position.distance_squared_to(world):
-				best = unit
-	if best:
-		SelectionManager.current.toggle_select(best, Input.is_key_pressed(KEY_SHIFT))
+	# selection priority lives in ONE place (see Pick) — the cursor's
+	# hover and this click can no longer disagree
+	var hit := Pick.selectable_at(world, MatchState.current.player_team)
+	if hit:
+		SelectionManager.current.toggle_select(hit, Input.is_key_pressed(KEY_SHIFT))
 	else:
 		SelectionManager.current.clear_selection()
 

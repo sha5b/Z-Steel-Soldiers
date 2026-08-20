@@ -8,11 +8,6 @@ extends Control
 
 signal queue_requested(type_name: String)
 
-const LABELS := {
-	"fort": "res://assets/z/ui/production/fort_factory_label.png",
-	"robot_factory": "res://assets/z/ui/production/fort_factory_label.png",
-	"vehicle_factory": "res://assets/z/ui/production/building_label.png",
-}
 
 var _wired: Node = null
 var _title: TextureRect
@@ -173,7 +168,7 @@ func _selected_factory() -> Node:
 
 func _build_buttons(factory: Node) -> void:
 	_built_for = "%s:%d:%s" % [factory.kind_key(), factory.level, _page]
-	var label_path: String = LABELS.get(factory.kind_key(), "")
+	var label_path: String = FactoryLabels.LABELS.get(factory.kind_key(), "")
 	_title.texture = load(label_path) if ResourceLoader.exists(label_path) else null
 	# tab availability from the FULL roster (tabs hide when this level
 	# carries none of that kind); switch pages when ours emptied out
