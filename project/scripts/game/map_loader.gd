@@ -56,8 +56,11 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 	for t in ai_teams:
 		MatchState.current.grant_ledger(t)
 	for t in ai_teams:
-		# seats held by HUMAN players act over the network — no stand-in
-		if t != MatchState.current.player_team and not Net.human_teams().has(t):
+		# seats held by HUMAN players act over the network — no stand-in.
+		# And only ONE peer may think for the CPU seats (the host), or
+		# every peer runs a separate brain and the sims fork.
+		if t != MatchState.current.player_team and not Net.human_teams().has(t) \
+				and Net.owns_ai():
 			var ai := CpuAi.new(t)
 			ai.name = "CpuAi_T%d" % t
 			parent.add_child(ai)
@@ -146,6 +149,29 @@ static func _build_vehicle_grid(grid: AStarGrid2D, data: Dictionary, w: int, h: 
 	return vgrid
 
 
+## map_item id 0 is the ZONE FLAG marker, not scenery: the tile the
+## designer put the flag on, plus the zone's STARTING OWNER in its
+## `owner` byte. SceneryDefs has no art for id 0, so the loader dropped
+## all of them — verified across the shipped maps: 956 markers, exactly
+## one inside each of the 956 non-fort zones (the other 162 zones hold a
+## fort, which flies the territory's flag itself), and 330 of them carry
+## a non-zero owner. Dropping them meant every flag stood at a derived
+## centre spot and every map opened fully neutral.
+const ZONE_FLAG_ID := 0
+
+
+static func _apply_zone_flag(o: Dictionary) -> void:
+	var cell := Vector2i(int(o.x), int(o.y))
+	for z in MatchState.current.zones:
+		if not z.zone_rect.has_point(cell):
+			continue
+		z.flag_tile = cell
+		var owner := int(o.get("owner", 0))
+		if owner != 0:
+			z.set_initial_owner(owner)
+		return
+
+
 static func _build_zones(parent: Node, data: Dictionary) -> void:
 	for z in data.zones:
 		var zone := Zone.new()
@@ -158,6 +184,9 @@ static func _build_zones(parent: Node, data: Dictionary) -> void:
 ## huts, map objects), rendered as Y-sorted sprites.
 static func _spawn_map_item(parent: Node, o: Dictionary, pos: Vector2, planet: String) -> void:
 	var id := int(o.id)
+	if id == ZONE_FLAG_ID:
+		_apply_zone_flag(o)
+		return
 	if ZodIds.MAP_PICKUP_IDS.has(id):
 		var pickup := Pickup.new()
 		pickup.pickup_type = String(ZodIds.MAP_PICKUP_IDS[id])
@@ -320,8 +349,11 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 	for t in ai_teams:
 		MatchState.current.grant_ledger(t)
 	for t in ai_teams:
-		# seats held by HUMAN players act over the network — no stand-in
-		if t != MatchState.current.player_team and not Net.human_teams().has(t):
+		# seats held by HUMAN players act over the network — no stand-in.
+		# And only ONE peer may think for the CPU seats (the host), or
+		# every peer runs a separate brain and the sims fork.
+		if t != MatchState.current.player_team and not Net.human_teams().has(t) \
+				and Net.owns_ai():
 			var ai := CpuAi.new(t)
 			ai.name = "CpuAi_T%d" % t
 			parent.add_child(ai)

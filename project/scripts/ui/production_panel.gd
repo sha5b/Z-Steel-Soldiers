@@ -38,6 +38,7 @@ var _built_for := ""
 var _queue_cache: Array = []
 var _page := "robot"  # active R/V/G roster page
 var _tabs := {}       # kind token -> tab Button
+var _eject: Button    # "EXIT n" — shown only for a fort holding a garrison
 
 
 func _ready() -> void:
@@ -90,6 +91,17 @@ func _ready() -> void:
 					_build_buttons(_wired))
 		_tabs[String(spec[1])] = tab
 		tabs.add_child(tab)
+	# EXIT: hand the fort's garrison back. Lives in the tab row so it
+	# costs the panel no extra height, and it only appears when there IS
+	# something inside — a robot ordered into a fort used to vanish with
+	# no affordance anywhere in the HUD to explain where it went.
+	_eject = Button.new()
+	_eject.tooltip_text = "Send the garrison back out (X)"
+	_eject.custom_minimum_size = Vector2(52, TAB_SLOT.y)
+	_object_button_chrome(_eject, 1.0)
+	_eject.visible = false
+	_eject.pressed.connect(func(): Commands.eject())
+	tabs.add_child(_eject)
 	_box = GridContainer.new()
 	(_box as GridContainer).columns = 4
 	_box.add_theme_constant_override("h_separation", ROW_SEPARATION)
@@ -162,6 +174,16 @@ func _process(_delta: float) -> void:
 	var q: Array = _wired.queue_items()
 	_progress.visible = not q.is_empty() and prog > 0.0
 	_progress.value = prog * 100.0
+	# garrison size has no signal (robots arrive on their own), so the
+	# EXIT button follows it here — the panel already ticks for progress
+	var held := 0
+	if _wired is FortBuilding:
+		for member in (_wired as FortBuilding).garrison:
+			if is_instance_valid(member) and member.alive:
+				held += 1
+	_eject.visible = held > 0
+	if held > 0:
+		_eject.text = "EXIT %d" % held
 
 
 func _update_queue(factory: Node) -> void:
@@ -213,8 +235,8 @@ func _selected_factory() -> Node:
 
 func _build_buttons(factory: Node) -> void:
 	_built_for = "%s:%d:%s" % [factory.kind_key(), factory.level, _page]
-	var label_path: String = FactoryLabels.LABELS.get(factory.kind_key(), "")
-	_title.texture = load(label_path) if ResourceLoader.exists(label_path) else null
+	var label_path := FactoryLabels.path_for(factory.kind_key())
+	_title.texture = load(label_path) if label_path != "" else null
 	# tab availability from the FULL roster (tabs hide when this level
 	# carries none of that kind); switch pages when ours emptied out
 	var full: Array = factory.build_options()

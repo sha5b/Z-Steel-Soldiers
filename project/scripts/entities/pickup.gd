@@ -27,6 +27,11 @@ func _process(_delta: float) -> void:
 	for u in get_tree().get_nodes_in_group(Groups.UNITS):
 		if u is Node2D and u.alive and u.team != 0 \
 				and u.global_position.distance_to(global_position) < 12.0:
+			# a crate only opens for a unit that can USE it — anything
+			# else walks over it and leaves it standing (a tank used to
+			# consume a grenade box and arm nobody)
+			if u is Unit2D and not _def.usable_by(u.kind):
+				continue
 			if u is Unit2D:
 				u.play_gesture("pickup-up")
 				# grenade crates arm the collector with throwables

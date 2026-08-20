@@ -852,13 +852,38 @@ static func run(ctx: Node) -> void:
 		var got_plain: String = gcur._determine(foe.global_position)
 		if got_plain != "cursor":
 			cproblems.append("plain got %s" % got_plain)
-		for fam in ["cursor", "place", "attack", "grab", "enter", "repair", "nono", "cannon"]:
+		# EXIT: a selected fort holding a garrison, hovered. The exit_*
+		# art shipped with no code path able to return it, and there was
+		# no dismount action at all to attach it to.
+		if pfort:
+			var stowaway: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+				pfort.team, pfort.world_footprint().get_center()) as Unit2D
+			if stowaway and pfort.garrison_robot(stowaway):
+				SelectionManager.current.select_single(pfort)
+				SelectionManager.current.selected = [pfort]
+				var got_exit: String = gcur._determine(
+					xform * pfort.visual_center())
+				if got_exit != "exit":
+					cproblems.append("exit got %s" % got_exit)
+				# and the action must actually hand the robot back
+				var released := Commands.eject()
+				if released < 1:
+					cproblems.append("eject released %d" % released)
+				elif stowaway.carried or not stowaway.visible:
+					cproblems.append("released robot still carried/hidden")
+			SelectionManager.current.clear_selection()
+			if is_instance_valid(stowaway):
+				stowaway.queue_free()
+		for fam in ["cursor", "place", "attack", "grab", "enter", "repair",
+				"nono", "cannon", "exit"]:
 			var team := AnimLibrary.team_name(MatchState.current.player_team)
 			if not ResourceLoader.exists("res://assets/z/ui/cursor/%s_%s_n00.png" % [fam, team]) \
 					and fam != "cursor":
 				cproblems.append("art %s_%s" % [fam, team])
-		print("CURSOR: problems=%d %s" % [cproblems.size(),
-			", ".join(cproblems) if not cproblems.is_empty() else "(all contexts ok)"])
+		# ASSERTED (this block used to only print its problem list)
+		var cur := TestRig.start("CURSOR")
+		cur.check(cproblems.is_empty(), ", ".join(cproblems))
+		cur.finish("contexts=%d" % 9)
 		hud.queue_free()
 		for u in [foe, free_jeep, mine3]:
 			if is_instance_valid(u):
@@ -1282,8 +1307,14 @@ static func run(ctx: Node) -> void:
 			if "NONE" in String(line):
 				pose_missing += 1
 			print("POSE ", line)
-		print("POSESUM: lines=%d missing_layers=%d %s" % [lines.size(),
-			pose_missing, "OK" if pose_missing == 0 else "FAIL"])
+		# ASSERTED: this printed the word FAIL, which is NOT the
+		# `CHECK FAILED:` string the documented pass criterion greps for,
+		# so a real regression here read as a passing run.
+		var po := TestRig.start("POSESUM")
+		po.check(pose_missing == 0,
+			"%d of %d hardware poses have no turret/arm layer art" % [
+				pose_missing, lines.size()])
+		po.finish("lines=%d" % lines.size())
 	if "--level-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		# building levels gate the build roster (original zbuildlist) and
@@ -1655,6 +1686,7 @@ static func run(ctx: Node) -> void:
 		print("NEAR: instant=%s manned_after_walk=%s selection_left=%d" % [
 			instant, jeep3.manned, SelectionManager.current.selected.size()])
 	if "--flag-test" in args:
+		var fl := TestRig.start("FLAG")
 		var radar: Building2D = Building2D.new()
 		radar.setup(2, 0, "desert")
 		var zr: Node2D = MatchState.current.zones[0]
@@ -1662,16 +1694,57 @@ static func run(ctx: Node) -> void:
 		ctx.add_child(radar)
 		zr.owner_team = MatchState.current.player_team
 		radar._process(0.0)
-		print("FLAG: radar team=%d (want %d)" % [radar.team, MatchState.current.player_team])
+		fl.check(radar.team == MatchState.current.player_team,
+			"a building in an owned zone did not follow its owner (%d, want %d)" % [
+				radar.team, MatchState.current.player_team])
+		radar.queue_free()
+		# ZONE FLAG DATA (map_item id 0): the loader used to drop all 956
+		# of these markers, so every flag stood at a derived centre spot
+		# and every map opened fully neutral. Every non-fort zone carries
+		# exactly one, and the owner byte is authored per map.
+		var forts := 0
+		for b in ctx.get_tree().get_nodes_in_group(Groups.BUILDINGS):
+			if b is FortBuilding and b.alive:
+				forts += 1
+		var authored := 0
+		var pre_owned := 0
+		for z in MatchState.current.zones:
+			if z.flag_tile != Vector2i.MAX:
+				authored += 1
+				fl.check(z.zone_rect.has_point(z.flag_tile),
+					"zone flag tile %s sits outside its own zone %s" % [
+						z.flag_tile, z.zone_rect])
+			if z.owner_team != 0:
+				pre_owned += 1
+		var expect := MatchState.current.zones.size() - forts
+		fl.check(authored >= expect,
+			"only %d of %d non-fort zones got their authored flag tile" % [
+				authored, expect])
+		fl.finish("authored_flags=%d pre_owned_zones=%d forts=%d" % [
+			authored, pre_owned, forts])
 	if "--pickup-test" in args:
 		# quiet corner + overkill HP: the live map's wanderers must not
-		# steal the crate or kill the collector before the check runs
+		# steal the crate or kill the collector before the check runs.
+		# ASSERTED (this block used to only print): crate effects were
+		# dead data — `upgrade_key` was unset on both defs, so no upgrade
+		# was ever granted and no damage multiplier existed at all.
+		var pu := TestRig.start("PICKUP")
+		var team: int = 1
+		MatchState.current.upgrades.erase(team)
+		var robot_mult_before: float = MatchState.current.damage_multiplier(team, "robot")
+		var hw_mult_before: float = MatchState.current.damage_multiplier(team, "vehicle")
+		pu.check(is_equal_approx(robot_mult_before, 1.0)
+				and is_equal_approx(hw_mult_before, 1.0),
+			"a team with no crates already has a damage bonus (%.2f/%.2f)" % [
+				robot_mult_before, hw_mult_before])
+
+		# 1. a ROBOT opens a grenade crate: throwables + the team upgrade
 		var pk := Pickup.new()
 		pk.pickup_type = "grenades"
 		pk.position = Vector2(2400, 3080)
 		ctx.add_child(pk)
 		var collector: Unit2D = load("res://scenes/unit.tscn").instantiate()
-		collector.team = 1
+		collector.team = team
 		collector.position = Vector2(2370, 3080)
 		collector.hp = 10000000
 		collector.max_hp = 10000000
@@ -1681,29 +1754,73 @@ static func run(ctx: Node) -> void:
 		for i in 100:
 			collector._process(0.05)
 			collector._physics_process(0.05)
-			pk._process(0.05)
-			if not is_instance_valid(pk):
+			if is_instance_valid(pk):
+				pk._process(0.05)
+			else:
 				break
-		print("PICKUP: granted=%s grenades %d -> %d" % [
-			grenades_before < collector.grenades, grenades_before,
-			collector.grenades])
-		# rockets crates carry the same 20 grenades (zod
-		# grenades_per_box) — pin the grant so a def edit can't
-		# silently zero it
+		pu.check(collector.grenades > grenades_before,
+			"grenade crate armed no throwables (%d -> %d)" % [
+				grenades_before, collector.grenades])
+		pu.check(MatchState.current.has_upgrade(team, "grenades"),
+			"grenade crate granted no team upgrade")
+		pu.check(is_equal_approx(MatchState.current.damage_multiplier(team, "robot"),
+				1.0 + ContentDB.rules.grenade_damage_bonus),
+			"robot damage multiplier did not follow the grenade upgrade (%.2f)"
+				% MatchState.current.damage_multiplier(team, "robot"))
+
+		# 2. a ROCKET crate is HARDWARE-only: a robot must walk over it
 		var rk := Pickup.new()
 		rk.pickup_type = "rockets"
 		rk.position = Vector2(2440, 3080)
 		ctx.add_child(rk)
-		var gren_before: int = collector.grenades
 		collector.move_to(Vector2(2440, 3080))
 		for i in 100:
 			collector._process(0.05)
 			collector._physics_process(0.05)
-			rk._process(0.05)
-			if not is_instance_valid(rk):
+			if is_instance_valid(rk):
+				rk._process(0.05)
+			else:
 				break
-		print("PICKUP: rockets crate grenades %d -> %d (want +20)" % [
-			gren_before, collector.grenades])
+		pu.check(not rk._taken,
+			"a robot consumed a rockets crate (hardware-only) and wasted it")
+		pu.check(not MatchState.current.has_upgrade(team, "rockets"),
+			"a robot granted the team the ROCKET upgrade")
+
+		# 3. hardware opens it: the upgrade lands, no grenades are given.
+		# Placed ON the crate rather than driven to it — this checks crate
+		# SEMANTICS, and the surrounding terrain is not guaranteed to be
+		# drivable (a jeep needs the vehicle grid).
+		var truck_spot := NavWorld.current.find_free_spot(rk.position, "vehicle")
+		if truck_spot == Vector2.INF:
+			truck_spot = rk.position
+		rk.position = truck_spot
+		var truck: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", team,
+			truck_spot, true) as Vehicle2D
+		if truck == null:
+			pu.check(false, "could not spawn a manned jeep for the rockets crate")
+		else:
+			truck.hp = 10000000
+			truck.max_hp = 10000000
+			for i in 20:
+				truck._process(0.05)
+				if is_instance_valid(rk):
+					rk._process(0.05)
+				else:
+					break
+			pu.check(rk._taken, "hardware never collected the rockets crate")
+			pu.check(MatchState.current.has_upgrade(team, "rockets"),
+				"rockets crate granted no team upgrade to hardware")
+			pu.check(is_equal_approx(
+					MatchState.current.damage_multiplier(team, "vehicle"),
+					1.0 + ContentDB.rules.rocket_damage_bonus),
+				"vehicle damage multiplier did not follow the rocket upgrade (%.2f)"
+					% MatchState.current.damage_multiplier(team, "vehicle"))
+			truck.queue_free()
+		collector.queue_free()
+		if is_instance_valid(rk):
+			rk.queue_free()
+		MatchState.current.upgrades.erase(team)
+		pu.finish()
 	if "--prod-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		var f2: RobotFactory = null
@@ -2175,9 +2292,12 @@ static func run(ctx: Node) -> void:
 					missing_turret += 1
 		# 8 parade vehicles + 8 direction tanks, all manned (the extra
 		# jeep is deliberately empty hardware)
-		print("PARADE: hardware=%d (want 16) turret_issues=%d %s" % [
-			spawned, missing_turret,
-			"OK" if spawned == 16 and missing_turret == 0 else "FAIL"])
+		# ASSERTED (printed "FAIL" before, which nothing greps for)
+		var pa := TestRig.start("PARADE")
+		pa.check(spawned == 16, "parade put out %d manned hardware (want 16)" % spawned)
+		pa.check(missing_turret == 0,
+			"%d parade tanks have no turret layer" % missing_turret)
+		pa.finish("hardware=%d" % spawned)
 	if "--fx-test" in args:
 		# effects/projectiles must spawn and clean up on their own
 		# (earlier flags may have paused the tree via game over)
@@ -2273,8 +2393,10 @@ static func run(ctx: Node) -> void:
 						fails.append("%s: no %s variant" % [f, tn])
 		if checked == 0:
 			fails.append("parity audit scanned nothing")
-		print("TEAMS: %s (parity checked %d red art files)" % [
-			"OK" if fails.is_empty() else "FAIL %s" % fails, checked])
+		# ASSERTED (printed "FAIL <list>" before, which nothing greps for)
+		var te := TestRig.start("TEAMS")
+		te.check(fails.is_empty(), ", ".join(fails))
+		te.finish("parity checked %d red art files" % checked)
 		# live check: spawned units render their own team's files, and a
 		# mixed-team squad lands in front of the camera for screenshots
 		var cam: Camera2D = ctx.get_viewport().get_camera_2d()

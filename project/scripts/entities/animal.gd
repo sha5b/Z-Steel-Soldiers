@@ -32,7 +32,12 @@ static func random_species(planet: String) -> String:
 	var pool: Array = PLANET_SPECIES.get(planet, PLANET_SPECIES.desert)
 	var candidates := []
 	for s in pool:
-		if ResourceLoader.exists("%s/%s_look_r000_n00.png" % [ANIMALS_DIR, s]):
+		# WALK art is the real requirement: green_snake, red_worm and
+		# yellow_worm ship walk/dead frames but no `look` idle, and gating
+		# on `look` silently dropped them — volcanic and city lost one of
+		# three species each, jungle one of five. _play() already falls
+		# back per animation, so a missing idle is cosmetic.
+		if ResourceLoader.exists("%s/%s_walk_r000_n00.png" % [ANIMALS_DIR, s]):
 			candidates.append(s)
 	return String(candidates.pick_random()) if not candidates.is_empty() else ""
 

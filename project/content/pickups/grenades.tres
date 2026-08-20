@@ -7,4 +7,6 @@
 script = ExtResource("1_xxy0o")
 texture = ExtResource("2_e03tj")
 sound_set = "pickup"
+upgrade_key = "grenades"
+takers = "robot"
 grenades = 20  # zod grenades_per_box

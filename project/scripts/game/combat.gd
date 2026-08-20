@@ -25,6 +25,10 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 	# carry the original scale)
 	if target is Building2D and def.building_frac > 0.0:
 		amount = maxi(1, int(round(def.building_frac * (target as Building2D).max_hp)))
+	# crate upgrades: grenades boost robots, rockets boost hardware
+	if shooter is Unit2D:
+		amount = maxi(1, int(round(amount * MatchState.current.damage_multiplier(
+			(shooter as Unit2D).team, (shooter as Unit2D).kind))))
 	Fx.gunfire(def.sound)
 	Fx.play("muzzle", muzzle)
 	var weapon := weapon_of(def)
@@ -51,7 +55,7 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 	match weapon:
 		"laser":
 			Fx.laser(muzzle, aim)
-			target.take_damage(amount)
+			_land(target, amount, aim)
 		"shell":
 			var splash := def.splash_radius
 			# capture ids, not nodes — the shooter and target may be
@@ -66,10 +70,10 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 					else:
 						var hit: Node2D = instance_from_id(tid) as Node2D
 						if hit and hit.alive:
-							hit.take_damage(amount))
+							_land(hit, amount, aim))
 		_:
 			Fx.bullet(muzzle, aim)
-			target.take_damage(amount)
+			_land(target, amount, aim)
 
 
 ## Explosion splash (zod ProcessMissileDamage): ONE damage roll per
@@ -82,12 +86,20 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 		shooter_team: int, crater := false) -> void:
 	if crater:
 		Decals.crater(world_pos, radius > 36.0)
+	# NEUTRAL objects are not immune. `team != 0` used to sit here on both
+	# loops, and team 0 is exactly what unmanned hardware spawns as (and
+	# what 230 of the 235 bridges on the shipped maps load as) — so empty
+	# vehicles and cannons could not be destroyed at all, and the fully
+	# implemented destructible-bridge path (_bridge_damage -> rubble
+	# solids -> crane repair) was unreachable in play. AUTO-TARGETING
+	# still ignores team 0 (units must not wander off to shoot derelicts
+	# and neutral factories); explosions do not get to be that polite.
 	for u in UnitRegistry.current.in_radius(world_pos, radius):
-		if u.team != shooter_team and u.team != 0:
+		if u.team != shooter_team:
 			u.take_damage(_falloff(amount, u.global_position.distance_to(world_pos), radius))
 	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 		if b is Node2D and b is Building2D and b.alive \
-				and b.team != shooter_team and b.team != 0:
+				and b.team != shooter_team:
 			# distance to the RECT, not the centre — a shell bursting on
 			# a big factory's wall must not measure to the building middle
 			# (<= like the unit/rock probes)
@@ -95,12 +107,23 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 			var cp := world_pos.clamp(fp.position, fp.position + fp.size)
 			var d: float = cp.distance_to(world_pos)
 			if d <= radius:
-				b.take_damage(_falloff(amount, d, radius))
+				b.take_damage(_falloff(amount, d, radius), cp)
 	for rock in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ROCKS):
 		if rock is Node2D and rock.global_position.distance_to(world_pos) <= radius:
 			NavWorld.current.clear_rock(rock.global_position)
 			Fx.play("debris", rock.global_position)
 			rock.queue_free()
+
+
+## Deliver damage and tell a BUILDING where it was hit. Buildings render
+## their ground platform in the same sprite as their walls, so they show
+## a local spark at the impact point instead of tinting the whole image
+## (see Building2D._hit_flash); units take the plain call.
+static func _land(target: Node2D, amount: int, at: Vector2) -> void:
+	if target is Building2D:
+		(target as Building2D).take_damage(amount, at)
+	else:
+		target.take_damage(amount)
 
 
 static func _falloff(amount: int, dist: float, radius: float) -> int:

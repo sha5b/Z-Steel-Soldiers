@@ -66,7 +66,17 @@ func _scan_dir(path: String) -> void:
 	dir.list_dir_end()
 
 
-var _last_res_path := ""  # basename keying for AI profiles
+var _last_res_path := ""  # basename keying for AI profiles and projectiles
+var _projectiles := {}  # basename -> ProjectileDef
+
+
+## Projectile def by file basename ("grenade", "garrison_missile").
+func projectile_def(name: String) -> ProjectileDef:
+	return _projectiles.get(name, null)
+
+
+func has_projectile(name: String) -> bool:
+	return _projectiles.has(name)
 
 
 func _register(res: Resource) -> void:
@@ -87,6 +97,12 @@ func _register(res: Resource) -> void:
 	elif res is PickupDef:
 		var pickup := res as PickupDef
 		_pickups[pickup.id] = pickup
+	elif res is ProjectileDef:
+		# content/projectiles/*.tres was scanned and thrown away: the two
+		# existing defs only worked because call sites preload() them, so
+		# a NEW projectile def was silently inert despite the docs listing
+		# the directory as registered content.
+		_projectiles[_last_res_path.get_file().get_basename()] = res
 
 
 # ------------------------- units -------------------------

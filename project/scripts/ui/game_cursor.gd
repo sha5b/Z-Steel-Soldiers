@@ -39,11 +39,15 @@ func _process(_delta: float) -> void:
 func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
 	if SelectionManager.current.is_dragging or SelectionManager.current.selected.is_empty():
 		return "cursor"
+	var world: Vector2 = SelectionManager.current.screen_to_world(mouse)
 	var sel: Array = SelectionManager.current.selected.filter(
 		func(u): return is_instance_valid(u) and u is Unit2D and u.alive)
 	if sel.is_empty():
-		return "cursor"
-	var world: Vector2 = SelectionManager.current.screen_to_world(mouse)
+		# a selected BUILDING is not a Unit2D, so this used to fall
+		# straight to the plain pointer — the fort's own eject
+		# affordance included
+		var hovered := _hover_object(world)
+		return "exit" if hovered != null and _can_eject(hovered) else "cursor"
 	var can_attack := false
 	var can_move := false
 	var has_crane := false
@@ -61,6 +65,13 @@ func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
 	var hover := _hover_object(world)
 	if hover == null:
 		return "place" if can_move else "cannon"
+	# EXIT: hovering something in the selection that is HOLDING bodies
+	# (a garrisoned fort, a crewed hull, a loaded APC) — X or the panel's
+	# EXIT button hands them back. This is what the shipped exit_* cursor
+	# art is for; nothing referenced it before, and there was no dismount
+	# action at all, so a unit that entered anything was gone for good.
+	if _can_eject(hover):
+		return "exit"
 	# repair work: crane over damaged hardware, damaged vehicle over a
 	# repair shop (zod can_repair / can_be_repaired)
 	if has_crane and hover is Unit2D and hover.kind == "vehicle" \
@@ -78,6 +89,22 @@ func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
 			return "enter"
 		return "attack" if can_attack else "nono"
 	return "place"  # friendly target: move/follow/garrison order
+
+
+## Is `hover` a selected thing that Commands.eject() would empty? Same
+## predicate the action uses, so the cursor cannot promise an eject that
+## does nothing.
+func _can_eject(hover: Node2D) -> bool:
+	if not SelectionManager.current.selected.has(hover):
+		return false
+	if hover is FortBuilding and hover.team == MatchState.current.player_team:
+		for member in (hover as FortBuilding).garrison:
+			if is_instance_valid(member) and member.alive:
+				return true
+		return false
+	if hover is Vehicle2D and hover.team == MatchState.current.player_team:
+		return (hover as Vehicle2D).manned or not (hover as Vehicle2D).cargo.is_empty()
+	return false
 
 
 ## What the mouse points at — the shared Pick priority (one definition
@@ -107,11 +134,11 @@ func _show(type: String) -> void:
 
 
 func _build(type: String) -> SpriteFrames:
-	# contextual cursors are per-team art; PLACED (the neutral ring set)
-	# only exists as the neutral frames
+	# every cursor _determine can return is per-team art. (The neutral
+	# `placed_n*` ring set is NOT a cursor: PathIndicator draws it at the
+	# order destination, and the special case that used to sit here was
+	# unreachable because _determine never returns "placed".)
 	var art := "%s_%s_n%%02d.png" % [type, _team]  # %%: frame digit passes to the next format
-	if type == "placed":
-		art = "placed_n%02d.png"
 	var frames := SpriteFrames.new()
 	frames.add_animation("a")
 	frames.set_animation_speed("a", 1.0 / FRAME_SECONDS)

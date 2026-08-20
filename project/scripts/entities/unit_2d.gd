@@ -750,8 +750,13 @@ func _building_order(b: Building2D) -> void:
 func portrait_path() -> String:
 	match kind:
 		"robot":
-			# r270 = facing the camera (south, toward the viewer)
-			return "res://assets/z/robots/stand_%s_r270.png" % AnimLibrary.team_name(team)
+			# r270 = facing the camera (south, toward the viewer). No
+			# `stand_null` art ships, so a team-0 robot would get a blank
+			# portrait — Teams.palette never returns 0 for a real team,
+			# so borrow team 1's set for the neutral case.
+			var tn := AnimLibrary.team_name(team if team > 0 else 1)
+			var path := "res://assets/z/robots/stand_%s_r270.png" % tn
+			return path if ResourceLoader.exists(path) else ""
 		"cannon", "vehicle":
 			# the original names hull art three different ways and only
 			# 3 of 11 hardware types ship `empty_r270` — probing that one

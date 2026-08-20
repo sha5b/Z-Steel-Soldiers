@@ -8,4 +8,6 @@ script = ExtResource("1_u027b")
 id = "rockets"
 texture = ExtResource("2_00j4w")
 sound_set = "pickup"
-grenades = 20  # zod grenades_per_box
+upgrade_key = "rockets"
+takers = "vehicle,cannon"
+grenades = 0  # rockets arm HARDWARE, not a robot's throwing arm

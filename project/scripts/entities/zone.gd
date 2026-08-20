@@ -16,6 +16,12 @@ const BOB_SECONDS := 0.45  # water marker redraw cadence
 
 @export var zone_rect := Rect2i()
 @export var owner_team := 0
+## The map's own flag tile for this zone (map_item id 0). Vector2i.MAX
+## means "none authored" — then the flag falls back to the derived
+## centre spot. The original ships one such marker per non-fort zone and
+## the loader used to drop every one of them, so every flag on every map
+## stood at a computed position instead of where it was placed.
+@export var flag_tile := Vector2i.MAX
 
 var _capturing_team := 0
 var _capture_progress := 0.0
@@ -70,11 +76,29 @@ func _place_flag() -> void:
 			return  # the fort flies the territory's flag
 	_flag = AnimatedSprite2D.new()
 	_flag.sprite_frames = AnimLibrary.flag_frames(owner_team)
-	_flag.position = _flag_spot(r)
+	_flag.position = _authored_flag_spot(r)
 	_flag.scale = Vector2.ONE  # native art scale, matching buildings
 	add_child(_flag)
 	if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
 		_flag.play("wave")
+
+
+## The map's flag tile when it authored one and the tile is usable,
+## otherwise the derived centre spot.
+func _authored_flag_spot(r: Rect2) -> Vector2:
+	if flag_tile != Vector2i.MAX and NavWorld.current.nav_grid != null \
+			and NavWorld.current.nav_grid.region.has_point(flag_tile) \
+			and not NavWorld.current.nav_grid.is_point_solid(flag_tile):
+		return NavWorld.cell_center(flag_tile)
+	return _flag_spot(r)
+
+
+## Load-time ownership: set the starting owner WITHOUT the capture
+## announcements and signals set_owner_team fires (a match that begins
+## with pre-owned territory must not open by shouting "territory lost").
+func set_initial_owner(team: int) -> void:
+	owner_team = team
+	queue_redraw()
 
 
 ## Centre cell, nudged to the nearest passable cell inside the zone.

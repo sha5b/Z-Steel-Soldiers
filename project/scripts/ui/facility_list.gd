@@ -71,8 +71,8 @@ func _make_entry(node: Node) -> Button:
 	var btn := Button.new()
 	btn.custom_minimum_size = ENTRY_SIZE
 	btn.tooltip_text = "Select building (right-click map with it selected to set the rally point)"
-	var icon_path: String = FactoryLabels.LABELS.get(node.kind_key(), "")
-	if icon_path != "" and ResourceLoader.exists(icon_path):
+	var icon_path := FactoryLabels.path_for(node.kind_key())
+	if icon_path != "":
 		btn.icon = load(icon_path)
 		btn.expand_icon = false
 	btn.pressed.connect(func():

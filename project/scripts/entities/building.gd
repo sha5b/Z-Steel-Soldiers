@@ -690,23 +690,19 @@ func _repair_tick(delta: float) -> void:
 		done.move_to(done.global_position + Vector2(0, 34))
 
 
-func take_damage(amount: int) -> void:
+## `at` is the impact point in world px when the caller knows it (every
+## weapon does) — see _hit_flash for why that matters.
+func take_damage(amount: int, at := Vector2.INF) -> void:
 	if not alive:
 		return
 	if is_bridge():
-		_bridge_damage(amount)
+		_bridge_damage(amount, at)
 		return
 	hp -= amount
 	if is_fort and team == MatchState.current.player_team:
 		Fx.announce("fort_under_attack")  # forts only — factories have
 		# their own distinct original voice lines
-	# rapid-fire attackers restart this every hit — only start a new
-	# flash when the previous one has fully faded, or the building
-	# strobes white permanently
-	if _sprite and _sprite.modulate == Color.WHITE:
-		_sprite.modulate = Color(3, 3, 3)
-		var tween := create_tween()
-		tween.tween_property(_sprite, "modulate", Color.WHITE, 0.15)
+	_hit_flash(at)
 	if _hp_bar:
 		_hp_bar.region_rect.size.x = maxf(6.0,
 			62.0 * clampf(float(hp) / float(max_hp), 0.0, 1.0))
@@ -719,6 +715,25 @@ func take_damage(amount: int) -> void:
 		_death_visuals()
 		if is_fort:
 			GameState.report_fort_destroyed(team)
+
+
+## Damage feedback WITHOUT tinting the sprite. A building's art is one
+## image that includes its GROUND PLATFORM — the fort's whole sandy apron
+## lives in `fort_<planet>_front.png` — so `modulate = Color(3,3,3)` blew
+## the terrain white along with the walls, and a fort under sustained
+## fire strobed its entire tile footprint. There is no separate platform
+## layer in the shipped art to exclude (zod stamps the fort base into the
+## ground layer instead), so the flash is now a LOCAL spark at the hit
+## point: it reads as "this structure is being hit here", and no ground
+## pixel changes colour. Falls back to a random point on the solid
+## footprint when the caller has no impact position.
+func _hit_flash(at: Vector2) -> void:
+	var spot := at
+	if spot == Vector2.INF or not spot.is_finite():
+		var fp := world_footprint()
+		spot = Vector2(randf_range(fp.position.x, fp.end.x),
+			randf_range(fp.position.y, fp.end.y))
+	Fx.impact(spot)
 
 
 ## Ruin look + bookkeeping shared by battle death and the elimination
@@ -763,12 +778,11 @@ const FORT_HP := 33333  # fort_building_health 10000/240 (zsettings), x0.08
 var bridge_cells: Array[Vector2i] = []  # filled by the map loader
 
 
-func _bridge_damage(amount: int) -> void:
+func _bridge_damage(amount: int, at := Vector2.INF) -> void:
 	hp -= amount
-	if _sprite:
-		_sprite.modulate = Color(3, 3, 3)
-		var tween := create_tween()
-		tween.tween_property(_sprite, "modulate", Color(0.35, 0.35, 0.35), 0.3)
+	# a bridge's art IS its road surface — tinting it flashed the ground
+	# units are standing on (same rule as _hit_flash)
+	_hit_flash(at)
 	if hp > 0:
 		return
 	hp = 0
@@ -779,7 +793,7 @@ func _bridge_damage(amount: int) -> void:
 		if NavWorld.current.vehicle_grid:
 			NavWorld.current.vehicle_grid.set_point_solid(cell, true)
 	set_solid_body(true, bridge_cells)
-	_sprite.modulate = Color(0.35, 0.35, 0.35)
+	_sprite.modulate = Color(0.35, 0.35, 0.35)  # rubble state, not a flash
 
 
 ## Crane repair: restores a destroyed bridge (or patches a damaged one).

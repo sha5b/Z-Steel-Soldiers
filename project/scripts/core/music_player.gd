@@ -4,12 +4,19 @@ extends Node
 ## from tools/gog/convert_assets.py (assets_original/gog/*.ogg).
 
 const MENU_TRACK := "res://assets/z/music/ipOPTIONS16.ogg"
-const BATTLE_TRACKS := [
-	"res://assets/z/music/ipBATTLE16.ogg",
-	"res://assets/z/music/AA16.ogg",
-	"res://assets/z/music/aC16.ogg",
-	"res://assets/z/music/aJ16.ogg",
-]
+## One battle theme PER PLANET, like the original. The GOG release ships
+## arctic/city/jungle (AA16/aC16/aJ16); desert and volcanic exist only in
+## the zod pack and reach us through tools/zod/copy_art.py. play_battle()
+## used to pick at random from the four it knew, so two planets never
+## heard their own theme and every other match played the wrong one.
+const PLANET_TRACKS := {
+	"arctic": "res://assets/z/music/AA16.ogg",
+	"city": "res://assets/z/music/aC16.ogg",
+	"jungle": "res://assets/z/music/aJ16.ogg",
+	"desert": "res://assets/z/music/music_desert.ogg",
+	"volcanic": "res://assets/z/music/music_volcanic.ogg",
+}
+const BATTLE_FALLBACK := "res://assets/z/music/ipBATTLE16.ogg"
 const WIN_STINGER := "res://assets/z/music/ipWIN.ogg"
 const LOSE_STINGER := "res://assets/z/music/ipLOSE.ogg"
 
@@ -36,8 +43,13 @@ func play_menu() -> void:
 	_play(MENU_TRACK, true)
 
 
-func play_battle() -> void:
-	_play(BATTLE_TRACKS[randi() % BATTLE_TRACKS.size()], true)
+## `planet` picks the theme; anything unknown or unconverted falls back
+## to the generic battle loop.
+func play_battle(planet := "") -> void:
+	var track: String = PLANET_TRACKS.get(planet, "")
+	if track == "" or not ResourceLoader.exists(track):
+		track = BATTLE_FALLBACK
+	_play(track, true)
 
 
 func play_stinger(won: bool) -> void:

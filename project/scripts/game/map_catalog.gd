@@ -1,10 +1,19 @@
 class_name MapCatalog
 extends Object
 ## ONE map enumeration for everything: map select, campaign, the dev
-## map cycler and test overrides. Scene versions replace their JSON
-## twins (same basename, editable in the editor); the sandbox/test maps
-## are excluded from the campaign. Metadata (size, terrain) is read once
-## and cached.
+## map cycler and test overrides. The sandbox/test maps are excluded from
+## the campaign. Metadata (size, terrain) is read once and cached.
+##
+## JSON WINS by default. Every map ships as both a `.json` and a
+## generated `.tscn` twin under assets/maps_scenes/, and the JSON list is
+## what play has always exercised; the scene loader derives passability
+## from painted terrain instead of the stored mask, so the two are not
+## byte-identical. The docstring here used to claim scenes replaced their
+## JSON twins, while the code below did the exact opposite — the same 58
+## basenames exist in both directories, so NO scene ever registered. The
+## precedence is now one explicit switch instead of an accident. Editing
+## a scene in the editor and pressing F6 is unaffected either way.
+const PREFER_SCENES := false
 
 static var _entries: Array = []  # [{name, path, json, sandbox}]
 static var _meta := {}  # name -> {width, height, terrain}
@@ -13,25 +22,23 @@ static var _meta := {}  # name -> {width, height, terrain}
 static func entries() -> Array:
 	if not _entries.is_empty():
 		return _entries
-	var json_names := {}
-	var dir := DirAccess.open("res://assets/maps")
-	if dir:
+	# the PREFERRED format is registered first and claims the basename;
+	# the other only fills in names the preferred pass did not cover
+	var taken := {}
+	for pass_scenes in ([true, false] if PREFER_SCENES else [false, true]):
+		var dir := DirAccess.open("res://assets/maps_scenes" if pass_scenes
+			else "res://assets/maps")
+		if dir == null:
+			continue
 		dir.list_dir_begin()
 		var f := dir.get_next()
 		while f != "":
-			if f.ends_with(".json"):
-				json_names[f.get_basename()] = true
-				_register(f.get_basename(), "res://assets/maps/%s" % f, true)
-			f = dir.get_next()
-		dir.list_dir_end()
-	dir = DirAccess.open("res://assets/maps_scenes")
-	if dir:
-		dir.list_dir_begin()
-		var f := dir.get_next()
-		while f != "":
-			if f.ends_with(".tscn") and not json_names.has(f.get_basename()):
-				_register(f.get_basename(),
-					"res://assets/maps_scenes/%s" % f, false)
+			var want := ".tscn" if pass_scenes else ".json"
+			if f.ends_with(want) and not taken.has(f.get_basename()):
+				taken[f.get_basename()] = true
+				_register(f.get_basename(), "res://%s/%s" % [
+					"assets/maps_scenes" if pass_scenes else "assets/maps", f],
+					not pass_scenes)
 			f = dir.get_next()
 		dir.list_dir_end()
 	_entries.sort_custom(func(a, b): return String(a.name) < String(b.name))

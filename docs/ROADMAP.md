@@ -50,12 +50,21 @@ shipped 2026-08 — see the bottom section.
 - Verified open bugs live in `docs/BUGS.md` (root-caused, with
   file:line evidence) — keep that file current instead of the roadmap
 - Remaining polish (2026-08-20 sweep): control-group hotkeys, ambient
-  birds, the EXIT_C eject cursor, original production-menu chrome, HUD
-  selected-object trio, robot portraits on the selection bar.
+  birds, original production-menu chrome, HUD selected-object trio,
+  robot portraits on the selection bar. (The EXIT_C eject cursor shipped
+  — with the dismount action it needed; see `docs/BUGS.md` Fixed.)
   Shipped in that sweep instead: pop-cap meter (top bar), missile
   target-leading (original EstimateMissileTarget feel), robot order
   acknowledgement barks.
-- Closed as impossible from the assets: water animation, unit shadows
+- RETRACTED "closed as impossible": water/terrain animation IS
+  rebuildable. The zod `planets/<planet>.tileinfo` records carry
+  `is_effect` + `next_tile_in_effect`, which form closed 4-frame tile
+  rings (desert 50 tiles, city 40, arctic 25, volcanic 18), and those
+  frames are already distinct images inside the sheets we ship. Both
+  converters discard the fields. See `docs/BUGS.md` open item 2.
+  Unit shadows are still genuinely absent — though `buildings/{robot,
+  vehicle}/base_shadow.png` does ship, so the blanket "no shadow art in
+  either asset set" was also too strong.
 - Full soundtrack needs one run of `tools/zod/render_midi.sh`
   (fluidsynth + soundfont required)
 - Weapon classes/splash, veterancy, destructible rocks/bridges

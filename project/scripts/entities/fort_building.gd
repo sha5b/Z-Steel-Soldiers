@@ -175,6 +175,38 @@ func _garrison_fire(delta: float) -> void:
 				Combat.area_damage(impact, 40.0, 167, team, true))  # map_item_turrent_damage 50/240, x0.08
 
 
+## Send the garrison back out. The original never gave you a way to do
+## this, and neither did we — a robot ordered into a fort simply left the
+## world: invisible, degrouped, unselectable, gone for the rest of the
+## match with no affordance to explain it. The defenders are real nodes
+## (they used to be queue_free'd here), so releasing them is just the
+## reverse of garrison_robot: validated placement outside the walls,
+## groups and visibility back. Returns how many actually stepped out.
+func release_garrison() -> int:
+	var out := 0
+	var apron := world_footprint()
+	for member in garrison:
+		if not is_instance_valid(member) or not member.alive:
+			continue
+		# fan them along the south apron, each spot body-validated
+		var raw := Vector2(apron.get_center().x + (out - 2) * 18.0, apron.end.y + 14.0)
+		var spot := NavWorld.current.find_free_spot(raw, member.kind)
+		if spot == Vector2.INF:
+			spot = NavWorld.current.find_free_spot(apron.get_center(), member.kind)
+		if spot == Vector2.INF:
+			continue  # boxed in: keep this one inside rather than clip it
+		member.global_position = spot
+		member.carried = false
+		member.visible = true
+		member.add_to_group(Groups.SELECTABLE)
+		member.add_to_group(Groups.UNITS)
+		out += 1
+	garrison = garrison.filter(func(m): return is_instance_valid(m) and m.carried)
+	if out > 0 and team == MatchState.current.player_team:
+		Fx.ui_click()
+	return out
+
+
 ## The fort falling kills everyone inside.
 func kill_garrison() -> void:
 	for robot in garrison:

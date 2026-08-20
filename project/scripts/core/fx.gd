@@ -217,7 +217,12 @@ func _enforce_voice_cap() -> void:
 		if c is AudioStreamPlayer and c.playing:
 			players.append(c)
 	while players.size() >= MAX_VOICES:
-		players.pop_front().stop()
+		# stop() does NOT emit `finished`, so the queue_free hook wired at
+		# the play site never fired for a capped voice and the stopped
+		# AudioStreamPlayer children piled up for the whole match
+		var oldest: AudioStreamPlayer = players.pop_front()
+		oldest.stop()
+		oldest.queue_free()
 
 
 func _gate_allows(name: String) -> bool:

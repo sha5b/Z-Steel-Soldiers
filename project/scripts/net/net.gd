@@ -48,11 +48,23 @@ func _ready() -> void:
 	multiplayer.server_disconnected.connect(_on_server_gone)
 
 
-func _process(_delta: float) -> void:
+## Host -> peers economy resync cadence. push_state() shipped with NO
+## caller at all, so the bounded drift correction it exists for never
+## actually ran outside the test that pokes _apply_state directly.
+const STATE_PUSH_SECONDS := 5.0
+var _state_accum := 0.0
+
+
+func _process(delta: float) -> void:
 	# announcing continues while the room is open; Net is an autoload so
 	# the broadcast survives scene swaps
 	if _broadcaster != null and role == Role.HOST and not in_match:
 		_broadcaster.poll()
+	if role == Role.HOST and in_match:
+		_state_accum += delta
+		if _state_accum >= STATE_PUSH_SECONDS:
+			_state_accum = 0.0
+			push_state()
 
 
 func my_id() -> int:
@@ -235,6 +247,16 @@ func relay_rally(facility: Building2D, world_position: Vector2) -> void:
 		return
 	_send_intent({"kind": "rally", "team": match_team,
 		"fac": facility.net_id, "x": world_position.x, "y": world_position.y})
+
+
+## Does THIS peer run the CPU brains? Offline it always does; in a match
+## only the HOST does. Every peer used to spawn its own CpuAi for the
+## same seats, each with an unseeded RNG, so the peers' rosters diverged
+## as soon as the AI produced anything and unit net ids stopped lining
+## up. The host's brain now relays its intents like a player's
+## (CpuAi._order/_queue/_rally).
+func owns_ai() -> bool:
+	return not in_match or role == Role.HOST
 
 
 ## Teams seated by HUMAN players in the launched match — those get no

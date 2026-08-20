@@ -64,6 +64,32 @@ static func dispatch(world_position: Vector2) -> void:
 				_order(u, Order.move(dest, sprint))
 
 
+## THE dismount action (X, or the panel's EXIT button): hand back
+## whatever the current selection is holding. Until this existed a unit
+## that entered anything was gone for the match — a garrisoned robot went
+## invisible and degrouped with no way out, a crewed vehicle could never
+## be un-crewed, and an APC squad only came out by arriving somewhere.
+## Returns how many bodies stepped out, so callers can beep on a no-op.
+static func eject() -> int:
+	var out := 0
+	for node in SelectionManager.current.selected.duplicate():
+		if not is_instance_valid(node):
+			continue
+		if node is FortBuilding and node.team == MatchState.current.player_team:
+			out += (node as FortBuilding).release_garrison()
+		elif node is Vehicle2D and node.team == MatchState.current.player_team:
+			var v := node as Vehicle2D
+			if v.is_apc() and not v.cargo.is_empty():
+				out += v.cargo.size()
+				v.unload()  # passengers first: the driver keeps the hull
+			elif v.manned:
+				out += 1
+				v.eject_driver()
+	if out == 0:
+		Fx.cap_denied()  # nothing to give back — say so instead of nothing
+	return out
+
+
 ## Issue + relay: the single place a player order enters the game AND
 ## the network (no-op offline — Net guards in_match itself).
 static func _order(u: Node2D, o: Order) -> void:

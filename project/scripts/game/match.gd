@@ -59,7 +59,7 @@ func _ready() -> void:
 		var tileset: Texture2D = load(MapLoader.PLANET_TILESETS.get(String(data.terrain), MapLoader.PLANET_TILESETS.desert))
 		minimap.build(data, tileset)
 		minimap.move_order.connect(func(world: Vector2): SelectionManager.current.issue_order(world))
-	MusicPlayer.play_battle()
+	MusicPlayer.play_battle(MatchState.current.planet)
 	var shot_args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	if SelfTests.should_run():
 		var terrain_cells := -1
@@ -247,6 +247,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_T:
 				GameSettings.set_auto_idle(not GameSettings.auto_idle)
 				Fx.ui_click()
+				return
+			KEY_X:
+				Commands.eject()  # get garrisoned/crewed units back out
 				return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		var pause := get_node_or_null("CanvasLayer/PauseMenu")

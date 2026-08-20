@@ -170,6 +170,18 @@ func has_upgrade(team: int, key: String) -> bool:
 	return upgrades.get(team, {}).get(key, false)
 
 
+## Damage multiplier a team's crate upgrades give a unit of `kind`.
+## ONE resolver so the bonus cannot drift between weapon paths.
+func damage_multiplier(team: int, kind: String) -> float:
+	var mult := 1.0
+	if kind == "robot":
+		if has_upgrade(team, "grenades"):
+			mult += ContentDB.rules.grenade_damage_bonus
+	elif has_upgrade(team, "rockets"):
+		mult += ContentDB.rules.rocket_damage_bonus
+	return mult
+
+
 
 # ------------------------- population -------------------------
 

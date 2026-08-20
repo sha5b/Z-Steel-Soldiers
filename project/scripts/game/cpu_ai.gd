@@ -43,6 +43,33 @@ func _init(cpu_team: int = 2) -> void:
 	team = cpu_team
 
 
+# ---- the relay seam ----------------------------------------------------
+# The AI is a COMMANDER, so its intents must travel the same wire a
+# player's do. They used to call issue_order/queue_unit/set_rally
+# directly, which bypassed Net entirely; combined with every peer running
+# its own CpuAi (unseeded randi/randf), the peers' rosters and net-id
+# sequences diverged the moment the first CPU unit rolled out, and a
+# human's order for "unit 7" hit a different unit on the host. Now only
+# the HOST runs a brain (map_loader) and these three funnels replicate
+# what it decides.
+
+func _order(u: Node2D, o: Order) -> void:
+	u.issue_order(o)
+	Net.relay_order(u, o)
+
+
+func _queue(f: Node, item: String) -> bool:
+	if not f.queue_unit(item, true):
+		return false
+	Net.relay_queue(f, item)
+	return true
+
+
+func _rally(f: Node, world_position: Vector2) -> void:
+	f.set_rally(world_position)
+	Net.relay_rally(f, world_position)
+
+
 ## The difficulty profile (cached once — difficulty is fixed per match).
 func _p() -> AiProfileDef:
 	if _profile == null:
@@ -121,7 +148,7 @@ func _produce() -> void:
 		var pick := String(_weighted_pick(options, army_pop, diff))
 		var parts: PackedStringArray = pick.split(":")
 		var cost := ContentDB.def_for(parts[0], parts[1]).cost
-		if money >= cost and f.queue_unit(pick, true):
+		if money >= cost and _queue(f, pick):
 			money -= cost
 
 
@@ -178,7 +205,7 @@ func _defend(robots: Array[Node], vehicles: Array[Node]) -> void:
 		for i in mini(responders, defenders.size()):
 			var d: Node = defenders.pop_front()
 			if is_instance_valid(d):
-				d.issue_order(Order.move_attack(threat.global_position
+				_order(d, Order.move_attack(threat.global_position
 					+ Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0))))
 
 
@@ -212,7 +239,7 @@ func _man_hardware(robots: Array[Node], empty_hardware: Array[Node]) -> void:
 				best = hw
 		if best != null:
 			empty_hardware.erase(best)
-			r.issue_order(Order.for_target(best))
+			_order(r, Order.for_target(best))
 
 
 # ------------------------- maintenance -------------------------
@@ -253,10 +280,10 @@ func _maintenance(vehicles: Array[Node]) -> void:
 					best_b = b
 			if best_b != null:
 				damaged_buildings.erase(best_b)
-				v.issue_order(Order.for_target(best_b))
+				_order(v, Order.for_target(best_b))
 		elif repair_shop != null and v.hp < v.max_hp * 0.5 \
 				and v.kind == "vehicle":
-			v.issue_order(Order.for_target(repair_shop))
+			_order(v, Order.for_target(repair_shop))
 
 
 # ------------------------- zone capture -------------------------
@@ -305,7 +332,7 @@ func _capture_zones(robots: Array[Node], vehicles: Array[Node]) -> void:
 				best_zone = z
 		if best_zone == null:
 			return
-		u.issue_order(Order.move_attack(_zone_center(best_zone)))
+		_order(u, Order.move_attack(_zone_center(best_zone)))
 		if u.waypoints.is_empty():
 			# no route (island/enclosed): skip this zone for a while
 			_zone_blacklist[best_zone] = Time.get_ticks_msec() + BLACKLIST_MS
@@ -367,7 +394,7 @@ func _attack(robots: Array[Node], vehicles: Array[Node], enemy_army: int) -> voi
 			continue
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5,
 			(i / ring) * 0.5) * 22.0
-		u.issue_order(Order.move_attack(_attack_focus + offset))
+		_order(u, Order.move_attack(_attack_focus + offset))
 
 
 ## Keep the current focus while its building lives; pick a fresh
@@ -423,7 +450,7 @@ func _update_rallies() -> void:
 			objective = _nearest_takeable(f.visual_center())
 			if objective == Vector2.INF:
 				return
-		f.set_rally(objective)
+		_rally(f, objective)
 
 
 func _nearest_takeable(from: Vector2) -> Vector2:
