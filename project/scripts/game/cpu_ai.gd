@@ -21,23 +21,15 @@ extends Node
 ## Difficulty scales think cadence, attack threshold, manning radius,
 ## defender count and the money buffer before hardware production.
 
-const THINK_SECONDS := [6.0, 4.0, 2.5]      # by difficulty 0/1/2
-const ATTACK_UNITS := [14, 10, 8]           # army size before the push
-const BANK_BEFORE_VEHICLE := [260, 200, 150]
-const MAN_RADIUS := [220.0, 320.0, 420.0]  # how far a robot walks to man
+## Difficulty tuning lives in content/ai/{easy,normal,hard}.tres
+## (ContentDB.ai_profile) — THINK cadence, attack size, banking, man
+## radius and claims are per-profile now.
 const DEFEND_RADIUS := 210.0
-const MAX_CLAIMS := [4, 6, 8]
 const BLACKLIST_MS := 20000
 const RETAKE_MS := 45000  # a lost zone stays a priority target this long
 
-## Hardware manning priority (firepower first).
-const MAN_PRIORITY := {
-	"heavy": 0, "missile_launcher": 1, "missile_cannon": 2, "medium": 3,
-	"howitzer": 4, "light": 5, "gun": 6, "gatling": 7, "jeep": 8, "apc": 9,
-	"crane": 10,
-}
-
 var team := 2
+var _profile: AiProfileDef
 var _accum := 0.0
 var _zone_claims: Dictionary = {}      # zone node -> unit assigned
 var _zone_blacklist: Dictionary = {}   # zone node -> msec until skipped
@@ -51,11 +43,18 @@ func _init(cpu_team: int = 2) -> void:
 	team = cpu_team
 
 
+## The difficulty profile (cached once — difficulty is fixed per match).
+func _p() -> AiProfileDef:
+	if _profile == null:
+		_profile = ContentDB.ai_profile(MatchState.current.ai_difficulty)
+	return _profile
+
+
 func _process(delta: float) -> void:
 	if GameState.over:
 		return
 	_accum += delta
-	if _accum < THINK_SECONDS[clampi(MatchState.current.ai_difficulty, 0, 2)]:
+	if _accum < _p().think_seconds:
 		return
 	_accum = 0.0
 	_think()
@@ -114,7 +113,7 @@ func _produce() -> void:
 			var parts: PackedStringArray = String(item).split(":")
 			if parts[0] == "vehicle" \
 					and money - ContentDB.def_for("vehicle", parts[1]).cost \
-					< BANK_BEFORE_VEHICLE[diff] - 150:
+					< _p().bank_before_vehicle - 150:
 				continue  # keep a reserve before committing to vehicles
 			options.append(item)
 		if options.is_empty():
@@ -190,7 +189,7 @@ func _defend(robots: Array[Node], vehicles: Array[Node]) -> void:
 func _man_hardware(robots: Array[Node], empty_hardware: Array[Node]) -> void:
 	if empty_hardware.is_empty():
 		return
-	var radius: float = MAN_RADIUS[clampi(MatchState.current.ai_difficulty, 0, 2)]
+	var radius: float = _p().man_radius
 	for r in robots:
 		if r.enter_target != null and is_instance_valid(r.enter_target):
 			empty_hardware.erase(r.enter_target)  # already walking to it
@@ -207,7 +206,7 @@ func _man_hardware(robots: Array[Node], empty_hardware: Array[Node]) -> void:
 			var dist: float = r.global_position.distance_to(hw.global_position)
 			if dist > radius:
 				continue
-			var score := dist + int(MAN_PRIORITY.get(hw.unit_name, 5)) * 30.0
+			var score := dist + int(_p().man_priority.get(hw.unit_name, 5)) * 30.0
 			if score < best_score:
 				best_score = score
 				best = hw
@@ -276,7 +275,7 @@ func _capture_zones(robots: Array[Node], vehicles: Array[Node]) -> void:
 		return
 	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
 	# more claims on bigger maps, fewer on easy
-	var max_claims: int = clampi(MatchState.current.zones.size() / 3, 2, MAX_CLAIMS[diff])
+	var max_claims: int = clampi(MatchState.current.zones.size() / 3, 2, _p().max_claims)
 	var idle := _idle_of(robots) + _idle_of(vehicles)
 	for u in idle:
 		if _zone_claims.size() >= max_claims:
@@ -346,8 +345,8 @@ func _attack(robots: Array[Node], vehicles: Array[Node], enemy_army: int) -> voi
 	if not _attack_mode:
 		# threshold scales with map size: 8 zones -> 3 units, 24+ -> full
 		var threshold: int = clampi(
-			int(float(ATTACK_UNITS[diff]) * MatchState.current.zones.size() / 24.0),
-			3, ATTACK_UNITS[diff])
+			int(float(_p().attack_units) * MatchState.current.zones.size() / 24.0),
+			3, _p().attack_units)
 		var outnumber := army >= enemy_army + 4
 		if army < threshold and zones_left > 1 and not outnumber:
 			return

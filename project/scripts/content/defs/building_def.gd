@@ -25,5 +25,9 @@ extends Resource
 @export var open_tiles: PackedVector2Array = PackedVector2Array()
 @export var produces := false  # registers on the facility bar
 @export var bridge_span := Vector2i.ZERO  # walkable tiles when a bridge
+## Fort garrison battery (the missile towers) — fort defs only.
+@export var garrison_missile_range := 180.0
+@export var garrison_missile_cooldown := 3.0
+@export var garrison_cap := 5
 @export var anims: Array[BuildingAnim] = []
 @export var build_lists: Dictionary = {}  # level (0..5) -> Array["kind:name"]

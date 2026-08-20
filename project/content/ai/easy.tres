@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AiProfileDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/ai_profile_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+think_seconds = 6.0
+attack_units = 14
+bank_before_vehicle = 260
+man_radius = 220.0
+max_claims = 4

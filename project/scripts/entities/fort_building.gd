@@ -6,12 +6,9 @@ extends Building2D
 ## ENTER_FORT_WP + fort turret missiles), just like the original game's
 ## screaming fort defenses.
 
-const PRODUCE_SECONDS := 8.0
-const GARRISON_MISSILE_RANGE := 180.0
 const GARRISON_MISSILE: ProjectileDef = preload(
 	"res://content/projectiles/garrison_missile.tres")
-const GARRISON_MISSILE_COOLDOWN := 3.0
-const GARRISON_CAP := 5
+
 
 # Cannon mount slots, in fort-ART pixels from the art's top-left (each
 # variant's two inner towers flanking the gate + the two outer corner
@@ -113,7 +110,7 @@ func _death_visuals() -> void:
 
 ## A robot walks in: hide it, it fights (and hides) from inside.
 func garrison_robot(robot: Unit2D) -> bool:
-	if team == 0 or team != robot.team or garrison.size() >= GARRISON_CAP:
+	if team == 0 or team != robot.team or garrison.size() >= ContentDB.building_def(building_id).garrison_cap:
 		return false
 	garrison.append(robot)
 	robot.carried = true
@@ -141,7 +138,8 @@ func _garrison_fire(delta: float) -> void:
 	if _missile_timer > 0.0:
 		return
 	var best: Node2D = null
-	var best_d := GARRISON_MISSILE_RANGE * GARRISON_MISSILE_RANGE
+	var _range: float = ContentDB.building_def(building_id).garrison_missile_range
+	var best_d := _range * _range
 	for u in get_tree().get_nodes_in_group(Groups.UNITS):
 		if u is Node2D and u is Unit2D and u.alive and not u.carried \
 				and u.team != 0 and u.team != team \
@@ -150,7 +148,7 @@ func _garrison_fire(delta: float) -> void:
 			best = u
 	if best == null:
 		return
-	_missile_timer = GARRISON_MISSILE_COOLDOWN
+	_missile_timer = ContentDB.building_def(building_id).garrison_missile_cooldown
 	_missile_target = best
 	Fx.gunfire("MOBIMIS")
 	var from := visual_center() + Vector2(0, -10)

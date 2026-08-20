@@ -31,11 +31,23 @@ var _buildings := {}  # zod map id -> BuildingDef
 var _effects := {}  # name -> EffectDef
 var _pickups := {}  # name -> PickupDef
 
+## Match rules + AI difficulty profiles (content/match, content/ai) —
+## a synthesized default keeps the game running if a .tres is missing,
+## so nothing downstream null-checks.
+var rules: MatchRulesDef = MatchRulesDef.new()
+var _ai_profiles := {}  # "easy"/"normal"/"hard" -> AiProfileDef
+
 
 func _ready() -> void:
 	_scan_dir(CONTENT_ROOT)
 	_discover_unit_folders()
 	_discover_effects()
+
+
+## Difficulty 0/1/2 -> its profile.
+func ai_profile(difficulty: int) -> AiProfileDef:
+	var key: String = ["easy", "normal", "hard"][clampi(difficulty, 0, 2)]
+	return _ai_profiles.get(key, AiProfileDef.new())
 
 
 func _scan_dir(path: String) -> void:
@@ -54,6 +66,9 @@ func _scan_dir(path: String) -> void:
 	dir.list_dir_end()
 
 
+var _last_res_path := ""  # basename keying for AI profiles
+
+
 func _register(res: Resource) -> void:
 	if res is UnitDef:
 		var unit := res as UnitDef
@@ -62,6 +77,10 @@ func _register(res: Resource) -> void:
 	elif res is BuildingDef:
 		var building := res as BuildingDef
 		_buildings[building.id] = building
+	elif res is MatchRulesDef:
+		rules = res
+	elif res is AiProfileDef:
+		_ai_profiles[_last_res_path.get_file().get_basename()] = res
 	elif res is EffectDef:
 		var effect := res as EffectDef
 		_effects[effect.id] = effect

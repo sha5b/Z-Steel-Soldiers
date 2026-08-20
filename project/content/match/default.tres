@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="MatchRulesDef" format=3]
+
+[ext_resource type="Script" path="res://scripts/content/defs/match_rules_def.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+income_per_zone = 1.0
+level_seconds = 150.0
+starting_money = 200
+capture_seconds = 2.0
+apc_capacity = 3

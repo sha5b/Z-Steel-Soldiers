@@ -10,7 +10,7 @@ extends Node2D
 
 signal captured(new_team: int)
 
-const CAPTURE_SECONDS := 2.0
+var _capture_seconds := 2.0
 const MARKER_SCALE := 1.0  # native 8x4 stamps, centred in their 16px tile (zod DoZoneEffects)
 const BOB_SECONDS := 0.45  # water marker redraw cadence
 
@@ -150,7 +150,7 @@ func _process(delta: float) -> void:
 				_capturing_team = occupying
 				_capture_progress = 0.0
 			_capture_progress += delta
-			if _capture_progress >= CAPTURE_SECONDS:
+			if _capture_progress >= ContentDB.rules.capture_seconds:
 				set_owner_team(occupying)
 				_capturing_team = 0
 				_capture_progress = 0.0

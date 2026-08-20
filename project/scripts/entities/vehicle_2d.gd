@@ -51,7 +51,7 @@ var _repairing_building: Building2D = null
 var _repair_tick_time := 0.0
 var cargo: Array[Node] = []
 
-const APC_CAPACITY := 3
+const APC_CAPACITY := 3  # mirrored from ContentDB.rules.apc_capacity
 const SCAN_STEP_SECONDS := 1.0  # zod turrent_time_int: idle turrets rotate one sector per second
 
 
@@ -60,7 +60,7 @@ func is_apc() -> bool:
 
 
 func load_robot(robot: Unit2D) -> bool:
-	if not is_apc() or not manned or cargo.size() >= APC_CAPACITY:
+	if not is_apc() or not manned or cargo.size() >= ContentDB.rules.apc_capacity:
 		return false
 	cargo.append(robot)
 	robot.carried = true

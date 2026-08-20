@@ -23,9 +23,6 @@ signal money_changed(team: int, amount: int)
 signal zone_captured(team: int)
 signal tech_level_changed
 
-const INCOME_PER_ZONE := 1.0
-const LEVEL_SECONDS := 150.0  # original: forts/factories tech up over match TIME (~2.5 min/level)
-
 const TICK_SECONDS := 1.0
 
 var map_root: Node2D = null  # where units and decals live (set at load)
@@ -49,7 +46,8 @@ func reset() -> void:
 
 
 func over_reset() -> void:
-	money = {1: 200, 2: 200, 3: 200, 4: 200}
+	var start := ContentDB.rules.starting_money
+	money = {1: start, 2: start, 3: start, 4: start}
 
 
 func _process(delta: float) -> void:
@@ -60,7 +58,7 @@ func _process(delta: float) -> void:
 			var income := 0.0
 			for z in zones:
 				if z.owner_team == team:
-					income += INCOME_PER_ZONE
+					income += ContentDB.rules.income_per_zone
 			money[team] += int(income)
 			money_changed.emit(team, money[team])
 		_tech_tick()
@@ -73,7 +71,7 @@ func _process(delta: float) -> void:
 ## captured factory never loses tech.
 func _tech_tick() -> void:
 	match_time += TICK_SECONDS
-	var want := int(match_time / LEVEL_SECONDS)
+	var want := int(match_time / ContentDB.rules.level_seconds)
 	if want <= 0:
 		return
 	var bumped := false
@@ -127,7 +125,9 @@ func set_money(team: int, amount: int) -> void:
 	money_changed.emit(team, amount)
 
 
-func grant_ledger(team: int, start := 200) -> void:
+func grant_ledger(team: int, start := -1) -> void:
+	if start < 0:
+		start = ContentDB.rules.starting_money
 	if not money.has(team):
 		set_money(team, start)
 
