@@ -641,6 +641,11 @@ func _on_anim_finished() -> void:
 func issue_order(new_order: Order) -> void:
 	if not alive or carried:
 		return
+	# a REAL command is a fresh start: forget what smart idle already
+	# tried, so a unit the player moves elsewhere may self-task again
+	if not _auto_issuing:
+		_auto_tried.clear()
+	_idle_seconds = 0.0
 	order = new_order
 	_run_flag = order.run
 	_flavoring = false
@@ -845,57 +850,75 @@ func _chase_repath() -> void:
 		state = State.MOVING
 
 
-## Smart idle (GameSettings.auto_idle, the grab-hand toggle): idle robots
-## within the auto_grab radius man empty hardware or walk to a
-## capturable flag — presence does the rest. Throttled: it scans.
-## Halved from the original 220 (zsettings auto_grab_*_distance) as a
-## playtest call — units no longer wander off half a screen.
+## Smart idle (GameSettings.auto_idle, the T toggle): a robot standing
+## around with nothing to do mans a nearby empty hull or walks onto a
+## capturable flag, the way the original's idle robots do.
+##
+## THE RULE THIS MUST NEVER BREAK: it may only ever act on a unit that is
+## doing nothing, and it may never take an action twice. It used to break
+## both halves. The guard checked `move_target` but not `waypoints`, so a
+## unit between two legs of a path counted as idle; and it re-tried every
+## 1.5s forever, so a unit whose auto-target was unreachable re-issued
+## the same order for the rest of the match — which looks exactly like
+## "the unit just stops moving and ignores me".
+##
+## So: one attempt per target, ever. A target it failed to reach is
+## remembered and never picked again, and any real order the player gives
+## wipes that memory (a fresh command means a fresh start).
 const AUTO_RADIUS := 110.0
-## Stand still THIS long before self-tasking, and wait this long between
-## attempts. Auto-grab is a convenience for units nobody is commanding —
-## it must never look like it cancelled an order.
+## Stand still THIS long before self-tasking. A convenience for units
+## nobody is commanding must never look like it cancelled an order.
 const AUTO_IDLE_DELAY := 3.0
-const AUTO_RETRY_SECONDS := 1.5
-var _auto_timer := 0.0
 var _idle_seconds := 0.0
+var _auto_tried := {}       # instance id / zone -> already attempted
+var _auto_issuing := false  # true while WE issue, so issue_order can tell
+
+
+## Is this unit genuinely at rest? `waypoints` is the one the old guard
+## missed: a multi-leg path empties `move_target` between legs.
+func _is_at_rest() -> bool:
+	return not has_move_target() and waypoints.is_empty() and order == null \
+			and state == State.IDLE and _entering == null \
+			and enter_target == null and attack_target == null and not carried
+
 
 func _smart_idle(delta: float) -> void:
-	# ONLY a unit that has genuinely COME TO REST self-tasks. This used to
-	# fire the moment `move_target` cleared, i.e. the instant a robot
-	# reached the spot you sent it to — so 0.4s after arriving it walked
-	# off to a zone centre or an empty hull up to AUTO_RADIUS away, and
-	# the order you gave looked like it had been cancelled half-way. Worse,
-	# the zone branch re-issued `move_to(center)` every 0.4s forever for a
-	# zone the unit could not actually take (a live fort holds its
-	# ground), which reads as a unit standing still doing nothing while
-	# refusing new commands.
-	if has_move_target() or order != null or state != State.IDLE \
-			or _entering != null or enter_target != null or attack_target != null:
+	if not _is_at_rest():
 		_idle_seconds = 0.0
 		return
 	_idle_seconds += delta
 	if _idle_seconds < AUTO_IDLE_DELAY:
 		return
-	_auto_timer -= delta
-	if _auto_timer > 0.0:
-		return
-	_auto_timer = AUTO_RETRY_SECONDS
+	# an empty hull to crew, nearest first
 	for v in UnitRegistry.current.world_units():
-		if v is Vehicle2D and not v.manned and v.alive \
-				and global_position.distance_to(v.global_position) < AUTO_RADIUS:
-			issue_order(Order.for_target(v))  # a real order walks there
-			return
-	for z: Zone in MatchState.current.zones:
-		if z.owner_team == team:
+		if not (v is Vehicle2D) or v.manned or not v.alive:
 			continue
-		# already INSIDE it: presence is what captures, so walking to the
-		# centre again achieves nothing and just re-orders us on a loop
+		if _auto_tried.has(v.get_instance_id()):
+			continue
+		if global_position.distance_to(v.global_position) >= AUTO_RADIUS:
+			continue
+		_auto_tried[v.get_instance_id()] = true
+		_auto_order(Order.for_target(v))
+		return
+	# else a flag we could walk onto — presence is what captures
+	for z: Zone in MatchState.current.zones:
+		if z.owner_team == team or _auto_tried.has(z):
+			continue
 		if z.world_rect().has_point(global_position):
 			continue
 		var center := z.world_rect().get_center()
 		if global_position.distance_to(center) < AUTO_RADIUS:
-			move_to(center)
+			_auto_tried[z] = true
+			_auto_order(Order.move(center))
 			return
+
+
+## Issue an order the UNIT decided on, not the player. Flagged so
+## issue_order keeps the try-once memory instead of clearing it.
+func _auto_order(o: Order) -> void:
+	_auto_issuing = true
+	issue_order(o)
+	_auto_issuing = false
 
 
 ## THE ROBOTS CALL FOR HELP. The original barks a distress line at the

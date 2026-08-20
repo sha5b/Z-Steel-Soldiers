@@ -698,12 +698,25 @@ static func _vehicle_anim_path(asset_dir: String, anim: String, tn: String, deg:
 			var directional := "%s/empty_r%03d.png" % [asset_dir, deg]
 			if ResourceLoader.exists(directional):
 				return directional
-			# unmanned hardware is never team-coloured: the plain neutral
-			# frame wins over any team-suffixed directional art
+			# A MANNED gun's PASSIVE look is this same `empty` set (its
+			# gunner only shows in the fire frames), so for a real team it
+			# has to stay DIRECTIONAL. Preferring the plain neutral frame
+			# unconditionally gave all eight facings one fixed sprite:
+			# the gun sat pointing one way, snapped to its aim for the
+			# few frames of muzzle flash, then snapped back. That is the
+			# "turrets flip direction when they shoot" spasm, and it hit
+			# every type named `empty_<team>_r<deg>` (the missile cannon
+			# and the vehicle hulls) while gatling and howitzer — which
+			# ship team-less `empty_r<deg>` — were always fine.
+			var team_dir := "%s/empty_%s_r%03d.png" % [asset_dir, tn, deg]
+			if tn != "null" and ResourceLoader.exists(team_dir):
+				return team_dir
+			# unmanned hardware is never team-coloured: with no team
+			# (tn == "null") the plain neutral frame still wins
 			var plain := plain_empty_path(asset_dir, tn)
 			if plain != "":
 				return plain
-			return "%s/empty_%s_r%03d.png" % [asset_dir, tn, deg]  # last resort
+			return team_dir  # last resort
 		"base":
 			if damaged:
 				var dmg := "%s/base_damaged_%s_r%03d_n%02d.png" % [asset_dir, tn, deg, frame]

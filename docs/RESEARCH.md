@@ -235,8 +235,19 @@ AI, save/campaign, HUD panels/icons/minimap, gestures/idle anims.
 | light | 14 | 120 | 50/240 r40 missile 225 | 1.13 | 25/74 | – | 137 |
 | medium | 12 | 128 | 80/240 r45 missile 160 | 2.34 | 50/74 | – | ~150 |
 
-(HP normalized to /74; damage is a fraction of target max HP per hit;
-our flat integers with 100% hit chance make combat far more lethal.)
+(HP normalized to /74; damage is a fraction of target max HP per hit.)
+
+**THIS TABLE IS NOW PORTED, and `--balance-test` asserts it** — every
+stat above plus the per-level build lists from `zbuildlist.cpp
+LoadDefaults`, so drift fails the run. Our HP sits on a 0..800 scale
+rather than the original's /74 (a constant x10.8: grunt 86, psycho 141,
+tough 270, medium 541, crane 800), which keeps the original's
+proportions while giving the selection-ring health bars whole pixels to
+work with. Small-arms damage against BUILDINGS uses the original's
+fraction-of-max-HP model (`building_frac`); unit-vs-unit uses the flat
+integer at the same x0.08 scale. The older note here claimed our numbers
+were invented and "far more lethal" — that was true when it was written
+and is no longer.
 
 ### Unwired effects (art exists in the original)
 

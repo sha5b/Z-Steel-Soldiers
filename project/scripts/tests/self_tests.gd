@@ -1497,6 +1497,44 @@ static func run(ctx: Node) -> void:
 					break
 			if hijacked:
 				oproblems.append("auto-grab hijacked a unit inside the idle delay")
+			# ...AND a unit part-way through a MULTI-LEG path is not at
+			# rest. The guard used to check `move_target` only, which is
+			# empty between legs, so a long walk counted as idle and got
+			# self-tasked mid-route: "the unit just stops moving".
+			if is_instance_valid(parked):
+				parked.order = null
+				parked.state = Unit2D.State.IDLE
+				parked.clear_move_target()
+				parked.waypoints = PackedVector2Array([Vector2(900, 900)])
+				if parked._is_at_rest():
+					oproblems.append("a unit with queued waypoints counted as at rest")
+				parked.waypoints = PackedVector2Array()
+				if not parked._is_at_rest():
+					oproblems.append("a genuinely idle unit did not count as at rest")
+				# ...and ONE attempt per target, ever. Re-issuing every
+				# retry meant an unreachable target locked the unit into
+				# re-ordering itself for the rest of the match.
+				parked._auto_tried.clear()
+				parked._idle_seconds = 0.0
+				for i in 200:
+					parked._smart_idle(0.05)
+					if not parked._auto_tried.is_empty():
+						break
+				if parked._auto_tried.is_empty():
+					oproblems.append("smart idle never self-tasked at all")
+				else:
+					var tried_count: int = parked._auto_tried.size()
+					# pretend the attempt failed and it is idle again
+					parked.order = null
+					parked.state = Unit2D.State.IDLE
+					parked.clear_move_target()
+					parked.enter_target = null
+					parked._entering = null
+					parked._idle_seconds = 0.0
+					for i in 200:
+						parked._smart_idle(0.05)
+					if parked._auto_tried.size() > tried_count + 1:
+						oproblems.append("smart idle retried targets it had already tried")
 			if is_instance_valid(parked):
 				parked.queue_free()
 			if is_instance_valid(bait):

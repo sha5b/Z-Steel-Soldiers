@@ -241,7 +241,17 @@ func _build_sprite() -> void:
 		var lift := -8.0 if is_fort else ts.y * 0.5 - 8.0
 		position.y += lift
 		_sprite.position.y -= lift
-		if not is_fort:
+		if is_fort:
+			# THE WHOLE FORT GOES ON THE GROUND LAYER, which is what the
+			# original does (BFort::DoRender stamps the base into the map's
+			# ground so nothing is ever occluded by a fort and tower guns
+			# draw over the platform). Sorting it at the art's TOP edge was
+			# an approximation of that, and it broke for the units the
+			# original cares about most: anything standing NORTH of the top
+			# edge sorts BEFORE the fort, so the fort painted over it —
+			# apron pixels and all. That is the artefact behind the HQ.
+			_sprite.z_index = GROUND_Z
+		else:
 			_split_ground_layer(ts)
 
 		# ONE flag per ZONE marks territory; the only building that flies
@@ -337,8 +347,30 @@ const GROUND_Z := -1  # the decal layer: under units, over terrain
 var _ground: Sprite2D = null
 
 
+## Where the STRUCTURE ends and the ground band begins, in art-local
+## pixels from the art's top edge.
+##
+## This used to be a flat 50% of the art height, which is not where the
+## boundary is on any building we ship: the factories' solid block is
+## their whole 80px art, the radar's is its whole 48px, and the fort's is
+## the top 144 of 176. A half-height cut therefore moved a big slab of
+## STRUCTURE onto the under-units layer, so units walked over factory
+## walls instead of behind them.
+##
+## `solid_tiles` already records the answer per building, in cells from
+## the art's top-left (footprint_cells reads it the same way), so the
+## boundary comes out of the data instead of a magic number.
+func _ground_cut(art_size: Vector2) -> int:
+	var def := ContentDB.building_def(building_id) if not Engine.is_editor_hint() else null
+	if def != null and def.solid_tiles.size.y > 0:
+		return (def.solid_tiles.position.y + def.solid_tiles.size.y) * 16
+	return int(round(art_size.y * 0.5))
+
+
 func _split_ground_layer(art_size: Vector2) -> void:
-	var cut := int(round(art_size.y * 0.5))
+	var cut := _ground_cut(art_size)
+	# cut at or past the art's bottom edge = no ground band at all: the
+	# whole thing is structure and stays Y-sorted
 	if cut <= 0 or cut >= int(art_size.y) or _sprite.texture == null:
 		return
 	_ground = Sprite2D.new()
