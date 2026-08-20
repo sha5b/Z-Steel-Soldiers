@@ -25,6 +25,12 @@ static func run(ctx: Node, rig: TestRig) -> void:
 	ctx.add_child(vf)
 	await ctx.get_tree().physics_frame  # _ready paints walls + solids
 	var wall := vf.world_footprint()
+	# freeze the world: this is a GEOMETRY test — ambient robots WANDERING
+	# through the corridor deflected the walker via separation at random
+	# moments (1-in-5 arrival flakes). Units spawned below run normally.
+	for u in UnitRegistry.current.all_units():
+		if is_instance_valid(u):
+			u.set_physics_process(false)
 	# a hugging spot right against the factory's south wall
 	var hug := Vector2(wall.get_center().x, wall.end.y + 9.0)
 
