@@ -629,6 +629,14 @@ var lid_open: bool:
 		return _lid_timer > 0.0
 
 
+## Empty hardware takes no orders — a robot has to man it first (the
+## original never moved unmanned vehicles; they wait on the apron).
+func issue_order(new_order: Order) -> void:
+	if not manned:
+		return
+	super.issue_order(new_order)
+
+
 ## A sniper killed the crew: the hardware goes neutral again and a
 ## wounded survivor bails out (original: DoDriverHitEffect + eject).
 func eject_driver() -> void:
@@ -645,6 +653,13 @@ func eject_driver() -> void:
 	manned = false
 	team = 0
 	driver_type = ""
+	# no crew, no orders: the hull stops where the driver died instead of
+	# finishing the last rally on its own
+	order = null
+	move_target = Vector2.ZERO
+	waypoints = PackedVector2Array()
+	velocity = Vector2.ZERO
+	state = State.IDLE
 	hp = maxi(hp, int(max_hp / 2.0))
 	_damaged = hp < max_hp * 0.5
 	if is_apc():

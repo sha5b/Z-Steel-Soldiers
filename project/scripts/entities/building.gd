@@ -197,10 +197,10 @@ func spawn_produced(item: String) -> void:
 			unit.move_to(rally_point)
 	elif ContentDB.has_sprites(kind, type_name):
 		# vehicles and cannons spawn UNMANNED beside the building for a
-		# robot to man (Z-style)
-		var vehicle := Spawner.spawn(get_parent(), kind, type_name, 0, spawn_pos)
-		if vehicle and rally_point != Vector2.INF:
-			vehicle.move_to(rally_point)
+		# robot to man (Z-style). Empty hardware ignores rally points —
+		# it stays on the apron until a crew boards (the AI's far rally
+		# once made every produced vehicle drive itself to the enemy HQ).
+		Spawner.spawn(get_parent(), kind, type_name, 0, spawn_pos)
 
 
 

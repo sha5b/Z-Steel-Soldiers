@@ -25,7 +25,7 @@ static func should_run() -> bool:
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
-			"mp"]:
+			"mp", "rally"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -417,6 +417,60 @@ static func run(ctx: Node) -> void:
 			ctx.get_tree().quit()
 	if "--path-test" in args:
 		PathTests.walk_a_pair(ctx, TestRig.start("PATH"))
+	if "--rally-test" in args:
+		# unmanned hardware must not take rally orders — the AI rallies
+		# every facility at an enemy fort, and empty vehicles used to
+		# drive there themselves; a crewed vehicle honors orders again
+		MatchState.fast_build = true
+		MatchState.auto_idle = false  # deterministic: no ambient grabs
+		var rr := TestRig.start("RALLY")
+		var vf := VehicleFactory.new()
+		var vz: Node2D = MatchState.zones[1]
+		vf.position = vz.position + vz.world_rect().get_center() - Vector2(24, 24)
+		ctx.add_child(vf)
+		vz.owner_team = MatchState.player_team
+		vf.owner_team = MatchState.player_team
+		vf.team = MatchState.player_team
+		MatchState.money[MatchState.player_team] = 500
+		var rally := vf.global_position + Vector2(500, 0)
+		vf.set_rally(rally)
+		vf.queue_unit("vehicle:jeep", true)
+		var product: Vehicle2D = null
+		for i in 600:
+			vf._process(0.05)
+			if product == null:
+				for c in ctx.get_children():
+					if c is Vehicle2D and c.unit_name == "jeep":
+						product = c
+						break
+			if product != null:
+				break
+		rr.check(product != null, "no vehicle produced")
+		if product != null:
+			rr.check(not product.manned, "product spawned crewed")
+			rr.check(product.move_target == Vector2.ZERO,
+				"unmanned product took the rally order")
+			rr.check(product.global_position.distance_to(rally) > 300.0,
+				"unmanned product drove itself toward the rally")
+			var driver: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+				MatchState.player_team,
+				product.global_position + Vector2(0, -24)) as Unit2D
+			driver.issue_order(Order.for_target(product))
+			for i in 300:
+				driver._process(0.05)
+				driver._physics_process(0.05)
+				if product.manned:
+					break
+			rr.check(product.manned, "driver never boarded")
+			product.move_to(rally)
+			for i in 400:
+				product._process(0.05)
+				product._physics_process(0.05)
+				if product.move_target == Vector2.ZERO:
+					break
+			rr.check(product.global_position.distance_to(rally) < 60.0,
+				"manned vehicle ignored the move order")
+		rr.finish()
 	if "--dir-test" in args:
 		# zod convention: r000 faces +X (right), r090 up, r180 left, r270
 		# down — the numbering runs counter-clockwise, so facing down
