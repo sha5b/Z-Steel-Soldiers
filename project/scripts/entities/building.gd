@@ -370,24 +370,15 @@ static func _bar_texture(team: int) -> Texture2D:
 	return _bar_cache[team]
 
 
-## Texture location comes from the building def's `tex` key — new building
-## types only add art + a content/buildings entry.
+## Texture location comes from the building def's `tex` key — resolved
+## by the ONE shared mapping in ContentDB.building_art_path (the art
+## audit uses it too). New building types only add art + a
+## content/buildings entry.
 func _texture_path(destroyed: bool) -> String:
 	if ContentDB.building_def(building_id) == null:
 		return ""
-	match ContentDB.building_def(building_id).tex:
-		"fort_front":
-			return "res://assets/z/buildings/fort/fort_%s_front%s.png" % [
-				planet, "_destroyed" if destroyed else ""]
-		"fort_back":
-			return "res://assets/z/buildings/fort/fort_%s_back%s.png" % [
-				planet, "_destroyed" if destroyed else ""]
-		"bridge":
-			return "res://assets/z/planets/bridge_%s.png" % planet
-		var kind:
-			if destroyed:
-				return "res://assets/z/buildings/%s/base_destroyed_%s.png" % [kind, planet]
-			return "res://assets/z/buildings/%s/base_%s.png" % [kind, planet]
+	return ContentDB.building_art_path(
+		ContentDB.building_def(building_id).tex, planet, destroyed)
 
 
 ## Animated overlay layers from the def's `anims` (radar dish, factory

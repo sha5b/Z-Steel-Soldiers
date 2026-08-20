@@ -25,7 +25,7 @@ static func should_run() -> bool:
 			"campaign", "win", "fx", "mount", "building", "parade", "cap",
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
-			"mp", "rally", "placement", "fortkill", "parity"]:
+			"mp", "rally", "placement", "fortkill", "parity", "art"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -451,6 +451,8 @@ static func run(ctx: Node) -> void:
 		if gunner:
 			gunner.queue_free()
 		fk.finish()
+	if "--art-test" in args:
+		ArtTests.run(ctx, TestRig.start("ART"))
 	if "--parity-test" in args:
 		# ONE movement engine: robot and vehicle must arrive the SAME way
 		# — order cleared, state IDLE, DEFEND post armed (vehicle arrivals

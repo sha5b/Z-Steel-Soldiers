@@ -74,6 +74,25 @@ func _register(res: Resource) -> void:
 
 ## Merged def (stats + art + projectile) for a unit kind/name; falls
 ## back to the kind's staple unit so callers never see null.
+## ONE tex-key-to-art-path mapping (desert-style pattern keys from the
+## BuildingDef): Building2D._texture_path and the ArtTests audit both
+## resolve through here — the art source must not be duplicated.
+func building_art_path(tex: String, planet: String, destroyed: bool) -> String:
+	match tex:
+		"fort_front":
+			return "res://assets/z/buildings/fort/fort_%s_front%s.png" % [
+				planet, "_destroyed" if destroyed else ""]
+		"fort_back":
+			return "res://assets/z/buildings/fort/fort_%s_back%s.png" % [
+				planet, "_destroyed" if destroyed else ""]
+		"bridge":
+			return "res://assets/z/planets/bridge_%s.png" % planet
+		var kind:
+			if destroyed:
+				return "res://assets/z/buildings/%s/base_destroyed_%s.png" % [kind, planet]
+			return "res://assets/z/buildings/%s/base_%s.png" % [kind, planet]
+
+
 func def_for(kind: String, name: String) -> UnitDef:
 	var table: Dictionary = _units.get(kind, {})
 	if table.has(name):
