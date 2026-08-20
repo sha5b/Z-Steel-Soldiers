@@ -219,6 +219,11 @@ func _apply_load() -> void:
 			int(su.team), pos, bool(su.get("manned", false)))
 		if unit:
 			unit.apply_dict(su)
+			# a LATE JOINER restores the host's roster: keep the host's
+			# net ids or every later intent would address the wrong unit
+			var net_id := int(su.get("net", 0))
+			if net_id > 0 and UnitRegistry.current != null:
+				UnitRegistry.current.adopt(unit as Unit2D, net_id)
 
 
 func _cycle_map() -> void:

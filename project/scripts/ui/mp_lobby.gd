@@ -211,7 +211,11 @@ func _on_started(config: Dictionary) -> void:
 	if _launched:
 		return
 	_launched = true
+	# LATE JOIN carries the running match's state: the same save-contract
+	# dictionary a loaded game uses, so the map spawns and then replays
+	# the host's roster over it (see Net.late_join / Match._apply_load).
+	var state: Dictionary = config.get("state", {})
 	GameState.prepare_match(MatchConfig.make("multiplayer",
 			str(config.get("map", "")),
-			Net.match_team if Net.match_team > 0 else 1))
+			Net.match_team if Net.match_team > 0 else 1, state))
 	get_tree().change_scene_to_file("res://scenes/main.tscn")

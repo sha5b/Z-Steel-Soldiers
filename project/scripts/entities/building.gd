@@ -155,11 +155,31 @@ func _exit_tree() -> void:
 		BuildingRegistry.current.forget(self)
 
 
+## BRIDGE ART IS A TWO-FRAME SHEET. `bridge_<planet>.png` is 64x256 —
+## 4 tiles wide by 16 long — and that is TWO stacked 4x8-tile sprites:
+## the INTACT bridge on top, the WRECKED one underneath (verified per
+## planet: the lower half carries 1.5-2.6x as many water-coloured pixels
+## across its middle, i.e. the deck is gone and the river shows through).
+## The code used to hand the whole sheet to the sprite, so every bridge
+## on every map drew the intact bridge with its own wreck stacked below
+## it — an 8-tile bridge rendered as a 16-tile double. The wrecked state
+## then had no art to swap to and faked it by dimming the whole sprite.
+const BRIDGE_FRAME := Vector2(64.0, 128.0)
+
+
+static func bridge_region(destroyed: bool) -> Rect2:
+	return Rect2(Vector2(0.0, BRIDGE_FRAME.y if destroyed else 0.0), BRIDGE_FRAME)
+
+
 func _build_sprite() -> void:
 	_sprite = Sprite2D.new()
 	_sprite.texture = load(_texture_path(false))
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_art_size = _sprite.texture.get_size() if _sprite.texture else Vector2.ZERO
+	if is_bridge() and _art_size.y >= BRIDGE_FRAME.y * 2.0:
+		_sprite.region_enabled = true
+		_sprite.region_rect = bridge_region(false)
+		_art_size = BRIDGE_FRAME
 	var ts: Vector2 = _art_size
 	_sprite.centered = false
 	# MAP ANCHOR CONTRACT (zod): the map object's tile (x,y) is the ART
@@ -306,13 +326,25 @@ func _split_ground_layer(art_size: Vector2) -> void:
 	_sprite.region_rect = Rect2(0, 0, art_size.x, cut)
 
 
-## Both layers follow the texture (ruins swap the whole sheet).
+## Both layers follow the texture (ruins swap the whole sheet). A bridge
+## keeps ONE sheet and moves its region to the wreck frame instead.
 func _set_building_texture(path: String) -> void:
 	var tex: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	if is_bridge():
+		set_bridge_wrecked(not alive or hp <= 0)
+		return
 	if _sprite:
 		_sprite.texture = tex
 	if _ground:
 		_ground.texture = tex
+
+
+## Swap a bridge between its intact and wrecked frames (the sheet's two
+## halves). Crane repair swaps back.
+func set_bridge_wrecked(wrecked: bool) -> void:
+	if _sprite == null or not is_bridge() or not _sprite.region_enabled:
+		return
+	_sprite.region_rect = bridge_region(wrecked)
 
 
 ## The art's on-screen rect in world pixels (art renders 1:1): top-left
@@ -553,6 +585,7 @@ func to_dict() -> Dictionary:
 		return {}
 	return {
 		"id": building_id, "team": owner_team, "level": level,
+		"net": net_id, "hp": hp, "alive": alive,
 		"rally_x": rally_point.x if rally_point != Vector2.INF else 0.0,
 		"rally_y": rally_point.y if rally_point != Vector2.INF else 0.0,
 		"has_rally": rally_point != Vector2.INF,
@@ -890,7 +923,7 @@ func _bridge_damage(amount: int, at := Vector2.INF) -> void:
 		if NavWorld.current.vehicle_grid:
 			NavWorld.current.vehicle_grid.set_point_solid(cell, true)
 	set_solid_body(true, bridge_cells)
-	_sprite.modulate = Color(0.35, 0.35, 0.35)  # rubble state, not a flash
+	set_bridge_wrecked(true)  # the sheet's own wreck frame, not a tint
 
 
 ## Crane repair: restores a destroyed bridge (or patches a damaged one).
@@ -922,5 +955,5 @@ func repair_by(amount: int) -> void:
 		# saying "walkable" while move_and_slide still hits invisible
 		# rubble jams every unit sent across
 		set_solid_body(false)
-		_sprite.modulate = Color.WHITE
+		set_bridge_wrecked(false)  # deck back: the sheet's intact frame
 		Fx.play("spark", world_footprint().get_center())

@@ -12,9 +12,11 @@ Layout (from Zod's zmap.cpp / zmap.h, x86 struct packing):
         u16 extra_links; i32 health_percent
     width*height * map_tile (2 bytes): u16 palette index
 
-Tile list is column-major (index = x*height + y) as written by the
-original loops: for x in width: for y in height. Palette is 20x24 tiles
-of 16x16 px; terrain 0=desert 1=volcanic 2=arctic 3=city 4=jungle.
+Tile list is ROW-MAJOR (index = y*width + x) — checked against the
+maps' own objects: read that way, 100% of the shipped buildings stand on
+land, while the column-major reading drops as low as 70% on a
+non-square map. Palette is 20x24 tiles of 16x16 px; terrain
+0=desert 1=volcanic 2=arctic 3=jungle 4=city (see TERRAIN).
 
 Object types: 0 rock 1 bridge 2 building 3 cannon 4 vehicle 5 robot
 6 animal 7 map_item. Owners: -1 neutral .. 0 null, 1 red 2 blue 3 green
@@ -28,7 +30,16 @@ import struct
 import sys
 from pathlib import Path
 
-TERRAIN = ["desert", "volcanic", "arctic", "city", "jungle", "city2"]
+# terrain byte -> planet. ids 3 and 4 were the wrong way round (city and
+# jungle swapped), so every jungle map drew with the city tileset, every
+# city map with the jungle one, and both took their nav grids from the
+# wrong .tileinfo — units and buildings stood on cells the game read as
+# water or wall. Established from the maps' OWN objects: with this order
+# ZERO of the 2,105 units on the shipped set stand in water or in a wall,
+# and the swapped order misplaces up to 35 units on a single map. See
+# tools/zod/verify_map_planets.py, which measures it and repairs a
+# mis-tagged JSON.
+TERRAIN = ["desert", "volcanic", "arctic", "jungle", "city", "city2"]
 OBJ_TYPES = ["rock", "bridge", "building", "cannon", "vehicle", "robot", "animal", "map_item"]
 
 # palette_tile_info (packed, 12 bytes/tile x 480):

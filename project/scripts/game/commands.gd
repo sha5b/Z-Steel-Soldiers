@@ -159,7 +159,14 @@ static func _find_enemy(world_position: Vector2) -> Node2D:
 	var hit := Pick.at(world_position)
 	if hit == null or not is_instance_valid(hit):
 		return null
-	var team: int = int(hit.get("team"))
+	# Pick.at also answers with PICKUPS (a crate is a click target for
+	# the cursor), and a crate has no `team` at all — `int(null)` is a
+	# hard crash, which is what right-clicking a crate used to do.
+	# Anything with no team is not a combatant.
+	var team_value = hit.get("team")
+	if team_value == null:
+		return null
+	var team := int(team_value)
 	if team == 0 or team == MatchState.current.player_team:
 		return null
 	if hit is Building2D:

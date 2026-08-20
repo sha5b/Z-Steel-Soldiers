@@ -7,8 +7,7 @@ commit that fixed them — do not delete history.
 ## Open — verified, not yet fixed
 
 Each of these was confirmed by reading the code or counting the data.
-They are listed in the order I would tackle them. Nothing here is a
-one-line fix; the cheap, evidence-backed ones are all in Fixed below.
+They are listed in the order I would tackle them.
 
 1. **The shipped map set is the zod MULTIPLAYER pack, not the original
    campaign** — reading each JSON's internal `name`, 56 of 57 read
@@ -16,87 +15,214 @@ one-line fix; the cheap, evidence-backed ones are all in Fixed below.
    `p08_sc_hunters` reads `Starcraft_Hunters`. The actual 20-level
    Bitmap Brothers campaign lives in `assets_original/gog/` as
    `LEVEL{01-20,26-29,31}.MAP` plus 100 `OBJECT/BUILD/BRIDGE/CPUPLR##.DAT`
-   object tables and `levels.dat`/`robots.dat`/`mult.dat` — **128 files
-   with zero parsers anywhere in `tools/`**. `Campaign` therefore chains
-   the map list in alphabetical filename order with no planet
-   progression. This is the single biggest content gap left.
+   object tables and `levels.dat`/`robots.dat`/`mult.dat`. `Campaign`
+   therefore chains the map list in alphabetical filename order with no
+   planet progression. Format work in progress (see docs/RESEARCH.md):
+   all 25 `.MAP` files are exactly 56,433 bytes; a 136-byte RECORD ARRAY
+   starts at offset 1 and its first records are ZONES (u16 x1,y1,x2,y2 in
+   pixels, then a u16 centre CELL index, then neighbour ids terminated by
+   0xff); that centre index proves the campaign grid is **128 tiles
+   wide** (zone 0 of LEVEL01: rect (160,288)-(272,400), centre tile
+   (13,21), stored 2701 = 21*128+13). `Maps/LEVEL{1..25}.png` are
+   rendered top-down images of each level and serve as the oracle.
 
-2. **Terrain animation is NOT impossible** — `ROADMAP.md` closes it as
-   "single-frame tile art, nothing to animate from". The zod
-   `planets/<planet>.tileinfo` files are 480 tiles x 12 bytes and carry
-   `is_effect` + `next_tile_in_effect`, which form closed 4-frame rings
-   (desert 50 animated tiles, city 40, arctic 25, volcanic 18, jungle 0);
-   the frames of each ring are already distinct images inside
-   `assets/z/planets/<planet>.png`. Both converters throw the fields
-   away (`tools/zod/tileinfo_to_json.py` emits only `[water, passable]`,
-   `map_to_json.py` keeps 3 of 10). Needs a converter change plus a tile
-   animator. Caveat: the last 4 bytes of that record
-   (`takes_tank_tracks`/`crater_type`/`is_starter`) read implausibly and
-   the layout for them is unverified.
+2. **The full original HUD frame is still unreferenced** —
+   `ui/hud/main_hud*.png` (10 files: the side panel per team, the bottom
+   strip and its three segments). The SELECTED-OBJECT trio it belonged
+   to is now wired (planet backdrop + portrait + name plate, see Fixed),
+   but the panel chrome itself would mean rebuilding the HUD layout
+   around a fixed 640x480 frame, and it cannot be verified headlessly.
 
-3. **`SetMapImpassables` is transcribed for 2 of 7 building types** —
-   `solid_tiles`/`open_tiles` exist for `fort_front`, `fort_back` and
-   `radar`; `repair.tres`, `robot_factory.tres` and
-   `vehicle_factory.tres` carry none, so their entire art rect is solid.
-   Factories should have walkable aprons like the forts do.
+3. **84 building/fort death-debris pieces unreferenced** —
+   `buildings/death_effects/{fort_,}piece{0..4}_n{00..23}.png`. Vehicle
+   wrecks already burn (`Vehicle2D._add_wreck_fx`); a falling building
+   should throw these pieces. Needs a debris spawner with arcs, not just
+   an art reference.
 
-4. **~29 of 43 test flags still only print** — 14 now assert through
-   TestRig in `self_tests.gd` plus 3 domain modules (was 7 total). The
-   rest accumulate a local array and print it, so a regression in those
-   domains still reads as a passing run.
+4. **42 of 48 production-GUI chrome files unconverted** — the original
+   production menu's own frame (`other/production_gui/fus_*`,
+   `object_back`, `selector_back`, the up/down/queue buttons). The panel
+   works and uses the plates it has; this is a look-and-feel rebuild.
 
-5. **Multiplayer is not deterministic** — the AI fork is fixed (host-only
-   brains, intents relayed, economy resync now actually running on a
-   cadence), but peers still apply the same intents to their own float
-   physics, so positions drift. Full-entity resync and late-join both
-   reuse the save contract and are unimplemented.
+5. **Multiplayer is not bit-deterministic** — by design now, not by
+   omission: host-only brains, relayed intents, a 5s economy resync and
+   a 10s FULL-ENTITY resync (`Net.push_entities` ->
+   `MatchRelay.apply_entities`, reconciled by net id) plus late join.
+   Peers still integrate their own float physics between corrections, so
+   positions drift within `MatchRelay.SNAP_DISTANCE` (24px) until the
+   next push. A lockstep sim would need fixed-point movement.
 
-6. **Converted-but-unreferenced art, in rough value order** — the full
-   original HUD frame (`ui/hud/main_hud*.png`, 10 files, including the
-   selected-object trio), 30 `unit_label_*` name plates, 6 minimap
-   `backdrop_*` frames, 84 building/fort death-debris pieces, and **176
-   robot animation frames** for `escape_tank` / `tank_fire` /
-   `jump-*` that are in neither `AnimLibrary.IDLE_FLAVORS` nor
-   `GESTURES` — `escape_tank` + `tank_fire` alone is a whole original
-   mechanic (the crew visibly operating and bailing out of a tank).
+6. **GOG cutscenes and tutorial screens** — 94 `.jv[iv]` pairs with no
+   parser, and 37 of 72 GOG PNGs (the tutorial pages) unconverted.
 
-7. **Never converted out of the zod pack** — 256 rock-destruction debris
-   frames (all 5 planets share one generic `effects/debris`), 60 bridge
-   debris frames, 228 ambient-bird frames (the bird CALL wavs are
-   already converted and unreferenced), 6 building level plaques (levels
-   0-5 are fully implemented and the player cannot read them), 42 of 48
-   production-GUI chrome files, 51 of 75 `ROB##` barks, tank dirt spray,
-   exhaust puffs, announcer plaques, and 7 of 8 order-confirmation
-   cursors. `tools/zod/copy_art.py` is the place to add them — it now
-   exists for exactly this reason.
+7. **`move_target` is fixed, but `Order` still carries a position for
+   target orders** — `Order.attack` writes `position` from the target's
+   location at issue time and nothing reads it afterwards. Harmless
+   duplication, worth removing when the order struct is next touched.
 
-8. **`tools/gog/convert_assets.py` deletes a file it just created** —
-   line ~65 converts `audio/GRENADE.RAW` to `sounds/GRENADE.wav`, then
-   line ~121 unlinks it with the comment "replaced by GRENADE.RAW".
-   `fx.gd` then substitutes the grenade-launcher shot and its comment
-   blames an upstream gap that does not exist.
+8. **51 of 75 `ROB##` voice lines are unlabelled** — they are converted
+   and reachable now (`bark_23..75`, played as idle chatter by
+   `Fx.chatter`), but nothing in the pack documents what each line SAYS,
+   so none of them can be used as a semantic cue (an acknowledgement, a
+   death scream, a "we're under attack"). Labelling them needs a human
+   ear, not code.
 
-9. **Still missing features** — control-group hotkeys (no digit actions
-   in `project.godot` at all), veterancy (no rank/XP field anywhere),
-   late-join, GOG cutscenes (94 `.jv[iv]` pairs, no parser) and the
-   tutorial screens (37 of 72 GOG PNGs unconverted).
+9. **Crane `arm_off` dead data** — WONTFIX, documented: the rig renders
+   correctly via canvas alignment (the `hook_off` table IS applied);
+   folding `arm_off` in has no proven defect to fix and no headless way
+   to verify the visual.
 
-10. **`move_target == Vector2.ZERO` is the "no order" sentinel** — a real
-    destination at the world origin is indistinguishable from "no
-    order". Structural smell, not a live bug; wants an explicit flag or
-    `Vector2.INF`.
-
-11. **No building registry** — `Unit2D._find_target_within` scans the
-    `all_buildings` group per unit per combat tick, and
-    `Combat.area_damage` scans it per explosion. A `BuildingRegistry`
-    mirroring `UnitRegistry` removes about six per-frame tree scans.
-
-12. **Crane `arm_off` dead data** — WONTFIX, documented: the rig renders
-    correctly via canvas alignment (the `hook_off` table IS applied);
-    folding `arm_off` in has no proven defect to fix and no headless way
-    to verify the visual.
+10. **Rock autotiling ignores diagonals** — `MapLoader._rock_piece` uses
+    8 of the 36 sheet pieces and only 4-neighbour masks, so inner
+    corners where two arms of a formation meet show a straight edge.
+    Closing it needs the original `orock.cpp` table; it cannot be
+    derived from the art alone.
 
 ## Fixed
+- 2026-08-20 — **right-clicking a CRATE crashed the match.**
+  `Pick.at` answers with units, crates AND buildings (a crate is a click
+  target for the cursor), and `Commands._find_enemy` read `team` off
+  whatever came back — a crate has no `team`, and `int(null)` is a hard
+  runtime error: "Invalid call. Nonexistent 'int' constructor", killing
+  the order dispatch mid-click. Anything with no team is simply not a
+  combatant now. `--orders-test` runs the REAL dispatch over every Pick
+  target (crate, ground, unit) with a robot, a vehicle and a cannon
+  selected; reintroducing the bug turns the flag red immediately (three
+  SCRIPT ERROR lines), which is how the guard was verified.
+- 2026-08-20 — **CITY AND JUNGLE MAPS WERE SWAPPED.** The terrain byte
+  is an index into a planet table and ids 3/4 were the wrong way round
+  (`tools/zod/map_to_json.py` TERRAIN), so 21 of 58 maps drew with the
+  WRONG TILESET — the "total mess" in the editor — and, worse, took
+  their nav grids from the wrong `.tileinfo`: streets read as water,
+  open ground as wall. The maps' own objects prove it without any
+  reference data: a designer never places a unit in water or in a wall,
+  and with the ids swapped back ZERO of 2,105 units on the shipped set
+  stand on either (the wrong tag misplaced up to 35 units on one map).
+  The art agrees independently — tile-seam continuity scores 12-15 for a
+  correctly-tagged map and 39-41 for a mis-tagged one, desert scoring
+  11.7 as the control. `tools/zod/verify_map_planets.py` measures it,
+  repairs a mis-tagged JSON (re-tag + rebuilt passable/water arrays) and
+  breaks the 2 ambiguous ties on the art; `--terrain-test` now audits
+  every shipped map so it cannot come back. The map SCENES were
+  regenerated, which is what puts the right tileset in the editor.
+- 2026-08-20 — **every bridge drew itself twice.**
+  `bridge_<planet>.png` is 64x256 = TWO stacked 4x8-tile frames, the
+  intact bridge over its own WRECK (verified per planet: the lower half
+  carries 1.5-2.6x the water-coloured pixels through its middle, i.e.
+  the deck is gone). `Building2D._build_sprite` handed the whole sheet
+  to the sprite, so an 8-tile bridge rendered as a 16-tile double with
+  the ruin hanging off the end, and the destroyed state — having no art
+  to swap to — faked it by dimming the sprite. Bridges now render one
+  frame and swap frames on blow-up/repair. Their walkable span was also
+  half the crossing: the maps show a DRY 4-tile corridor where a bridge
+  stands, so the span is 4x8 / 8x4, not 2x8 / 8x2. That is asserted
+  both ways — 0 of 7,520 span cells sit in water with the correct spans,
+  1,747 with the orientations swapped and 491 if the span is 5 wide.
+- 2026-08-20 — **scene maps opened fully neutral.** The zone FLAG
+  markers (`map_item` 0) carry each zone's authored flag tile and its
+  STARTING OWNER; the JSON loader applies them, and
+  `tools/build_map_resources.gd` dropped them — so the same map played
+  as a scene started with no pre-owned territory and its flags at
+  derived centre spots. `--scenes-test` now compares all 58 scenes
+  against their JSON on zones, flag tiles, pre-owned zones, buildings
+  and robots. The scene builder also still stamped the OLD hard-coded
+  rock piece (the flat pale slab bug) — it goes through
+  `MapLoader._rock_piece` now, like the JSON path.
+- 2026-08-20 — **the order-acknowledgement `point` gesture never had
+  any frames.** `point` is stored as SINGLE-FRAME directional art
+  (`point_<team>_r000.png`, exactly like `stand`), and
+  `AnimLibrary._add_directional_or_numbered` only probed
+  `_r000_n00`/`_n00` — so `play_gesture("point")` silently did nothing
+  on every order ever issued. The gesture-vs-art audit in `--art-test`
+  is what found it and now guards every gesture name.
+- 2026-08-20 — **terrain animation shipped** (it was closed as
+  "impossible"). The `.tileinfo` records carry `is_effect` and
+  `next_tile_in_effect`; both converters threw them away. They form
+  rings of 2-6 frames (desert 50 animated tiles, city 40, arctic 25,
+  volcanic 18, jungle 0) whose frames are already distinct images in the
+  planet sheet, so `TerrainAnimator` walks the ring per painted cell,
+  keeping each cell's own PHASE (a shipped map paints 18-30 frames of
+  the same rings side by side — that offset is what makes water flow
+  instead of blink). The busiest map animates 1,877 cells at 5 Hz.
+  Guarded by `--terrain-test`, including the 10 lead-in frames that run
+  INTO a ring instead of sitting on one.
+- 2026-08-20 — **`SetMapImpassables` covered 2 of 7 building types.**
+  The repair shop and both factories had no table at all, so their whole
+  art rect was solid — including the factories' rightmost 16px column,
+  which is the CAST SHADOW (`base_shadow.png` is that same 16x80 strip),
+  and the dark mouth at the foot of each factory, which is the exit with
+  the map's own dirt painted into it. Tables are now authored for all
+  three from the art (documented as DERIVED, not transcribed — the
+  original source for these three is not in the pack), and
+  `--building-test` asserts every type declares a table, that it fits
+  inside the art and that its open cells fall inside it.
+- 2026-08-20 — **`Vector2.ZERO` was the "no order" sentinel.** A real
+  destination at the world origin was indistinguishable from "no order",
+  and every "is it moving?" test in the codebase was that comparison.
+  `move_target` now uses `Vector2.INF` like `defend_post` and
+  `rally_point`, read through `has_move_target()` and cleared through
+  `clear_move_target()` (57 call sites).
+- 2026-08-20 — **no building registry.** `Unit2D._find_target_within`
+  scanned the `all_buildings` group per unit per combat tick and
+  `Combat.area_damage` per explosion. `BuildingRegistry` mirrors
+  `UnitRegistry` (static queries, group fallback for the map-build tool)
+  and owns building net ids; the per-frame minimap radar probe, the
+  elimination cascade, the win check, click picking and the net-id
+  lookup all go through it now.
+- 2026-08-20 — **multiplayer full-entity resync + late join.** The host
+  pushes the whole roster every 10s (`Net.push_entities`); peers
+  reconcile BY NET ID (`MatchRelay.apply_entities`): a drifted unit past
+  24px is snapped, a unit the host no longer has dies, a unit the peer
+  never made is spawned and ADOPTS the host's id (so later intents
+  address the same unit). A peer that connects mid-match is seated on
+  the first open team and handed the map plus a save-contract snapshot,
+  which the map replays after spawning — the "reuse the save contract"
+  plan, now real. Asserted over the ENet loopback in `--mpmatch-test`.
+- 2026-08-20 — **VETERANCY** (there was no rank or XP field anywhere).
+  Kills are credited to whoever fired the killing shot (by instance id,
+  so a shell outliving its gun credits nobody), rank comes from the
+  kill steps in `MatchRulesDef`, and rank pays in damage and accuracy.
+  Ranks show as pips under the selection box and survive a save.
+  Remake values, deliberately small and tunable in the rules resource —
+  the asset pack ships no table for this. Guarded by `--veteran-test`.
+- 2026-08-20 — **control-group hotkeys** (there were no digit bindings
+  at all). Ctrl+digit assigns the selection, digit recalls it, a second
+  press inside 0.45s jumps the camera to the squad; dead members drop
+  out on recall. Ten slots (1-9 then 0). Guarded by `--group-test`.
+- 2026-08-20 — **the whole test suite asserts.** 43 flags shipped with
+  ~29 that only PRINTED their findings, so a regression in those domains
+  read as a passing run. All 47 flags now report through `TestRig`
+  (`CHECK FAILED:` lines): the collected-problem blocks were routed
+  through the rig, and the measurement-only ones (capture, combat,
+  factory, dir, near, prod, fortprod, cancel, vehpath, apc, save,
+  campaign, mount, cap, fx, tactics, ai) gained real invariants — a
+  captured zone must flip and pay, a duel must draw blood, a destroyed
+  factory must not produce, the cap must REFUSE at the cap, a vehicle
+  route must never end in water, the AI must still be playing after two
+  live minutes.
+- 2026-08-20 — **art that shipped in the pack and nothing referenced.**
+  Now wired, each behind an assertion in `--art-test`:
+  the SELECTED-OBJECT panel (planet `backdrop_*` + portrait + the
+  team-coloured `unit_label_*` plate, falling back to the neutral
+  `label_*` weapon plate so all 19 types have one); `escape_tank` (the
+  crew visibly bailing out of a hull) and `tank_fire` (the crew in the
+  open hatch while the gun fires — the same hatch a sniper shoots
+  through); the four directional `jump-*` leaps, picked by which way a
+  dodge lands; per-planet ROCK debris (256 frames, all five planets used
+  to share one grey puff) and BRIDGE rubble; the building LEVEL digits
+  (levels 0-5 gate the roster and the build speed and the number was
+  shown nowhere); the announcer's printed plaques, driven by one signal
+  off `Fx.announce`; the seven neutral ORDER-CONFIRMATION cursors, one
+  per order kind (only `placed` had been converted, so an attack, a
+  board and crane work all confirmed with the move marker); ambient
+  BIRDS with their per-planet calls; and the 53 unlabelled `ROB##` voice
+  lines as idle chatter. `tools/zod/copy_art.py` grew a declarative
+  SERIES table for the 478 files this needed.
+- 2026-08-20 — **`tools/gog/convert_assets.py` deleted a file it had
+  just created.** It converted `audio/GRENADE.RAW` to
+  `sounds/GRENADE.wav` and then unlinked it with the comment "replaced
+  by GRENADE.RAW"; `fx.gd` substituted the grenade-launcher shot and its
+  comment blamed an upstream gap that did not exist. Both fixed.
 
 - 2026-08-20 — **rock fields rendered as flat light-brown slabs.**
   `_build_rocks` gave EVERY clustered rock one hard-coded piece, (1,1),

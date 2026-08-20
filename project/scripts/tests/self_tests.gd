@@ -26,7 +26,7 @@ static func should_run() -> bool:
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
 			"mp", "rally", "placement", "fortkill", "parity", "art", "mpmatch",
-			"garrison", "terrain", "group"]:
+			"garrison", "terrain", "group", "veteran"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -327,8 +327,10 @@ static func run(ctx: Node) -> void:
 				client.leave()
 				dummy.queue_free()
 				Net.leave()
-			print("MP: %s" % (",".join(fails) if fails.size() > 0
-					else "discovery + room + start + host-lost all ok"))
+			var mp_rig := TestRig.start("MP")
+			for problem in fails:
+				mp_rig.check(false, String(problem))
+			mp_rig.finish()
 	if "--mpmatch-test" in args:
 		# multiplayer milestone 2: IN-MATCH intent replication over a real
 		# ENet loopback — a client's order/rally/queue intents reach the
@@ -444,6 +446,60 @@ static func run(ctx: Node) -> void:
 					"snapshot money did not apply")
 				mm.check(MatchState.current.zones[0].owner_team == int(snap.zones[0]["team"]),
 					"snapshot zone owner did not apply")
+				# FULL-ENTITY RESYNC: peers run their own float physics, so
+				# the host corrects the roster by net id. Three cases, all
+				# driven through the real apply path:
+				#   drifted  -> snapped back (only past SNAP_DISTANCE)
+				#   missing  -> spawned with the HOST's net id
+				#   stale    -> killed (it died on the host)
+				var drifter: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+					client.match_team, Vector2(700, 700))
+				var doomed: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+					client.match_team, Vector2(740, 700))
+				var truth := MatchRelay.entity_snapshot()
+				mm.check(truth.units.size() > 0, "entity snapshot is empty")
+				# the host's picture: drifter is elsewhere, doomed is gone,
+				# and one unit exists that this peer has never seen
+				var ghost_id := 0
+				for u3 in UnitRegistry.current.all_units():
+					ghost_id = maxi(ghost_id, u3.net_id)
+				ghost_id += 50
+				var authority := {"units": [], "buildings": truth.buildings}
+				for entry in truth.units:
+					if int(entry.get("net", 0)) == doomed.net_id:
+						continue  # died on the host
+					if int(entry.get("net", 0)) == drifter.net_id:
+						entry = entry.duplicate()
+						entry["x"] = 700.0 + MatchRelay.SNAP_DISTANCE * 4.0
+					authority.units.append(entry)
+				authority.units.append({"net": ghost_id, "kind": "robot",
+					"type": "grunt", "team": client.match_team,
+					"x": 660.0, "y": 760.0, "hp": 50, "dir": 0, "grenades": 0})
+				var far := drifter.global_position.x + MatchRelay.SNAP_DISTANCE * 4.0
+				var report: Dictionary = MatchRelay.apply_entities(authority)
+				mm.check(absf(drifter.global_position.x - far) < 1.0,
+					"drifted unit not corrected (at %s)" % drifter.global_position)
+				mm.check(not doomed.alive, "unit missing from the host survived")
+				mm.check(UnitRegistry.current.by_net_id(ghost_id) != null,
+					"host-only unit was not spawned on the peer")
+				mm.check(int(report.get("buildings", 0)) > 0,
+					"no buildings reconciled")
+				# and a NEW spawn cannot collide with an adopted id
+				var later: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+					client.match_team, Vector2(680, 780))
+				mm.check(later.net_id > ghost_id,
+					"net id %d reused after adopting %d" % [later.net_id, ghost_id])
+				# LATE JOIN: the host hands a mid-match peer the map plus a
+				# save-contract snapshot, and seats it on an open team
+				var joiner := 4242
+				Net.late_join(joiner)
+				mm.check(Net.room.players.has(joiner), "late joiner not seated")
+				var snapshot: Dictionary = SaveSystem.capture_save()
+				mm.check(not snapshot.get("units", []).is_empty(),
+					"late-join snapshot carries no units")
+				mm.check(int(snapshot.units[0].get("net", 0)) > 0,
+					"late-join snapshot units carry no net id")
+				Net.room.players.erase(joiner)
 				Net.leave()
 				client.leave()
 		mm.finish()
@@ -453,35 +509,44 @@ static func run(ctx: Node) -> void:
 			if unit.team == MatchState.current.player_team:
 				u = unit
 				break
+		var cap_rig := TestRig.start("CAPTURE")
+		cap_rig.check(u != null, "no player unit on the map")
 		var z: Node2D = MatchState.current.zones[0]
 		u.position = z.position + z.world_rect().get_center()
+		var money_at_start := MatchState.current.player_money()
 		for i in 30:
 			z._process(0.1)
 			MatchState.current._process(1.0)
-			print("CAPTURE: owner=%d money=%d" % [z.owner_team, MatchState.current.player_money()])
-			# a zone with a LIVE enemy fort never flips — the fort is the
-			# win objective, its garrison holds the ground
-			var enemy_fort: Building2D = null
-			for b in tree.get_nodes_in_group(Groups.BUILDINGS):
-				if b is FortBuilding and b.alive \
-						and b.team != 0 and b.team != MatchState.current.player_team:
-					enemy_fort = b
+		cap_rig.check(z.owner_team == MatchState.current.player_team,
+			"zone never flipped to the player (owner %d after 3s of presence)"
+			% z.owner_team)
+		cap_rig.check(MatchState.current.player_money() > money_at_start,
+			"captured territory paid nothing (%d -> %d)"
+			% [money_at_start, MatchState.current.player_money()])
+		# a zone with a LIVE enemy fort never flips — the fort is the
+		# win objective, its garrison holds the ground
+		var enemy_fort: Building2D = null
+		for b in tree.get_nodes_in_group(Groups.BUILDINGS):
+			if b is FortBuilding and b.alive \
+					and b.team != 0 and b.team != MatchState.current.player_team:
+				enemy_fort = b
+				break
+		var fort_holds := true
+		if enemy_fort != null:
+			var held: Node2D = null
+			for zh in MatchState.current.zones:
+				if enemy_fort.art_world_rect().intersection(
+						zh.world_rect()).get_area() > 0:
+					held = zh
 					break
-			var fort_holds := true
-			if enemy_fort != null:
-				var held: Node2D = null
-				for zh in MatchState.current.zones:
-					if enemy_fort.art_world_rect().intersection(
-							zh.world_rect()).get_area() > 0:
-						held = zh
-						break
-				if held != null and held.owner_team == enemy_fort.team:
-					u.position = held.world_rect().get_center()
-					for ci in 30:
-						held._process(0.1)
-					fort_holds = held.owner_team == enemy_fort.team
-			print("CAPTURE: fort_zone_holds=%s" % ("n/a" if enemy_fort == null
-				else ("yes" if fort_holds else "NO")))
+			if held != null and held.owner_team == enemy_fort.team:
+				u.position = held.world_rect().get_center()
+				for ci in 30:
+					held._process(0.1)
+				fort_holds = held.owner_team == enemy_fort.team
+		cap_rig.check(fort_holds,
+			"a zone with a LIVE enemy fort flipped on presence")
+		cap_rig.finish()
 	if "--combat-test" in args:
 		var a: Unit2D = load("res://scenes/unit.tscn").instantiate()
 		a.unit_name = "grunt"
@@ -493,10 +558,19 @@ static func run(ctx: Node) -> void:
 		b.team = 2
 		b.position = Vector2(430, 400)
 		ctx.add_child(b)
+		var combat_rig := TestRig.start("COMBAT")
+		var hp_a := a.hp
+		var hp_b := b.hp
 		for i in 400:
 			a._process(0.05)
 			b._process(0.05)
-		print("COMBAT: a_alive=%s b_alive=%s hp_a=%d hp_b=%d" % [a.alive, b.alive, a.hp, b.hp])
+		combat_rig.check(a.hp < hp_a and b.hp < hp_b,
+			"20s in weapon range and nobody was hit (a %d->%d, b %d->%d)"
+			% [hp_a, a.hp, hp_b, b.hp])
+		combat_rig.check(a.alive and b.alive,
+			"a grunt duel ended in 20s (a alive=%s b alive=%s) — TTK too fast"
+			% [a.alive, b.alive])
+		combat_rig.finish("hp %d/%d" % [a.hp, b.hp])
 	if "--factory-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		var f := RobotFactory.new()
@@ -522,9 +596,17 @@ static func run(ctx: Node) -> void:
 		for fi in 20:
 			f._process(0.5)
 		var ruin_spawned := tree.get_nodes_in_group(Groups.UNITS).size() - units_at_death
-		print("FACTORY: units %d -> %d money %d -> %d queue=%d ruin_spawned=%d" % [
-			before, tree.get_nodes_in_group(Groups.UNITS).size(),
-			money_before, MatchState.current.player_money(), f.queue.items.size(), ruin_spawned])
+		var fac_rig := TestRig.start("FACTORY")
+		var after := tree.get_nodes_in_group(Groups.UNITS).size()
+		fac_rig.check(after > before,
+			"factory produced nothing (units %d -> %d)" % [before, after])
+		fac_rig.check(f.queue.items.is_empty(),
+			"queue never drained (%d left)" % f.queue.items.size())
+		fac_rig.check(MatchState.current.player_money() < 500,
+			"production was free (money still %d)" % MatchState.current.player_money())
+		fac_rig.check(ruin_spawned == 0,
+			"%d units crawled out of a DESTROYED factory" % ruin_spawned)
+		fac_rig.finish("%d units, %d money" % [after, MatchState.current.player_money()])
 	if "--ai-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		var ai := ctx.get_node_or_null("CpuAi_T2")
@@ -558,6 +640,9 @@ static func run(ctx: Node) -> void:
 			# sustained observation: the full loop (income -> production ->
 			# expansion -> push) must all come alive on its own
 			ai.set_process(true)  # back to live thinking (isolated above)
+			var ai_rig := TestRig.start("AI")
+			ai_rig.check(moved_after >= moved,
+				"a _think() cycle took orders AWAY (%d -> %d)" % [moved, moved_after])
 			for step in 6:
 				await ctx.get_tree().create_timer(20.0).timeout
 				var r2 := 0
@@ -581,6 +666,17 @@ static func run(ctx: Node) -> void:
 					(step + 1) * 20, r2, v2, unmanned2,
 					MatchState.current.zones.filter(func(z): return z.owner_team == 2).size(),
 					int(MatchState.current.money.get(2, 0)), f2, q2, ai._attack_mode])
+				if step == 5:
+					# after two live minutes the brain must still be
+					# PLAYING: an army on the field, facilities standing
+					# and territory held (the whole loop, unsupervised)
+					ai_rig.check(r2 + v2 > 0,
+						"the AI has no units left after 2 minutes")
+					ai_rig.check(f2 > 0, "the AI holds no facilities")
+					ai_rig.check(MatchState.current.zones.filter(
+							func(z): return z.owner_team == 2).size() > 0,
+						"the AI holds no territory")
+			ai_rig.finish()
 			ctx.get_tree().quit()
 	if "--path-test" in args:
 		PathTests.walk_a_pair(ctx, TestRig.start("PATH"))
@@ -639,6 +735,61 @@ static func run(ctx: Node) -> void:
 		ArtTests.run(ctx, TestRig.start("ART"))
 	if "--terrain-test" in args:
 		TerrainTests.run(ctx, TestRig.start("TERRAIN"))
+	if "--veteran-test" in args:
+		# VETERANCY: kills buy rank, rank buys damage and accuracy, the
+		# killing shot is credited to whoever fired it, and a veteran
+		# survives a save (there was no rank or XP field anywhere)
+		var vt := TestRig.start("VETERAN")
+		var steps: Array = ContentDB.rules.veteran_kill_steps
+		vt.check(steps.size() > 0, "no veteran kill steps configured")
+		var vet: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+			MatchState.current.player_team,
+			NavWorld.current.find_free_spot(Vector2(820, 820), "robot")) as Unit2D
+		vt.check(vet.rank() == 0, "a fresh unit starts at rank %d" % vet.rank())
+		vt.check(is_equal_approx(vet.veteran_damage_scale(), 1.0),
+			"a rookie already carries a damage bonus")
+		for i in int(steps[steps.size() - 1]):
+			vet.credit_kill()
+		vt.check(vet.rank() == steps.size(),
+			"%d kills bought rank %d of %d" % [vet.kills, vet.rank(), steps.size()])
+		var want_scale: float = 1.0 + steps.size() * ContentDB.rules.veteran_damage_bonus
+		vt.check(is_equal_approx(vet.veteran_damage_scale(), want_scale),
+			"damage scale %.3f, want %.3f" % [vet.veteran_damage_scale(), want_scale])
+		vt.check(is_equal_approx(vet.veteran_hit_bonus(),
+				steps.size() * ContentDB.rules.veteran_hit_bonus),
+			"hit bonus %.3f" % vet.veteran_hit_bonus())
+		# the save contract carries the rank
+		var vdict: Dictionary = vet.to_dict()
+		vt.check(int(vdict.get("kills", -1)) == vet.kills,
+			"kills missing from the save contract")
+		var rookie: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+			MatchState.current.player_team,
+			NavWorld.current.find_free_spot(Vector2(860, 820), "robot")) as Unit2D
+		rookie.apply_dict(vdict)
+		vt.check(rookie.rank() == vet.rank(),
+			"a restored veteran came back at rank %d" % rookie.rank())
+		# CREDIT: the killing shot promotes the shooter, and a dead
+		# shooter (a shell that outlives its gun) credits nobody
+		var killer: Unit2D = Spawner.spawn(ctx, "robot", "laser", 1,
+			NavWorld.current.find_free_spot(Vector2(900, 860), "robot")) as Unit2D
+		var victim: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 2,
+			NavWorld.current.find_free_spot(Vector2(940, 860), "robot")) as Unit2D
+		var kills_before := killer.kills
+		victim.hp = 1
+		Combat._land(victim, 9999, victim.global_position, killer.get_instance_id())
+		vt.check(not victim.alive, "the victim survived a lethal hit")
+		vt.check(killer.kills == kills_before + 1,
+			"the killing shot credited %d kills" % (killer.kills - kills_before))
+		var bystander: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 2,
+			NavWorld.current.find_free_spot(Vector2(980, 860), "robot")) as Unit2D
+		bystander.hp = 1
+		Combat._land(bystander, 9999, bystander.global_position, 0)
+		vt.check(killer.kills == kills_before + 1,
+			"an unattributed kill was credited anyway")
+		for u in [vet, rookie, killer, victim, bystander]:
+			if is_instance_valid(u):
+				u.queue_free()
+		vt.finish("ranks=%d" % steps.size())
 	if "--group-test" in args:
 		# CONTROL GROUPS: Ctrl+digit assigns, digit recalls, dead members
 		# drop out on recall (there was no digit binding at all)
@@ -780,7 +931,9 @@ static func run(ctx: Node) -> void:
 			var got: int = Unit2D._angle_to_dir(ang)
 			if got != dirs[ang]:
 				bad += 1
-		print("DIR: mismatches=%d of 8" % bad)
+		var dir_rig := TestRig.start("DIR")
+		dir_rig.check(bad == 0, "%d of 8 headings map to the wrong sprite" % bad)
+		dir_rig.finish()
 	if "--layer-test" in args:
 		# layered rendering: turrets (with the original offset tables),
 		# the medium tank's topf turret art, jeep wheel coverage, the
@@ -876,8 +1029,10 @@ static func run(ctx: Node) -> void:
 				problems.append("%s: manned idle should hold the seated gunner" % cname)
 			if cframes.get_animation_loop("fire_0"):
 				problems.append("%s: fire flash must not loop" % cname)
-		print("LAYER: problems=%d %s" % [problems.size(),
-			", ".join(problems) if not problems.is_empty() else "(all layers ok)"])
+		var layer_rig := TestRig.start("LAYER")
+		for problem in problems:
+			layer_rig.check(false, String(problem))
+		layer_rig.finish()
 	if "--cursor-test" in args:
 		# the contextual cursor: every zod DetermineCursor branch this
 		# remake implements, plus the art families actually shipping
@@ -1138,8 +1293,45 @@ static func run(ctx: Node) -> void:
 					oproblems.append("dead units take no orders")
 			jeep4.queue_free()
 			fort2.queue_free()
-		print("ORDERS: problems=%d %s" % [oproblems.size(),
-			", ".join(oproblems) if not oproblems.is_empty() else "(all orders ok)"])
+		var orders_rig := TestRig.start("ORDERS")
+		# DISPATCH ON EVERY PICK TARGET. Pick.at answers with units,
+		# CRATES and buildings, and Commands._find_enemy read `team` off
+		# whatever came back — a crate has none, and `int(null)` is a hard
+		# crash, so right-clicking a crate with anything selected killed
+		# the match ("Nonexistent 'int' constructor"). Running the real
+		# dispatch over each target IS the assertion: a runtime error
+		# aborts the flag.
+		var crate := Pickup.new()
+		crate.pickup_type = "grenades"
+		crate.position = NavWorld.current.find_free_spot(Vector2(1020, 620), "robot")
+		ctx.add_child(crate)
+		await Engine.get_main_loop().process_frame
+		var pickers: Array[Unit2D] = []
+		for spec in [["robot", "grunt"], ["vehicle", "jeep"], ["cannon", "gatling"]]:
+			var picker: Unit2D = Spawner.spawn(ctx, spec[0], spec[1],
+				MatchState.current.player_team,
+				NavWorld.current.find_free_spot(
+					Vector2(1020, 700) + Vector2(40 * pickers.size(), 0), spec[0]),
+				spec[0] != "robot") as Unit2D
+			if picker == null:
+				continue
+			pickers.append(picker)
+			SelectionManager.current.clear_selection()
+			SelectionManager.current.toggle_select(picker, false)
+			for target in [crate.global_position, crate.global_position + Vector2(400, 0)]:
+				Commands.dispatch(target)
+			orders_rig.check(picker.order != null or picker.has_move_target(),
+				"%s took no order at all from a crate click" % spec[1])
+			if picker.order != null:
+				orders_rig.check(picker.order.type != Order.Type.ATTACK,
+					"%s treated a CRATE as an enemy" % spec[1])
+		SelectionManager.current.clear_selection()
+		for picker in pickers:
+			picker.queue_free()
+		crate.queue_free()
+		for problem in oproblems:
+			orders_rig.check(false, String(problem))
+		orders_rig.finish()
 	if "--scenes-test" in args:
 		# every per-type scene instantiates with the right identity and
 		# rig nodes; buildings resolve scenes; a generated map loads
@@ -1223,8 +1415,79 @@ static func run(ctx: Node) -> void:
 			var want_size := Vector2(4, 4) if team == "null" else Vector2(8, 4)
 			if mtex == null or mtex.get_size() != want_size:
 				sproblems.append("marker art %s" % team)
-		print("SCENES: problems=%d %s" % [sproblems.size(),
-			", ".join(sproblems) if not sproblems.is_empty() else "(all scenes ok)"])
+		# SCENE vs JSON PARITY: the generated .tscn must carry everything
+		# the JSON loader spawns. The zone FLAG MARKERS (map_item 0) were
+		# dropped by the scene builder, so every scene map opened fully
+		# neutral with its flags at derived centre spots while the same
+		# map as JSON started with its authored owners — the exact bug
+		# that was already fixed once on the JSON path.
+		var sc_rig := TestRig.start("SCENES")
+		for problem in sproblems:
+			sc_rig.check(false, problem)
+		var audited := 0
+		for entry in MapCatalog.entries():
+			var mname := String(entry.name)
+			var scene_path := "res://assets/maps_scenes/%s.tscn" % mname
+			var json_path := "res://assets/maps/%s.json" % mname
+			if not ResourceLoader.exists(scene_path) or not ResourceLoader.exists(json_path):
+				continue
+			var parsed = JSON.parse_string(FileAccess.get_file_as_string(json_path))
+			if not (parsed is Dictionary):
+				continue
+			var jdata: Dictionary = parsed
+			# what the JSON says: zones, authored flags, authored owners
+			var want_zones: int = jdata.zones.size()
+			var want_flags := 0
+			var want_owned := 0
+			var want_buildings := 0
+			var want_robots := 0
+			for o in jdata.objects:
+				var otype := String(o.type)
+				if otype == "building":
+					want_buildings += 1
+				elif otype == "robot":
+					want_robots += 1
+				elif otype == "map_item" and int(o.id) == MapLoader.ZONE_FLAG_ID:
+					var cell := Vector2i(int(o.x), int(o.y))
+					for z in jdata.zones:
+						if Rect2i(int(z.x), int(z.y), int(z.w), int(z.h)).has_point(cell):
+							want_flags += 1
+							if int(o.get("owner", 0)) != 0:
+								want_owned += 1
+							break
+			# what the SCENE carries (instantiated, never added to the
+			# tree — no _ready, no match state touched)
+			var inst: Node = (load(scene_path) as PackedScene).instantiate()
+			var got_zones := 0
+			var got_flags := 0
+			var got_owned := 0
+			var got_buildings := 0
+			var got_robots := 0
+			for child in inst.get_children():
+				if child is Zone:
+					got_zones += 1
+					if (child as Zone).flag_tile != Vector2i.MAX:
+						got_flags += 1
+					if (child as Zone).owner_team != 0:
+						got_owned += 1
+				elif child is Building2D:
+					got_buildings += 1
+				elif child is Unit2D and String(child.get("kind")) == "robot":
+					got_robots += 1
+			inst.free()
+			audited += 1
+			sc_rig.check(got_zones == want_zones,
+				"%s: %d zones in the scene, %d in the JSON" % [mname, got_zones, want_zones])
+			sc_rig.check(got_flags == want_flags,
+				"%s: %d authored flag tiles kept of %d" % [mname, got_flags, want_flags])
+			sc_rig.check(got_owned == want_owned,
+				"%s: %d pre-owned zones kept of %d" % [mname, got_owned, want_owned])
+			sc_rig.check(got_buildings == want_buildings,
+				"%s: %d buildings in the scene, %d in the JSON" % [mname, got_buildings, want_buildings])
+			sc_rig.check(got_robots == want_robots,
+				"%s: %d robots in the scene, %d in the JSON" % [mname, got_robots, want_robots])
+		sc_rig.check(audited > 0, "no map scenes to audit")
+		sc_rig.finish("%d map scenes vs their JSON" % audited)
 	if "--defs-test" in args:
 		# the .tres registry: every def resolvable and sane, rosters point
 		# at real units, discovery still catches unregistered folders
@@ -1256,8 +1519,10 @@ static func run(ctx: Node) -> void:
 			var pd := ContentDB.pickup_def(pk)
 			if pd == null or pd.texture == null:
 				dproblems.append("pickup %s" % pk)
-		print("DEFS: problems=%d %s" % [dproblems.size(),
-			", ".join(dproblems) if not dproblems.is_empty() else "(all defs ok)"])
+		var defs_rig := TestRig.start("DEFS")
+		for problem in dproblems:
+			defs_rig.check(false, String(problem))
+		defs_rig.finish()
 	if "--balance-test" in args:
 		# BALANCE SWEEP vs the ORIGINAL game, transcribed from zod engine
 		# sources: build lists from zbuildlist.cpp LoadDefaults, unit stats
@@ -1349,8 +1614,10 @@ static func run(ctx: Node) -> void:
 					owned += 1
 			if owned < 1:
 				bproblems.append("team %d starts with no home zone" % t)
-		print("BALANCE: problems=%d %s" % [bproblems.size(),
-			", ".join(bproblems) if not bproblems.is_empty() else "(original balance holds)"])
+		var balance_rig := TestRig.start("BALANCE")
+		for problem in bproblems:
+			balance_rig.check(false, String(problem))
+		balance_rig.finish()
 	if "--vfx-test" in args:
 		# damage smoke (per-direction track_dust), oil stains, wreck
 		# smoke variants and the grenade projectile sprite resolve
@@ -1403,8 +1670,10 @@ static func run(ctx: Node) -> void:
 			if vf.has_animation("fire_%d" % d) \
 					and vf.get_animation_loop("fire_%d" % d):
 				vproblems.append("vehicle fire_%d loops" % d)
-		print("VFX: problems=%d %s" % [vproblems.size(),
-			", ".join(vproblems) if not vproblems.is_empty() else "(all vfx ok)"])
+		var vfx_rig := TestRig.start("VFX")
+		for problem in vproblems:
+			vfx_rig.check(false, String(problem))
+		vfx_rig.finish()
 	if "--pose-test" in args:
 		# dump the exact layer positioning the engine computes per type
 		# and facing: turret art file, canvas sizes, final position
@@ -1519,8 +1788,10 @@ static func run(ctx: Node) -> void:
 				lproblems.append("fort hardware spawned manned (want unmanned)")
 		else:
 			lproblems.append("no player fort on this map")
-		print("LEVEL: problems=%d %s" % [lproblems.size(),
-			", ".join(lproblems) if not lproblems.is_empty() else "(levels ok)"])
+		var level_rig := TestRig.start("LEVEL")
+		for problem in lproblems:
+			level_rig.check(false, String(problem))
+		level_rig.finish()
 	if "--repair-test" in args:
 		# repair shop heals a damaged vehicle; a crane rebuilds a
 		# damaged building; a blown bridge becomes impassable and is
@@ -1604,8 +1875,10 @@ static func run(ctx: Node) -> void:
 				rproblems.append("repaired bridge keeps its rubble wall")
 		else:
 			rproblems.append("no bridge on this map")
-		print("REPAIR: problems=%d %s" % [rproblems.size(),
-			", ".join(rproblems) if not rproblems.is_empty() else "(repair ok)"])
+		var repair_rig := TestRig.start("REPAIR")
+		for problem in rproblems:
+			repair_rig.check(false, String(problem))
+		repair_rig.finish()
 	if "--combat2-test" in args:
 		# sniping ejects drivers, grenade crates arm throwers, splash
 		# crumbles rocks and cracks bridges, garrisoned forts fire
@@ -1727,8 +2000,10 @@ static func run(ctx: Node) -> void:
 			cproblems.append("no player fort")
 		if not rock_found:
 			cproblems.append("no rocks on this map")
-		print("COMBAT2: problems=%d %s" % [cproblems.size(),
-			", ".join(cproblems) if not cproblems.is_empty() else "OK"])
+		var combat2_rig := TestRig.start("COMBAT2")
+		for problem in cproblems:
+			combat2_rig.check(false, String(problem))
+		combat2_rig.finish()
 	if "--tactics-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		# the tactical AI, end to end: with funds and hardware on the
@@ -1791,9 +2066,23 @@ static func run(ctx: Node) -> void:
 						and u5.enter_target != null:
 					man_orders += 1
 
-			print("TACTICS: robots %d->%d manned %d->%d zones %d->%d man_orders=%d empty_start=%d manned_peak=%d%s (want production>0, manning>0, zones>0)" % [
-				before_t.robots, after_t.robots, before_t.manned, after_t.manned,
-				before_t.zones, after_t.zones, man_orders, empty_start, manned_peak, dbg])
+			# the three legs of the tactical loop, each asserted: it must
+			# PRODUCE, it must CREW the hardware lying around, and it must
+			# hold territory. (A brain that only charges the enemy fort
+			# passes none of these.)
+			var tac_rig := TestRig.start("TACTICS")
+			tac_rig.check(int(after_t.robots) > int(before_t.robots),
+				"the AI produced no robots in ~3 simulated minutes (%d -> %d)"
+				% [int(before_t.robots), int(after_t.robots)])
+			if empty_start > 0:
+				tac_rig.check(manned_peak > int(before_t.manned) or man_orders > 0,
+					"%d empty hulls on the map and the AI never crewed or "
+					% empty_start + "even ordered a robot onto one")
+			tac_rig.check(int(after_t.zones) > 0,
+				"the AI holds no territory after the sim")
+			tac_rig.finish("robots %d->%d manned_peak=%d zones=%d%s" % [
+				int(before_t.robots), int(after_t.robots), manned_peak,
+				int(after_t.zones), dbg])
 	if "--near-test" in args:
 		var jeep3: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 		jeep3.setup_vehicle("vehicle", "jeep", 0)
@@ -1815,8 +2104,13 @@ static func run(ctx: Node) -> void:
 			walker._physics_process(0.05)
 			if jeep3.manned or not is_instance_valid(walker):
 				break
-		print("NEAR: instant=%s manned_after_walk=%s selection_left=%d" % [
-			instant, jeep3.manned, SelectionManager.current.selected.size()])
+		var near_rig := TestRig.start("NEAR")
+		near_rig.check(not instant, "hardware was manned from 200px away")
+		near_rig.check(jeep3.manned, "the robot never crewed the jeep it walked to")
+		near_rig.check(SelectionManager.current.selected.is_empty(),
+			"the consumed robot is still selected (%d entries)"
+			% SelectionManager.current.selected.size())
+		near_rig.finish()
 	if "--flag-test" in args:
 		var fl := TestRig.start("FLAG")
 		var radar: Building2D = Building2D.new()
@@ -2005,9 +2299,14 @@ static func run(ctx: Node) -> void:
 				for u3 in tree.get_nodes_in_group(Groups.UNITS):
 					if u3 is Unit2D and u3.unit_name == "psycho" and u3.team == MatchState.current.player_team:
 						psychos += 1
-				print("PROD: queued=%s units %d -> %d psychos=%d queue_left=%d" % [
-					ok, count_before, tree.get_nodes_in_group(Groups.UNITS).size(),
-					psychos, f2.queue.items.size()])
+				var prod_rig := TestRig.start("PROD")
+				prod_rig.check(ok, "the factory refused a funded order")
+				prod_rig.check(psychos > 0, "no psycho rolled out of the factory")
+				prod_rig.check(tree.get_nodes_in_group(Groups.UNITS).size() > count_before,
+					"unit count did not grow (%d)" % count_before)
+				prod_rig.check(f2.queue.items.is_empty(),
+					"queue still holds %d item(s)" % f2.queue.items.size())
+				prod_rig.finish("psychos=%d" % psychos)
 	if "--fortprod-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		var fort2: FortBuilding = null
@@ -2020,7 +2319,9 @@ static func run(ctx: Node) -> void:
 			var ok2: bool = fort2.queue_unit("robot:psycho")
 			for i in 8:
 				fort2.queue_unit("robot:grunt")
-			print("QUEUECAP: size=%d (want 5)" % fort2.queue.items.size())
+			var fp_rig := TestRig.start("FORTPROD")
+			fp_rig.check(fort2.queue.items.size() == 5,
+				"queue holds %d, the cap is 5" % fort2.queue.items.size())
 			for i in 4:  # cancel only the grunts, keep the psycho
 				fort2.cancel_at(fort2.queue.items.size() - 1)
 			var count0 := tree.get_nodes_in_group(Groups.UNITS).size()
@@ -2030,8 +2331,8 @@ static func run(ctx: Node) -> void:
 			for u5 in tree.get_nodes_in_group(Groups.UNITS):
 				if u5 is Unit2D and u5.unit_name == "psycho" and u5.team == 1:
 					psychos2 += 1
-			print("FORTPROD: queued=%s units %d -> %d psychos=%d" % [
-				ok2, count0, tree.get_nodes_in_group(Groups.UNITS).size(), psychos2])
+			fp_rig.check(ok2, "the fort refused a funded order")
+			fp_rig.check(psychos2 > 0, "the fort produced no psycho")
 			# fort cannon SLOTS: guns mount on the tower points, capped by
 			# the slot count (no unlimited turret spam)
 			var accepted := 0
@@ -2050,9 +2351,16 @@ static func run(ctx: Node) -> void:
 						if u6.global_position.distance_to(s) < 4.0:
 							on_slot += 1
 							break
-			print("FORTSLOT: accepted=%d/4 mounted=%d on_slot=%d/%d free_after=%d" % [
-				accepted, mounted_guns, on_slot, mounted_guns,
-				fort2.free_cannon_slots()])
+			fp_rig.check(accepted == fort_slots.size(),
+				"fort took %d gun orders for %d tower slots"
+				% [accepted, fort_slots.size()])
+			fp_rig.check(mounted_guns > 0, "no tower gun was mounted")
+			fp_rig.check(on_slot == mounted_guns,
+				"%d of %d tower guns stand off their slot" % [
+					mounted_guns - on_slot, mounted_guns])
+			fp_rig.check(fort2.free_cannon_slots() == 0,
+				"%d slots still free after filling them" % fort2.free_cannon_slots())
+			fp_rig.finish("guns=%d" % mounted_guns)
 	if "--cancel-test" in args:
 		var fort3: FortBuilding = null
 		for c in ctx.get_children():
@@ -2065,8 +2373,16 @@ static func run(ctx: Node) -> void:
 			fort3.queue_unit("robot:sniper")
 			var money_mid: int = MatchState.current.money[1]
 			fort3.cancel_at(1)  # refund the sniper ($80)
-			print("CANCEL: queue=%s money %d -> %d (sniper refund %d)" % [
-				fort3.queue.items, money_mid, MatchState.current.money[1], 80])
+			var cancel_rig := TestRig.start("CANCEL")
+			var refund: int = int(MatchState.current.money[1]) - money_mid
+			cancel_rig.check(refund > 0,
+				"cancelling refunded nothing (money %d -> %d)"
+				% [money_mid, int(MatchState.current.money[1])])
+			cancel_rig.check(fort3.queue.items.size() == 1,
+				"cancel left %d items, want 1" % fort3.queue.items.size())
+			cancel_rig.check(String(fort3.queue.items[0]) == "robot:grunt",
+				"cancel removed the wrong item (%s left)" % fort3.queue.items[0])
+			cancel_rig.finish("refund=%d" % refund)
 	if "--vehpath-test" in args:
 		var rg: AStarGrid2D = NavWorld.current.nav_grid
 		var vg: AStarGrid2D = NavWorld.current.vehicle_grid
@@ -2079,8 +2395,9 @@ static func run(ctx: Node) -> void:
 					break
 			if water_cell.x >= 0:
 				break
+		var vp_rig := TestRig.start("VEHPATH")
 		if water_cell.x < 0:
-			print("VEHPATH: no water cells on map")
+			print("VEHPATH: no water cells on this map")
 		else:
 			var water_px := Vector2(water_cell) * 16.0 + Vector2(8, 8)
 			var start: Vector2i = NavWorld.current._open_cell(Vector2i(((water_px + Vector2(200, 0)) / 16.0).floor()), rg)
@@ -2089,15 +2406,22 @@ static func run(ctx: Node) -> void:
 			var vehicle_refused: bool = vpath.is_empty()
 			var vends_on_water: bool = not vehicle_refused \
 				and vg.is_point_solid(Vector2i((vpath[vpath.size() - 1] / 16.0).floor()))
-			print("VEHPATH: water=%s start_open=%s robot_got_path=%s vehicle_refused=%s vehicle_ends_water=%s" % [
-				water_cell, start.x >= 0, not rpath.is_empty(), vehicle_refused, vends_on_water])
+			vp_rig.check(start.x >= 0, "no open start cell beside the water")
+			# a robot may legitimately fail to reach a given water cell
+			# (walls, an island, the probe start inside a building), so
+			# THE contract asserted here is the wheels one: a vehicle
+			# route must never end in the water
+			vp_rig.check(not vends_on_water,
+				"a VEHICLE route ended on a water cell")
+			print("VEHPATH: robot_route=%s vehicle_refused=%s"
+				% [not rpath.is_empty(), vehicle_refused])
 		# bridges must be walkable for wheels: no bridge SPAN cell solid in vgrid
 		var blocked_bridges := 0
 		var total_bridge_cells := 0
 		for b in _all_nodes(ctx):
 			if b is Building2D and (b.building_id == 6 or b.building_id == 7):
 				var tile := Vector2i(((b.global_position - Vector2(8, 8)) / 16.0).floor())
-				var span := Vector2i(2, 8) if b.building_id == 6 else Vector2i(8, 2)
+				var span: Vector2i = ContentDB.building_def(b.building_id).bridge_span
 				# the object tile is the span's TOP-LEFT (map anchor
 				# contract) — the span grows right/down, no centring
 				for bx2 in span.x:
@@ -2106,7 +2430,12 @@ static func run(ctx: Node) -> void:
 						total_bridge_cells += 1
 						if vg.is_point_solid(cell):
 							blocked_bridges += 1
-		print("BRIDGE: solid_vehicle_cells=%d of %d bridge cells" % [blocked_bridges, total_bridge_cells])
+		vp_rig.check(total_bridge_cells > 0, "no bridge cells on this map")
+		vp_rig.check(blocked_bridges == 0,
+			"%d of %d bridge cells are solid on the VEHICLE grid — wheels "
+			% [blocked_bridges, total_bridge_cells]
+			+ "cannot cross their own road")
+		vp_rig.finish("bridge cells=%d" % total_bridge_cells)
 	if "--apc-test" in args:
 		var apc2: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 		apc2.setup_vehicle("vehicle", "apc", 1)
@@ -2126,8 +2455,13 @@ static func run(ctx: Node) -> void:
 				break
 		var unloaded_near: bool = robot1.visible and not robot1.carried \
 			and robot1.global_position.distance_to(apc2.global_position) < 60.0
-		print("APC: loaded=%s hidden=%s arrived=%s unloaded_near=%s" % [
-			loaded, hidden, not apc2.has_move_target(), unloaded_near])
+		var apc_rig := TestRig.start("APC")
+		apc_rig.check(loaded, "the APC refused a passenger")
+		apc_rig.check(hidden, "a boarded robot is still visible in the world")
+		apc_rig.check(not apc2.has_move_target(), "the APC never arrived")
+		apc_rig.check(unloaded_near,
+			"the squad did not step out at the destination")
+		apc_rig.finish()
 	if "--save-test" in args:
 		MatchState.current.set_money(1, 321)
 		MatchState.current.zones[0].set_owner_team(1)
@@ -2137,9 +2471,16 @@ static func run(ctx: Node) -> void:
 		MatchState.current.zones[0].set_owner_team(0)
 		GameState.pending_load = snapshot
 		ctx._apply_load()
-		print("SAVE: saved=%s money_restored=%d zone_owner=%d units=%d" % [
-			saved, MatchState.current.money[1], MatchState.current.zones[0].owner_team,
-			snapshot.get("units", []).size()])
+		var save_rig := TestRig.start("SAVE")
+		save_rig.check(saved, "save_game() refused to write")
+		save_rig.check(int(MatchState.current.money[1]) == 321,
+			"money restored as %d, saved 321" % int(MatchState.current.money[1]))
+		save_rig.check(MatchState.current.zones[0].owner_team == 1,
+			"zone owner restored as %d, saved 1"
+			% MatchState.current.zones[0].owner_team)
+		save_rig.check(not snapshot.get("units", []).is_empty(),
+			"the save carries no units")
+		save_rig.finish("units=%d" % snapshot.get("units", []).size())
 	if "--campaign-test" in args:
 		# snapshot the player's real progress first — advance() PERSISTS,
 		# and a test run must never leave the campaign stuck on a later
@@ -2151,8 +2492,13 @@ static func run(ctx: Node) -> void:
 		var first: String = Campaign.current_map_path()
 		var advanced: bool = Campaign.advance()
 		Campaign.load_progress()
-		print("CAMPAIGN: missions=%d first=%s advanced=%s resumed_mission=%d" % [
-			Campaign.missions.size(), first.get_file(), advanced, Campaign.mission])
+		var camp_rig := TestRig.start("CAMPAIGN")
+		camp_rig.check(Campaign.missions.size() > 0, "the campaign has no missions")
+		camp_rig.check(first != "", "no first mission map")
+		camp_rig.check(advanced, "advance() did not move to the next mission")
+		camp_rig.check(Campaign.mission == 1,
+			"resumed on mission %d after one advance" % Campaign.mission)
+		camp_rig.finish("%d missions" % Campaign.missions.size())
 		Campaign.active = false
 		if not progress_backup.is_empty():
 			var rf := FileAccess.open(Campaign.PROGRESS_PATH, FileAccess.WRITE)
@@ -2210,8 +2556,10 @@ static func run(ctx: Node) -> void:
 					c.take_damage(c.hp)
 			if not GameState.over:
 				wproblems.append("all enemies eliminated but no game over")
-		print("WIN: %s" % (", ".join(wproblems) if not wproblems.is_empty()
-			else "symmetric elimination + cascade + no-units OK"))
+		var win_rig := TestRig.start("WIN")
+		for problem in wproblems:
+			win_rig.check(false, String(problem))
+		win_rig.finish()
 	if "--mount-test" in args:
 		# every spawnable vehicle/cannon must have a visible manned look
 		# (base art, equiped art, or the fire cycle aliased in), neutral
@@ -2247,8 +2595,14 @@ static func run(ctx: Node) -> void:
 					var wheels: Dictionary = AnimLibrary.jeep_wheel_set(dir, 1, true)
 					if wheels.is_empty() or not wheels.frames.has_animation("wheels_0"):
 						no_turret.append("jeep (no wheel frames)")
-		print("MOUNT: types_without_manned_art=%s team_colored_empty=%s turret_issues=%s" % [
-			no_manned, team_colored, no_turret])
+		var mount_rig := TestRig.start("MOUNT")
+		for entry in no_manned:
+			mount_rig.check(false, "no manned art: %s" % entry)
+		for entry in team_colored:
+			mount_rig.check(false, "unmanned hull wears a team colour: %s" % entry)
+		for entry in no_turret:
+			mount_rig.check(false, "turret/wheel layer missing: %s" % entry)
+		mount_rig.finish()
 	if "--cap-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
 		# unit cap: base 25 + zone bonuses; production refuses beyond it
@@ -2268,8 +2622,16 @@ static func run(ctx: Node) -> void:
 			# note: with live CPU opponents the cap moves as zones flip;
 			# the invariant is that the queue went full (production
 			# refused) — pop may sit above a freshly shrunken cap
-			print("CAP: cap=%d pop_used=%d queue=%d (queue full = cap enforced)" % [
-				cap, used, fort.queue.items.size()])
+			var cap_rig2 := TestRig.start("CAP")
+			cap_rig2.check(cap > 0, "unit cap is %d" % cap)
+			# AT the cap the fort must REFUSE the order outright (that is
+			# what stops the queue growing forever), and population must
+			# never overshoot
+			cap_rig2.check(not fort.queue_unit("robot:grunt"),
+				"the fort accepted an order at pop %d of cap %d" % [used, cap])
+			cap_rig2.check(used <= cap,
+				"population %d overshot the cap %d" % [used, cap])
+			cap_rig2.finish("cap=%d pop=%d" % [cap, used])
 	if "--building-test" in args:
 		# every building kind: destroyed art resolves and animation
 		# overlays (radar dish, factory spinner, smoke stack) exist
@@ -2287,8 +2649,12 @@ static func run(ctx: Node) -> void:
 						"Overlay_%s" % def.anims[0].prefix) == null:
 					no_overlay.append("%d (%s)" % [id, planet])
 				b.queue_free()
-		print("BUILDING: missing_destroyed=%s no_overlay=%s" % [
-			missing_destroyed, no_overlay])
+		var bld_rig := TestRig.start("BUILDING")
+		for entry in missing_destroyed:
+			bld_rig.check(false, "no destroyed art: %s" % entry)
+		for entry in no_overlay:
+			bld_rig.check(false, "animation overlay missing: %s" % entry)
+		bld_rig.finish()
 		# building geometry: the art is ONE full sprite anchored on the
 		# node, the node y-sorts at the art's vertical MIDDLE (the wall
 		# base — units in front draw over it, units behind under it) and
@@ -2355,11 +2721,11 @@ static func run(ctx: Node) -> void:
 				elif absf(gb._sprite.global_position.y - top_before) > 0.5:
 					geo_fails.append("destroyed fort shifted")
 			gb.queue_free()
-			if geo_fails.is_empty():
-				print("BUILDINGGEO: OK")
-			else:
-				for gf in geo_fails:
-					print("CHECK FAILED: BUILDINGGEO: %s" % gf)
+			var geo_rig := TestRig.start("BUILDINGGEO")
+			for gf in geo_fails:
+				geo_rig.check(false, String(gf))
+			geo_rig.finish(spec[1])
+			geo_fails.clear()
 		# nav solidity: every placed fort blocks its def's cells on BOTH
 		# grids, its open platform cells stay walkable, and a robot path
 		# across the fort must detour around the solid cells
@@ -2498,8 +2864,13 @@ static func run(ctx: Node) -> void:
 		var spawned: int = fx_root.get_child_count() - before
 		for i in 30:  # time_scale 4: the 0.2s shell flight lands in ~3
 			await Engine.get_main_loop().process_frame
-		print("FX: spawned=%d shell_hits=%d remaining=%d" % [
-			spawned, hits[0], fx_root.get_child_count() - before])
+		var fx_rig := TestRig.start("FX")
+		fx_rig.check(spawned > 0, "no effect nodes spawned")
+		fx_rig.check(hits[0] == 1, "the shell landed %d times, want 1" % hits[0])
+		fx_rig.check(fx_root.get_child_count() - before < spawned,
+			"effects never cleaned themselves up (%d of %d still alive)"
+			% [fx_root.get_child_count() - before, spawned])
+		fx_rig.finish("spawned=%d" % spawned)
 		tree2.paused = was_paused
 	if "--teams-test" in args:
 		# native team art: the original engine shipped its own recoloured

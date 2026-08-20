@@ -17,7 +17,54 @@ static func run(ctx: Node, rig: TestRig) -> void:
 	_audit_world_scale(rig)
 	_audit_robot_anims(rig)
 	_audit_wired_art(ctx, rig)
+	_audit_bridges(ctx, rig)
+	_audit_ground_split(ctx, rig)
 	rig.finish()
+
+
+## BRIDGES: one sheet per planet holding TWO 4x8-tile frames (intact on
+## top, wrecked below), the horizontal bridge being the vertical one
+## rotated. The sprite must show ONE frame — the whole sheet was being
+## drawn, so every bridge appeared as itself with its own wreck stacked
+## on the end — and the def's walkable span must match the frame.
+static func _audit_bridges(ctx: Node, rig: TestRig) -> void:
+	for planet in PLANETS:
+		var path := "res://assets/z/planets/bridge_%s.png" % planet
+		rig.check(ResourceLoader.exists(path), "%s: no bridge art" % planet)
+		if not ResourceLoader.exists(path):
+			continue
+		var size: Vector2 = (load(path) as Texture2D).get_size()
+		rig.check(size == Building2D.BRIDGE_FRAME * Vector2(1.0, 2.0),
+			"%s: bridge sheet %s, want two %s frames" % [planet, size,
+				Building2D.BRIDGE_FRAME])
+	for spec in [[6, Vector2i(4, 8)], [7, Vector2i(8, 4)]]:
+		var id: int = spec[0]
+		var span: Vector2i = spec[1]
+		var def := ContentDB.building_def(id)
+		rig.check(def.bridge_span == span,
+			"%s span %s want %s" % [def.bname, def.bridge_span, span])
+		var b: Building2D = def.behaviour.new()
+		b.setup(id, 0, "desert")
+		b.position = Vector2(2000, 2000)
+		ctx.add_child(b)
+		rig.check(b.get_node_or_null("GroundLayer") == null,
+			"%s split a ground layer: a bridge's art IS the road" % def.bname)
+		var art := b.art_world_rect()
+		rig.check(art.size == Vector2(span) * TILE,
+			"%s art rect %s want %s" % [def.bname, art.size, Vector2(span) * TILE])
+		rig.check(b._sprite.region_enabled,
+			"%s draws the whole two-frame sheet" % def.bname)
+		rig.check(b._sprite.region_rect == Building2D.bridge_region(false),
+			"%s starts on %s, want the intact frame" % [def.bname,
+				b._sprite.region_rect])
+		# wreck and repair swap frames, not tints
+		b.take_damage(b.max_hp + 1)
+		rig.check(b._sprite.region_rect == Building2D.bridge_region(true),
+			"%s wrecked but still shows the intact frame" % def.bname)
+		b.repair_by(b.max_hp)
+		rig.check(b._sprite.region_rect == Building2D.bridge_region(false),
+			"%s repaired but still shows the wreck frame" % def.bname)
+		b.queue_free()
 
 
 ## The art that WAS in the pack with nothing referencing it. Each check
@@ -157,6 +204,14 @@ static func _audit_buildings(rig: TestRig) -> void:
 			var ruin := ContentDB.building_art_path(def.tex, planet, true)
 			rig.check(ResourceLoader.exists(ruin),
 				"%s: %s DESTROYED art missing at %s" % [def.bname, planet, ruin])
+			# the ruin swap keeps the sprite's REGIONS (the ground/
+			# structure split, and the bridge frame), so the two images
+			# must be the same size or the ruin renders sheared
+			if ResourceLoader.exists(intact) and ResourceLoader.exists(ruin):
+				var a: Vector2 = (load(intact) as Texture2D).get_size()
+				var b: Vector2 = (load(ruin) as Texture2D).get_size()
+				rig.check(a == b,
+					"%s: %s ruin art %s != intact %s" % [def.bname, planet, b, a])
 		var path := ContentDB.building_art_path(def.tex, "desert", false)
 		if path == "" or not ResourceLoader.exists(path):
 			continue
@@ -174,14 +229,52 @@ static func _audit_buildings(rig: TestRig) -> void:
 			rig.check(t.x < tiles.x and t.y < tiles.y,
 				"%s: open tile %s outside art %s" % [def.bname, t, tiles])
 		if def.bridge_span != Vector2i.ZERO:
-			# bridges ship ONE vertical art strip (4x16 tiles); the
-			# horizontal bridge rotates it at runtime, so a wide span
-			# (x>y) compares against the ROTATED frame. Outer art halves
-			# are decorative bank — the span must fit, not fill.
-			var span_tiles := Vector2i(tiles.y, tiles.x) \
-					if def.bridge_span.x > def.bridge_span.y else tiles
+			# the bridge sheet is TWO stacked 4x8-tile frames (intact +
+			# wrecked), so the span compares against ONE FRAME, not the
+			# sheet. The horizontal bridge is the vertical one rotated,
+			# so a wide span (x>y) compares against the rotated frame.
+			var frame := Vector2i((Building2D.BRIDGE_FRAME / TILE).floor())
+			var span_tiles := Vector2i(frame.y, frame.x) \
+					if def.bridge_span.x > def.bridge_span.y else frame
 			rig.check(def.bridge_span.x <= span_tiles.x and def.bridge_span.y <= span_tiles.y,
 				"%s: bridge_span %s exceeds art %s" % [def.bname, def.bridge_span, span_tiles])
+
+
+## GROUND/STRUCTURE SPLIT: the two sprites must partition the art
+## exactly — before AND after the ruin swap, on every planet. A drifted
+## region is how a building ends up cutting units in half again.
+static func _audit_ground_split(ctx: Node, rig: TestRig) -> void:
+	for id in [2, 3, 4, 5]:
+		for planet in PLANETS:
+			var def := ContentDB.building_def(id)
+			var b: Building2D = def.behaviour.new()
+			b.setup(id, 1, planet)
+			b.position = Vector2(3000, 3000)
+			ctx.add_child(b)
+			var ground: Sprite2D = b.get_node_or_null("GroundLayer")
+			if ground == null:
+				continue  # this building's art carries no ground band
+			for stage in ["intact", "ruined"]:
+				if stage == "ruined":
+					b.take_damage(b.max_hp + 1)
+				var top: Rect2 = b._sprite.region_rect
+				var bottom: Rect2 = ground.region_rect
+				rig.check(top.position == Vector2.ZERO,
+					"%s/%s %s: structure region starts at %s"
+					% [def.bname, planet, stage, top.position])
+				rig.check(is_equal_approx(top.end.y, bottom.position.y),
+					"%s/%s %s: gap between structure (%s) and ground (%s)"
+					% [def.bname, planet, stage, top, bottom])
+				rig.check(is_equal_approx(top.size.x, bottom.size.x),
+					"%s/%s %s: layers differ in width (%s vs %s)"
+					% [def.bname, planet, stage, top.size, bottom.size])
+				rig.check(ground.z_index < 0,
+					"%s/%s %s: ground layer not below units (z %d)"
+					% [def.bname, planet, stage, ground.z_index])
+				rig.check(ground.texture == b._sprite.texture,
+					"%s/%s %s: ground and structure show different images"
+					% [def.bname, planet, stage])
+			b.queue_free()
 
 
 ## Projectiles reference a texture and an impact effect by name — both

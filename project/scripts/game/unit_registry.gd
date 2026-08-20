@@ -36,6 +36,19 @@ func track(unit: Unit2D) -> void:
 		unit_spawned.emit(unit)
 
 
+## Give a unit the id the HOST gave it (full-entity resync spawns a unit
+## a peer missed, and it must answer to the same id everywhere). The
+## counter stays above every id in play, so later local spawns cannot
+## collide with an adopted one.
+func adopt(unit: Unit2D, id: int) -> void:
+	if id <= 0:
+		return
+	unit.net_id = id
+	_next_net_id = maxi(_next_net_id, id + 1)
+	if not _all.has(unit):
+		_all.append(unit)
+
+
 ## Stable per-match identity lookup (multiplayer intents address units
 ## by net id — instance ids differ across peers).
 func by_net_id(id: int) -> Unit2D:

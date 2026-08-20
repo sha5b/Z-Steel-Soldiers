@@ -36,6 +36,23 @@ shipped 2026-08 — see the bottom section.
 - [x] Campaign: 57-mission chain, briefings, persistent progress
 - [x] AI difficulty (Easy/Normal/Hard)
 
+## Phase 4 — the 2026-08-20 correctness pass ✅
+
+- [x] CITY/JUNGLE planet ids were swapped: 21 of 58 maps drew with the
+      wrong tileset and navigated off the wrong tileinfo (see
+      `docs/BUGS.md`; `tools/zod/verify_map_planets.py` audits it)
+- [x] Bridges rendered their own wreck stacked on the end (two-frame
+      sheet) and their walkable span was half the crossing
+- [x] Terrain ANIMATION (the retraction below is now shipped):
+      TerrainAnimator walks the tileinfo effect rings per cell
+- [x] Building impassables for the repair shop and both factories
+- [x] Control-group hotkeys, veterancy, MP full-entity resync + late join
+- [x] Every test flag asserts through TestRig (46 flags)
+- [x] Unreferenced pack art wired: selected-object panel, escape_tank /
+      tank_fire / jump-*, per-planet rock + bridge debris, building level
+      digits, announcer plaques, order-confirmation cursors, ambient
+      birds, the unlabelled ROB voice bank as idle chatter
+
 ## Not done (known gaps for a future task)
 
 - Multiplayer IN-MATCH sync — INTENT REPLICATION SHIPPED (2026-08-20):
@@ -49,15 +66,15 @@ shipped 2026-08 — see the bottom section.
   loopback
 - Verified open bugs live in `docs/BUGS.md` (root-caused, with
   file:line evidence) — keep that file current instead of the roadmap
-- Remaining polish (2026-08-20 sweep): control-group hotkeys, ambient
-  birds, original production-menu chrome, HUD selected-object trio,
-  robot portraits on the selection bar. (The EXIT_C eject cursor shipped
-  — with the dismount action it needed; see `docs/BUGS.md` Fixed.)
+- Remaining polish: the original production-menu chrome (42 of 48 files)
+  and the full main_hud frame — both look-and-feel rebuilds that cannot
+  be verified headlessly. (Control-group hotkeys, ambient birds and the
+  HUD selected-object trio all shipped in the correctness pass above.)
   Shipped in that sweep instead: pop-cap meter (top bar), missile
   target-leading (original EstimateMissileTarget feel), robot order
   acknowledgement barks.
-- RETRACTED "closed as impossible": water/terrain animation IS
-  rebuildable. The zod `planets/<planet>.tileinfo` records carry
+- CLOSED (was "impossible", then "rebuildable", now SHIPPED):
+  water/terrain animation. The zod `planets/<planet>.tileinfo` records carry
   `is_effect` + `next_tile_in_effect`, which form closed 4-frame tile
   rings (desert 50 tiles, city 40, arctic 25, volcanic 18), and those
   frames are already distinct images inside the sheets we ship. Both
@@ -67,7 +84,8 @@ shipped 2026-08 — see the bottom section.
   either asset set" was also too strong.
 - Full soundtrack needs one run of `tools/zod/render_midi.sh`
   (fluidsynth + soundfont required)
-- Weapon classes/splash, veterancy, destructible rocks/bridges
+- Weapon classes/splash. (Veterancy shipped; rocks and bridges are
+  already destructible.)
 
 ## Open items closed (2026-08, second sweep)
 

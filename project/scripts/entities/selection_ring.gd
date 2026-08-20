@@ -33,6 +33,7 @@ func _draw() -> void:
 		return
 	if unit.get("selected"):
 		_draw_brackets(unit)
+		_draw_rank(unit)
 	if unit.get("hp") != null and unit.get("max_hp") != null:
 		if unit.hp < unit.max_hp:
 			var r := _unit_rect(unit)
@@ -52,6 +53,27 @@ func _draw_brackets(unit: Node) -> void:
 		# arms lie ON the box edge, running inward from the corner
 		draw_line(corner, corner + Vector2(-ARM * dx, 0), col, 1.0)
 		draw_line(corner, corner + Vector2(0, -ARM * dy), col, 1.0)
+
+
+## VETERANCY pips: one chevron dot per rank, under the selection box.
+## Drawn only while selected, so a veteran army does not litter the
+## field with markers.
+const PIP := 2.0
+
+
+func _draw_rank(unit: Node) -> void:
+	if not unit.has_method("rank"):
+		return
+	var rank: int = unit.call("rank")
+	if rank <= 0:
+		return
+	var box := _unit_rect(unit).grow(PAD)
+	var col: Color = TEAM_COLORS.get(int(unit.get("team")), Color.WHITE).lightened(0.5)
+	var start := Vector2(box.get_center().x - (rank - 1) * (PIP + 1.0) * 0.5,
+		box.end.y + PIP + 1.0)
+	for i in rank:
+		draw_rect(Rect2(start + Vector2(i * (PIP + 1.0), 0.0) - Vector2(PIP, PIP) * 0.5,
+			Vector2(PIP, PIP)), col)
 
 
 ## Procedural health bar above the sprite: black backing, green current

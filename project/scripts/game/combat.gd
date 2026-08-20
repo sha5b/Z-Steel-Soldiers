@@ -26,9 +26,13 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 	if target is Building2D and def.building_frac > 0.0:
 		amount = maxi(1, int(round(def.building_frac * (target as Building2D).max_hp)))
 	# crate upgrades: grenades boost robots, rockets boost hardware
+	var hit_chance := def.hit_chance
 	if shooter is Unit2D:
 		amount = maxi(1, int(round(amount * MatchState.current.damage_multiplier(
 			(shooter as Unit2D).team, (shooter as Unit2D).kind))))
+		# VETERANCY: rank pays in damage and in accuracy
+		amount = maxi(1, int(round(amount * (shooter as Unit2D).veteran_damage_scale())))
+		hit_chance = minf(1.0, hit_chance + (shooter as Unit2D).veteran_hit_bonus())
 	Fx.gunfire(def.sound)
 	Fx.play("muzzle", muzzle)
 	var weapon := weapon_of(def)
@@ -43,7 +47,7 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 	if def.projectile != null and target is Unit2D:
 		aim += (target as Unit2D).velocity \
 				* (muzzle.distance_to(aim) / maxf(def.projectile.speed, 1.0)) * 0.8
-	if randf() > def.hit_chance:
+	if randf() > hit_chance:
 		# missed: the shot flies past
 		var past: Vector2 = aim \
 				+ Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
@@ -52,10 +56,11 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 		else:
 			Fx.bullet(muzzle, past)
 		return
+	var shooter_id := shooter.get_instance_id() if shooter != null else 0
 	match weapon:
 		"laser":
 			Fx.laser(muzzle, aim)
-			_land(target, amount, aim)
+			_land(target, amount, aim, shooter_id)
 		"shell":
 			var splash := def.splash_radius
 			# capture ids, not nodes — the shooter and target may be
@@ -70,10 +75,10 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 					else:
 						var hit: Node2D = instance_from_id(tid) as Node2D
 						if hit and hit.alive:
-							_land(hit, amount, aim))
+							_land(hit, amount, aim, shooter_id))
 		_:
 			Fx.bullet(muzzle, aim)
-			_land(target, amount, aim)
+			_land(target, amount, aim, shooter_id)
 
 
 ## Explosion splash (zod ProcessMissileDamage): ONE damage roll per
@@ -115,11 +120,21 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 ## their ground platform in the same sprite as their walls, so they show
 ## a local spark at the impact point instead of tinting the whole image
 ## (see Building2D._hit_flash); units take the plain call.
-static func _land(target: Node2D, amount: int, at: Vector2) -> void:
+## `shooter_id` is an INSTANCE ID, not a node: a shell can land after
+## its shooter has been destroyed, and a freed node cannot be touched.
+static func _land(target: Node2D, amount: int, at: Vector2,
+		shooter_id := 0) -> void:
+	var was_alive: bool = target.get("alive") == true
 	if target is Building2D:
 		(target as Building2D).take_damage(amount, at)
 	else:
 		target.take_damage(amount)
+	# VETERANCY: whoever fired the killing shot gets the credit
+	if not was_alive or shooter_id == 0 or target.get("alive") == true:
+		return
+	var shooter := instance_from_id(shooter_id)
+	if shooter is Unit2D and (shooter as Unit2D).alive:
+		(shooter as Unit2D).credit_kill()
 
 
 static func _falloff(amount: int, dist: float, radius: float) -> int:

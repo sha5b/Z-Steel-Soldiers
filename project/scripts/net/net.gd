@@ -53,6 +53,13 @@ func _ready() -> void:
 ## actually ran outside the test that pokes _apply_state directly.
 const STATE_PUSH_SECONDS := 5.0
 var _state_accum := 0.0
+## Host -> peers FULL-ENTITY resync cadence. Peers apply the same
+## intents to their own float physics, so positions drift; this is the
+## bounded correction (MatchRelay.apply_entities reconciles by net id and
+## only moves what is genuinely wrong). Slower than the economy push
+## because it carries the whole roster.
+const ENTITY_PUSH_SECONDS := 10.0
+var _entity_accum := 0.0
 
 
 func _process(delta: float) -> void:
@@ -65,6 +72,10 @@ func _process(delta: float) -> void:
 		if _state_accum >= STATE_PUSH_SECONDS:
 			_state_accum = 0.0
 			push_state()
+		_entity_accum += delta
+		if _entity_accum >= ENTITY_PUSH_SECONDS:
+			_entity_accum = 0.0
+			push_entities()
 
 
 func my_id() -> int:
@@ -134,6 +145,7 @@ func _on_peer_connected(id: int) -> void:
 		return
 	if in_match:
 		_sync_room.rpc(room)  # tells the newcomer the match already began
+		late_join(id)
 		return
 	if not room.players.has(id):
 		room.players[id] = {"name": "PLAYER %d" % id, "ready": false, "team": 0}
@@ -303,6 +315,19 @@ func push_state() -> void:
 		_apply_state.rpc(MatchState.current.economy_snapshot())
 
 
+## Host -> peers: the whole roster (MatchRelay.apply_entities). Clients
+## reconcile; the host's own copy is already the truth, so this one is
+## NOT call_local.
+@rpc("authority", "reliable")
+func _apply_entities(state: Dictionary) -> void:
+	MatchRelay.apply_entities(state)
+
+
+func push_entities() -> void:
+	if role == Role.HOST and in_match and MatchState.current != null:
+		_apply_entities.rpc(MatchRelay.entity_snapshot())
+
+
 @rpc("authority", "call_local", "reliable")
 func _apply_intent(intent: Dictionary) -> void:
 	replaying_intents = true
@@ -358,6 +383,42 @@ func _start_game(config: Dictionary) -> void:
 	match_team = int(config.get("teams", {}).get(my_id(), 0))
 	in_match = true
 	started.emit(config)
+
+
+## LATE JOIN: a peer that connects mid-match gets the running match the
+## same way a save is loaded — the map path plus a full-entity snapshot
+## in save-contract shape (MatchConfig.save_data), which the map applies
+## after spawning (Match._apply_load). It takes the first open seat, or
+## rides along as an observer on team 0 when the map is full.
+func late_join(id: int) -> void:
+	if role != Role.HOST or not in_match or MatchState.current == null:
+		return
+	if not room.players.has(id):
+		room.players[id] = {"name": "PLAYER %d" % id, "ready": true, "team": 0}
+	var seat := _open_seat_for(id)
+	room.players[id]["team"] = seat
+	_broadcast()
+	var snapshot: Dictionary = SaveSystem.capture_save()
+	snapshot["entities"] = MatchRelay.entity_snapshot()
+	_start_game.rpc_id(id, {
+		"map": str(room.get("map", "")),
+		"teams": {id: seat},
+		"state": snapshot,
+		"late": true,
+	})
+
+
+## First seat no player holds (0 = watch only).
+func _open_seat_for(id: int) -> int:
+	var taken := {}
+	for pid in room.players:
+		if pid != id:
+			taken[int(room.players[pid].get("team", 0))] = true
+	for slot in room.get("slots", []):
+		var team := int(slot.get("team", 0))
+		if team != 0 and not taken.has(team):
+			return team
+	return 0
 
 
 # --- lobby actions (called by the room screen) ---------------------------

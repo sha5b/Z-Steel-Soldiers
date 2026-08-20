@@ -86,11 +86,13 @@ func _build_scene(data: Dictionary) -> PackedScene:
 			var index: int = data.tiles[y * w + x]
 			terrain.set_cell(Vector2i(x, y), 0, Vector2i(index % 20, index / 20))
 
+	var zones: Array[Zone] = []
 	for z in data.zones:
 		var zone := Zone.new()
 		zone.zone_rect = Rect2i(int(z.x), int(z.y), int(z.w), int(z.h))
 		root.add_child(zone)
 		zone.owner = root
+		zones.append(zone)
 
 	var rock_cells := {}
 	for o in data.objects:
@@ -100,25 +102,33 @@ func _build_scene(data: Dictionary) -> PackedScene:
 		if kind == "map_item" and id == 1:
 			rock_cells[Vector2i(int(o.x), int(o.y))] = true
 			continue
+		if kind == "map_item" and id == MapLoader.ZONE_FLAG_ID:
+			# map_item 0 is the ZONE FLAG marker: the tile the designer
+			# put the flag on plus the zone's STARTING OWNER. The JSON
+			# loader applies it (MapLoader._apply_zone_flag); the scene
+			# builder used to drop it, so every scene map opened fully
+			# neutral with its flags at derived centre spots.
+			_apply_zone_flag(zones, o)
+			continue
 		var node: Node2D = _object_node(kind, id, int(o.owner), pos, planet)
 		if node:
 			# unique sibling names (PackedScene anonymizes duplicates)
 			node.name = "%s_%d_%d" % [node.name, int(o.x), int(o.y)]
 			root.add_child(node)
 			node.owner = root
-	# rocks last, as Y-sorted sprites from the planet sheet
+	# rocks last, as Y-sorted sprites from the planet sheet. The PIECE
+	# comes from the 4-neighbour mask through the one mapping the JSON
+	# loader uses (MapLoader._rock_piece) — this tool used to stamp the
+	# plateau INTERIOR fill on every clustered rock, which is the flat
+	# pale slab bug all over again, in the scene maps only.
 	if not rock_cells.is_empty():
 		var sheet: Texture2D = load("res://assets/z/planets/rocks_%s.png" % planet)
 		for cell in rock_cells:
-			var alone := true
-			for n in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				if rock_cells.has(cell + n):
-					alone = false
-					break
 			var atlas := AtlasTexture.new()
 			atlas.atlas = sheet
 			atlas.region = Rect2(
-				Vector2(Vector2i(3, 3) if alone else Vector2i(1, 1)) * TILE, Vector2(TILE, TILE))
+				Vector2(MapLoader._rock_piece(cell, rock_cells)) * TILE,
+				Vector2(TILE, TILE))
 			var rock := Sprite2D.new()
 			rock.name = "Rock_%d_%d" % [cell.x, cell.y]
 			rock.texture = atlas
@@ -131,6 +141,20 @@ func _build_scene(data: Dictionary) -> PackedScene:
 	var packed := PackedScene.new()
 	packed.pack(root)
 	return packed
+
+
+## Zone flag marker -> the zone that contains it (see
+## MapLoader._apply_zone_flag, the same rule on the JSON path).
+func _apply_zone_flag(zones: Array[Zone], o: Dictionary) -> void:
+	var cell := Vector2i(int(o.x), int(o.y))
+	for zone in zones:
+		if not zone.zone_rect.has_point(cell):
+			continue
+		zone.flag_tile = cell
+		var owner_team := int(o.get("owner", 0))
+		if owner_team != 0:
+			zone.owner_team = owner_team
+		return
 
 
 func _object_node(kind: String, id: int, owner_team: int, pos: Vector2,

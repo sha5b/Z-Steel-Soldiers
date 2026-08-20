@@ -7,9 +7,9 @@ assets and format knowledge from the open-source
 
 > **Status:** single-player feature-complete — all 57 original maps,
 > full unit roster, territory economy, production, campaign, save/load,
-> AI with difficulty, and a 43-flag headless test suite. Multiplayer:
-> P2P lobby shipped (LAN discovery + host rooms); in-match order
-> replication is the open milestone. See `docs/ROADMAP.md` and
+> AI with difficulty, and a 46-flag headless test suite (every flag
+> asserts). Multiplayer: P2P lobby, in-match intent replication,
+> host-authoritative resync and late join. See `docs/ROADMAP.md` and
 > `docs/BUGS.md`.
 
 ## Environment
@@ -19,7 +19,9 @@ assets and format knowledge from the open-source
   flatpak run org.godotengine.Godot   # open project/project.godot, press F5
   ```
 - Controls: WASD/arrows/edge pan, wheel zoom, drag = box select,
-  right-click = move order.
+  right-click = move order, Q/E/R order stance, T auto-man, X dismount,
+  Ctrl+digit assigns a control group and digit recalls it (a second
+  press jumps the camera to that squad).
 
 ## Repository layout
 
@@ -30,6 +32,12 @@ assets and format knowledge from the open-source
 | `assets_original/gog/` | Extracted GOG release: sfx, soundtrack, HUD art (gitignored, 383 MB) |
 | `assets_original/zod/` | Zod Engine asset set — unit/map sprites (gitignored, 84 MB) |
 | `project/assets/z/` | Working asset set, built by `tools/gog/convert_assets.py` (gitignored) |
+
+Asset tools live in `tools/`: `gog/convert_assets.py` (sfx, music, HUD
+art), `zod/copy_art.py` (declarative copier for the zod pack),
+`zod/map_to_json.py` + `zod/tileinfo_to_json.py` (map and terrain
+tables) and `zod/verify_map_planets.py` (audits — and repairs — the
+planet tag on every converted map; run it after any map conversion).
 
 Maps are playable as JSON or as editable Godot scenes — open any
 `project/assets/maps_scenes/*.tscn` in the editor, paint terrain with the
@@ -50,7 +58,7 @@ signal-driven). Adding content (units, buildings, pickups, effects,
 maps, team colours) is documented step by step in
 `docs/ASSET_CONVENTIONS.md` — copy a `.tres`, drop an art folder.
 
-Headless test suite: 43 flags (`--combat-test`, `--teams-test`,
+Headless test suite: 46 flags (`--combat-test`, `--teams-test`,
 `--scenes-test`, ...), run in parallel lanes from `project/`:
 `res://scenes/main.tscn --<flag>-test --quit-after N`. **`--quit-after`
 counts FRAMES, not seconds** (Godot's own option): the real-physics
@@ -58,9 +66,9 @@ lanes (`--placement-test`, `--garrison-test`) need a few thousand, so
 use `--quit-after 6000` for a whole-suite sweep. A run passes with zero
 `SCRIPT ERROR` and zero `CHECK FAILED:` lines — the harness lives in
 `project/scripts/tests/` (TestRig is the assertion helper, per-domain
-modules like path_tests.gd and garrison_tests.gd split out of
-self_tests.gd). Note that only 8 of the 43 flags currently assert
-through TestRig; the rest only print (see `docs/BUGS.md`).
+modules like path_tests.gd, terrain_tests.gd and garrison_tests.gd split
+out of self_tests.gd). EVERY flag now reports through TestRig, so a
+regression fails the run instead of printing a number nobody reads.
 Screenshot verification: add `--screenshot <seconds>` (warps the mouse
 so edge pan stays put).
 

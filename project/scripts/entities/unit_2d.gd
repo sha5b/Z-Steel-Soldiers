@@ -59,6 +59,41 @@ var _entering: Node2D = null  # vehicle being boarded (enter_apc gesture)
 var _enter_timer := 0.0
 var carried := false
 var grenades := 0  # throwable grenades from crates (original grenade_item)
+## VETERANCY: confirmed kills, and the rank they buy. A veteran hits
+## harder and more often (MatchRulesDef.veteran_*) — the roster used to
+## carry no rank or XP field at all. Ranks are read through rank() so
+## the thresholds live in the rules resource, not in the entity.
+var kills := 0
+
+
+## 0 = rookie. One rank per kill step reached.
+func rank() -> int:
+	var steps: Array = ContentDB.rules.veteran_kill_steps
+	var r := 0
+	for step in steps:
+		if kills >= int(step):
+			r += 1
+	return r
+
+
+## Damage/accuracy the rank is worth (1.0 = rookie).
+func veteran_damage_scale() -> float:
+	return 1.0 + rank() * ContentDB.rules.veteran_damage_bonus
+
+
+func veteran_hit_bonus() -> float:
+	return rank() * ContentDB.rules.veteran_hit_bonus
+
+
+## One confirmed kill. Promotion is silent for everyone but the player,
+## who hears the bark and sees the rank pips on the selection ring.
+func credit_kill() -> void:
+	if not alive:
+		return
+	var before := rank()
+	kills += 1
+	if rank() > before and team == MatchState.current.player_team:
+		_play_voice("acknowledge")
 var _grenade_timer := 0.0
 var attack_move := false  # AGRO order: stop and fight en route
 var attack_target: Node2D = null  # ATTACK order: chase THIS until it dies
@@ -627,12 +662,16 @@ func to_dict() -> Dictionary:
 		"kind": kind, "type": unit_name, "team": team,
 		"x": global_position.x, "y": global_position.y, "hp": hp,
 		"dir": _last_dir, "grenades": grenades,
+		# per-match identity: a multiplayer resync reconciles BY net id
+		# (a save restore ignores it — the roster respawns from scratch)
+		"net": net_id, "carried": carried, "kills": kills,
 	}
 
 
 func apply_dict(d: Dictionary) -> void:
 	hp = int(d.get("hp", hp))
 	grenades = int(d.get("grenades", 0))
+	kills = int(d.get("kills", 0))  # a veteran stays a veteran
 	_last_dir = wrapi(int(d.get("dir", _last_dir)), 0, AnimLibrary.DIRECTIONS)
 
 

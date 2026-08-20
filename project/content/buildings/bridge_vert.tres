@@ -8,8 +8,8 @@
 script = ExtResource("3_l8bxg")
 id = 6
 bname = "bridge_vert"
-size = Vector2i(2, 8)
+size = Vector2i(4, 8)
 behaviour = ExtResource("2_7cy4j")
 tex = "bridge"
 solid = false
-bridge_span = Vector2i(2, 8)
+bridge_span = Vector2i(4, 8)

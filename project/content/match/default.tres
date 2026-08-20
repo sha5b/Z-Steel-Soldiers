@@ -11,3 +11,6 @@ capture_seconds = 2.0
 apc_capacity = 3
 grenade_damage_bonus = 0.4
 rocket_damage_bonus = 0.6
+veteran_kill_steps = Array[int]([2, 5, 9])
+veteran_damage_bonus = 0.12
+veteran_hit_bonus = 0.04

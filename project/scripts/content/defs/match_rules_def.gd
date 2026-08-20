@@ -16,3 +16,12 @@ extends Resource
 ## was permanently false and no damage multiplier existed in combat.
 @export var grenade_damage_bonus := 0.4   # +40% robot damage
 @export var rocket_damage_bonus := 0.6    # +60% vehicle/cannon damage
+## VETERANCY. A unit that survives fights gets better at them: every
+## rank adds damage and accuracy. The kill counts are the rank steps
+## (3 ranks by default), and the two bonuses are PER RANK.
+## Remake values — the original ships no table for this in the asset
+## pack, so they are deliberately small and tunable here rather than
+## guessed at in code.
+@export var veteran_kill_steps: Array[int] = [2, 5, 9]
+@export var veteran_damage_bonus := 0.12   # +12% damage per rank
+@export var veteran_hit_bonus := 0.04      # +4 percentage points to hit
