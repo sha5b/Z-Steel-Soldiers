@@ -9,6 +9,7 @@ kind = "cannon"
 asset_dir = "res://assets/z/cannons_gatling"
 sound = "GATTGUN"
 hp = 141
+building_frac = 0.0027
 damage = 3
 range_px = 120.0
 cooldown = 0.100

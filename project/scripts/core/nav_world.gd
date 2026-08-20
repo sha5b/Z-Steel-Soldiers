@@ -118,17 +118,42 @@ func request_path(from: Vector2, to: Vector2, for_kind := "robot") -> PackedVect
 	# breadcrumbs must FIT THE BODY: a waypoint tucked into a wall corner
 	# is unreachable at contact distance and units stall pressing into it
 	# for good — nudge each onto a body-clear spot (same contract as
-	# find_free_spot). The final leg keeps the exact clicked point.
+	# find_free_spot). A nudge that would bend a NEIGHBOURING segment
+	# through a solid cell is reverted (the A* line was already legal).
 	var pad: float = BODY_HALF.get(for_kind, 7.0)
+	var original := world_path.duplicate()
 	for i in world_path.size() - 1:
 		if not body_clear(world_path[i], pad, for_kind):
 			var nudged := find_free_spot(world_path[i], for_kind, pad)
 			if nudged != Vector2.INF:
 				world_path[i] = nudged
-	# land exactly on the clicked point, unless it sits inside a solid cell
-	if not grid.is_point_solid(Vector2i((to / cs).floor())):
+	for i in range(1, world_path.size() - 1):
+		if world_path[i] != original[i] \
+				and (not _segment_clear(world_path[i - 1], world_path[i], for_kind) \
+					or not _segment_clear(world_path[i], world_path[i + 1], for_kind)):
+			world_path[i] = original[i]
+	# land exactly on the clicked point only when the final approach is
+	# itself clear — the beeline from the last breadcrumb through a solid
+	# cell was the last corner-clipping source (keep the breadcrumb
+	# otherwise; the arrival radius resolves the residual)
+	if not grid.is_point_solid(Vector2i((to / cs).floor())) \
+			and _segment_clear(world_path[world_path.size() - 1], to, for_kind):
 		world_path[world_path.size() - 1] = to
 	return world_path
+
+
+## Center-cell march along a segment — the same criterion the walker
+## audits itself with, so the contract and its test agree.
+func _segment_clear(a: Vector2, b: Vector2, for_kind := "robot") -> bool:
+	var grid := nav_grid if for_kind == "robot" else vehicle_grid
+	if grid == null:
+		return true
+	var steps := int(a.distance_to(b) / 4.0) + 1
+	for i in range(1, steps + 1):
+		var p := a.lerp(b, float(i) / float(steps))
+		if grid.is_point_solid(Vector2i((p / 16.0).floor())):
+			return false
+	return true
 
 
 func _open_cell(cell: Vector2i, grid: AStarGrid2D) -> Vector2i:
