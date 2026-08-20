@@ -103,6 +103,12 @@ func _ready() -> void:
 	_eject.pressed.connect(func(): Commands.eject())
 	tabs.add_child(_eject)
 	_box = GridContainer.new()
+	# CENTRED: a GridContainer packs its children to the left, so a
+	# low-level roster (a level-0 fort's robot page is ONE item) sat
+	# hard against the panel's left edge with a wall of empty plate to
+	# its right, which reads as a misaligned panel rather than a short
+	# list. Every other row in this column already centres itself.
+	_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	(_box as GridContainer).columns = 4
 	_box.add_theme_constant_override("h_separation", ROW_SEPARATION)
 	_box.add_theme_constant_override("v_separation", ROW_SEPARATION)

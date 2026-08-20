@@ -31,7 +31,12 @@ func build(data: Dictionary, _tileset: Texture2D) -> void:
 	_recompute_map_rect()
 	# zone tints rebake on the capture signal — this used to poll every
 	# 0.5s to detect ownership changes
-	MatchState.current.zone_captured.connect(_refresh_owners)
+	# zone_captured carries the capturing team; _refresh_owners re-bakes
+	# the whole overlay and does not need it. Connecting the 0-arg method
+	# to a 1-arg signal made EVERY capture throw
+	# "Method expected 0 argument(s), but called with 1" instead of
+	# refreshing, so the minimap's ownership tint never updated in play.
+	MatchState.current.zone_captured.connect(func(_team): _refresh_owners())
 
 
 ## Zone ownership tint, baked into the texture pixels.

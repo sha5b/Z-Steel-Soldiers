@@ -5,12 +5,21 @@ extends Object
 ## MapCatalog/MapPreview formatting).
 
 
+const THUMB := 40  # list-row thumbnail edge, in canvas px
+
+
 ## Fill `list` with every shipped (non-sandbox) map: original-title
 ## label, preview icon, path metadata. `players_filter` 0 = all.
 ## Selects `current_path` when given; returns whether it was found.
 static func populate(list: ItemList, players_filter := 0,
 		current_path := "") -> bool:
 	list.clear()
+	# UNIFORM ROWS. Without a fixed icon size every row took its own
+	# icon's height and the 256x256 map made the list scroll sideways;
+	# see MapPreview.thumbnail.
+	list.fixed_icon_size = Vector2i(THUMB, THUMB)
+	list.same_column_width = true
+	list.max_columns = 1
 	var found := false
 	for e in MapCatalog.entries():
 		if e.sandbox:
@@ -21,7 +30,7 @@ static func populate(list: ItemList, players_filter := 0,
 			continue
 		list.add_item("%s  %dP  %dx%d" % [
 			MapCatalog.display_title(map_name), m.players, m.width, m.height])
-		list.set_item_icon(list.item_count - 1, MapPreview.texture(map_name))
+		list.set_item_icon(list.item_count - 1, MapPreview.thumbnail(map_name, THUMB))
 		list.set_item_metadata(list.item_count - 1, String(e.path))
 		if current_path != "" and String(e.path) == current_path:
 			list.select(list.item_count - 1)

@@ -185,6 +185,8 @@ func _build_sprite() -> void:
 		var lift := -8.0 if is_fort else ts.y * 0.5 - 8.0
 		position.y += lift
 		_sprite.position.y -= lift
+		if not is_fort:
+			_split_ground_layer(ts)
 
 		# ONE flag per ZONE marks territory; the only building that flies
 		# its own is the FORT (radar/repair/factories show ownership through
@@ -222,6 +224,50 @@ func _build_sprite() -> void:
 		_hp_bar.position = Vector2(-8.0, -30.0 if is_fort else -ts.y * 0.5 - 10)
 		_hp_bar.visible = false  # shown while selected or damaged
 		add_child(_hp_bar)
+
+
+## GROUND/STRUCTURE SPLIT. A building's art is one image that also
+## contains its ground: the apron in front, the cast shadow, and (on the
+## repair shop and radar) actual painted terrain along the right edge.
+## As a single Y-sorted sprite the whole block sorted at the wall base,
+## so a unit standing north of that line was covered by GROUND pixels —
+## it looked cut in half by a patch of dirt.
+##
+## The art below the sort line is ground by construction (that is why the
+## line is there), so it moves to its own sprite on the decal z layer,
+## where z_index ordering puts it under every unit regardless of y. The
+## structure above the line keeps the normal Y-sort, so walking BEHIND a
+## factory still hides the unit — which is correct.
+const GROUND_Z := -1  # the decal layer: under units, over terrain
+var _ground: Sprite2D = null
+
+
+func _split_ground_layer(art_size: Vector2) -> void:
+	var cut := int(round(art_size.y * 0.5))
+	if cut <= 0 or cut >= int(art_size.y) or _sprite.texture == null:
+		return
+	_ground = Sprite2D.new()
+	_ground.name = "GroundLayer"
+	_ground.texture = _sprite.texture
+	_ground.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_ground.centered = false
+	_ground.region_enabled = true
+	_ground.region_rect = Rect2(0, cut, art_size.x, art_size.y - cut)
+	_ground.position = _sprite.position + Vector2(0, cut)
+	_ground.z_index = GROUND_Z
+	add_child(_ground)
+	# the structure keeps only the upper band
+	_sprite.region_enabled = true
+	_sprite.region_rect = Rect2(0, 0, art_size.x, cut)
+
+
+## Both layers follow the texture (ruins swap the whole sheet).
+func _set_building_texture(path: String) -> void:
+	var tex: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	if _sprite:
+		_sprite.texture = tex
+	if _ground:
+		_ground.texture = tex
 
 
 ## The art's on-screen rect in world pixels (art renders 1:1): top-left
@@ -747,7 +793,7 @@ func _death_visuals() -> void:
 		call("kill_garrison")
 	Fx.destroyed(visual_center())
 	if _sprite:
-		_sprite.texture = load(_texture_path(true))
+		_set_building_texture(_texture_path(true))
 		for child in get_children():
 			if child.name.begins_with("Overlay_"):
 				child.visible = false

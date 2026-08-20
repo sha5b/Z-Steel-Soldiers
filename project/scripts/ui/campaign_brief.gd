@@ -1,12 +1,16 @@
 extends Control
-## Mission briefing: the target world's original planet art above the
-## campaign mission text, launches the map.
-
-const PLANETS := "res://assets/z/ui/planets"
-const TERRAIN_TO_PLANET := {"arctic": "artic", "volcanic": "volcan"}
+## Mission briefing: the MISSION MAP above the campaign text. Launches
+## the map.
+##
+## The hero image used to be `ui/planets/<terrain>.png`, which is not
+## planet art at all — it is the GOG release's 320x200 terrain SAMPLE
+## MOSAIC (a patchwork of tiles showing what the ground looks like), so
+## the briefing screen led with what read as a raw tileset dump. The real
+## map thumbnail was already being generated, as a small corner icon.
+## Now the map IS the briefing image and the mosaic is gone: beside a
+## real map of the mission it told the player nothing.
 
 @onready var label: Label = %BriefLabel
-@onready var planet: TextureRect = %Planet
 @onready var map_view: TextureRect = %MapView
 
 
@@ -14,26 +18,11 @@ func _ready() -> void:
 	UiTheme.apply(self)
 	label.text = "%s\n\nCapture territory, build your army,\ndestroy the enemy fort." \
 		% Campaign.current_title()
-	var path := "%s/%s.png" % [PLANETS, _terrain()]
-	if ResourceLoader.exists(path):
-		planet.texture = load(path)
-	# the ACTUAL mission map thumbnail (terrain + roads + buildings), not
-	# just planet flavour art
+	# the ACTUAL mission map: terrain + roads + every building's real
+	# footprint in its team colour
 	var map_name := Campaign.current_map_path().get_file().get_basename()
-	var preview := MapPreview.texture(map_name)
-	if preview:
-		map_view.texture = preview
+	map_view.texture = MapPreview.texture(map_name)
 	await SelfTests.maybe_screenshot(self, "screenshot_brief.png")
-
-
-func _terrain() -> String:
-	var map := Campaign.current_map_path()
-	if map == "" or not map.begins_with("res://"):
-		return "desert"
-	var parsed = JSON.parse_string(FileAccess.get_file_as_string(map))
-	var terrain := String(parsed.get("terrain", "desert")) if parsed is Dictionary else "desert"
-	terrain = TERRAIN_TO_PLANET.get(terrain, terrain)
-	return terrain if FileAccess.file_exists("%s/%s.png" % [PLANETS, terrain]) else "desert"
 
 
 func _on_start_pressed() -> void:

@@ -98,6 +98,102 @@ one-line fix; the cheap, evidence-backed ones are all in Fixed below.
 
 ## Fixed
 
+- 2026-08-20 — **rock fields rendered as flat light-brown slabs.**
+  `_build_rocks` gave EVERY clustered rock one hard-coded piece, (1,1),
+  which is the plateau INTERIOR fill of a 6x6 autotile sheet — so a rock
+  field came out as a featureless pale blob with a stepped outline that
+  read as a misplaced texture sitting on top of the map. Pieces are now
+  chosen from the 4-neighbour mask (`MapLoader._rock_piece`): left /
+  middle / right / single columns, and top-edge / interior / south
+  CLIFF-FACE rows. The two constants the old code used are exactly the
+  special cases of that mapping, which is what confirmed the layout — a
+  lone rock is single-width with nothing below it, (3,3), and a fully
+  enclosed rock is middle-column interior, (1,1). KNOWN LIMIT: the
+  mapping uses 8 of the 36 pieces and ignores DIAGONAL neighbours, so
+  inner corners where two arms of a formation meet still show a straight
+  edge instead of a corner piece. Closing that needs the original
+  orock.cpp table; it cannot be derived from the art alone.
+- 2026-08-20 — **the terrain tilesets are NOT broken.** Checked rather
+  than assumed: all five planet sheets are 320x384 = 20x24 = 480 cells,
+  and the highest tile index any shipped map uses is 479 (jungle). The
+  index -> atlas mapping in `_build_terrain` is in range for every map,
+  so the "chaotic tileset" look was the rock bug above, not terrain.
+- 2026-08-20 — **auto-grab cancelled your orders.** `_smart_idle` fired
+  the moment `move_target` cleared — i.e. the instant a robot reached
+  the spot you sent it to — so 0.4s after arriving it walked off to a
+  zone centre or an empty hull up to 110px away. Worse, the zone branch
+  re-issued `move_to(centre)` every 0.4s forever for a zone the unit
+  could not take (a live fort holds its ground), which reads as a unit
+  standing still doing nothing and ignoring commands. Auto-grab now
+  requires the unit to have been genuinely AT REST (no order, no target,
+  state IDLE) for `AUTO_IDLE_DELAY`, skips zones it is already standing
+  in, and retries slowly. Its idle clock also uses the delta it was
+  stepped with instead of `get_process_delta_time()`, which is the real
+  frame delta and is nearly zero in an unthrottled headless run.
+  Asserted both ways by `--orders-test`.
+- 2026-08-20 — **there was no ATTACK order at all.** `Order.Type` had
+  MOVE / MOVE_ATTACK / DEFEND / MAN_VEHICLE / BOARD_APC / GARRISON /
+  REPAIR_BUILDING / CRANE_REPAIR and nothing that named an enemy, so
+  right-clicking a foe fell through to a plain move: the unit walked to
+  where that enemy stood at click time and stopped, while the cursor had
+  been showing "attack" all along. Added `Order.attack`, a chase step
+  (`Unit2D._chase`) that re-routes when the target drifts past
+  `CHASE_REPATH`, holds at weapon range, and ends the order only when
+  the target dies — plus `_ordered_or_nearest()` so an explicit order
+  outranks opportunistic targeting. `Commands._find_enemy` dispatches it
+  for players (neutral team-0 hardware still means "go man it"), and
+  vehicles chase too. Asserted by `--orders-test`.
+- 2026-08-20 — **buildings cut units in half with their own ground.** A
+  building's art is one image that also contains its apron, its cast
+  shadow, and — on the repair shop and radar — painted TERRAIN along the
+  right edge. As a single Y-sorted sprite the whole block sorted at the
+  wall base, so a unit north of that line was covered by dirt pixels.
+  The art below the sort line is ground by construction, so it now lives
+  on its own sprite at the decal z layer (`Building2D._split_ground_layer`),
+  where z ordering puts it under every unit regardless of y; the
+  structure above the line keeps normal Y-sorting, so walking BEHIND a
+  factory still hides the unit, which is correct. This is the
+  "ground bases split from the structure" the roadmap already claimed.
+  RESIDUAL: terrain baked in ABOVE the cut line (the repair shop's
+  upper-right corner) can still occlude, and it visibly mismatches the
+  map's own ground. That is a source-art problem — the building sprites
+  were cut with terrain attached — and needs the art re-cut, not code.
+- 2026-08-20 — **the minimap's ownership overlay never refreshed.**
+  `minimap.gd` connected a 0-argument `_refresh_owners` to the 1-argument
+  `zone_captured` signal, so every capture threw
+  "Method expected 0 argument(s), but called with 1" at emit time and the
+  handler simply never ran. Fixed, and `--ui-test` now performs a
+  REFLECTIVE arity audit over every signal on MatchState,
+  SelectionManager, UnitRegistry and GameState, so the whole bug class
+  (silent at parse time, only visible as a runtime error nothing greps
+  for) cannot come back. Verified by reintroducing the bug and watching
+  the audit name it.
+- 2026-08-20 — **the mission briefing led with a tileset dump.**
+  `ui/planets/<terrain>.png` is not planet art: it is the GOG release's
+  320x200 terrain SAMPLE MOSAIC, a patchwork of ground tiles. It was the
+  hero image while the real generated map thumbnail sat in the corner.
+  The map is now the briefing image and the mosaic is gone.
+- 2026-08-20 — **the map list's scroll gutter rendered as colour noise,**
+  and its rows were ragged. Two causes. (1) `UiTheme._nine_piece`
+  mis-placed 6 of 9 pieces: `part.ends_with("left")` also matches
+  "top_left"/"bottom_left", so the left column and both left corners
+  were blended at x = left_width instead of 0; `right` landed in the top
+  row; and only the bare "bottom" piece matched `ends_with("bottom")`,
+  so both bottom corners sat in the middle row. The composed atlas was
+  scrambled, and zod's list frame puts its 15px-wide SCROLL GUTTER in the
+  right column, which is where the garbage showed. Placement is now an
+  explicit (col, row) table, margins come from the CORNERS (this art has
+  3px edges but 17px corners, so slicing at the edge heights cut through
+  them), and thin edge strips are tiled to fill their band. (2) The list
+  handed `MapPreview.texture` straight to `ItemList`, and those are one
+  pixel per map TILE — 64x86 up to 256x256 — so every row was as tall as
+  its own icon and the widest item made the list scroll sideways.
+  `MapPreview.thumbnail` letterboxes to a square and the list sets
+  `fixed_icon_size`. The original's own `list_scroller` and up/down
+  arrow art is now wired too (`UiTheme._theme_scrollbar`); it had never
+  been referenced, so every scrolling list drew Godot's default grey bar
+  inside Z's gutter.
+
 - 2026-08-20 — **you can get your units back out of things.** There was
   no dismount action anywhere: a robot ordered into a fort went
   invisible, degrouped and unselectable for the rest of the match, a

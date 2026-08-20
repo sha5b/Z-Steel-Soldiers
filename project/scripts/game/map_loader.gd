@@ -112,14 +112,10 @@ static func _build_rocks(parent: Node, data: Dictionary, planet: String, grid: A
 		return
 	var rock_sheet: Texture2D = load("res://assets/z/planets/rocks_%s.png" % planet)
 	for cell in rock_cells:
-		var alone := true
-		for n in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			if rock_cells.has(cell + n):
-				alone = false
-				break
 		var atlas := AtlasTexture.new()
 		atlas.atlas = rock_sheet
-		atlas.region = Rect2(Vector2(Vector2i(3, 3) if alone else Vector2i(1, 1)) * TILE, Vector2(TILE, TILE))
+		atlas.region = Rect2(Vector2(_rock_piece(cell, rock_cells)) * TILE,
+			Vector2(TILE, TILE))
 		var rock := Sprite2D.new()
 		rock.name = "Rock_%d_%d" % [cell.x, cell.y]
 		rock.texture = atlas
@@ -128,6 +124,48 @@ static func _build_rocks(parent: Node, data: Dictionary, planet: String, grid: A
 		parent.add_child(rock)
 		rock.add_to_group(Groups.ROCKS)
 		grid.set_point_solid(cell, true)
+
+
+## Which piece of the 6x6 rock sheet a cell shows, from its 4-neighbours.
+## The sheet is an AUTOTILE set: columns are left-edge / middle /
+## right-edge / single, and rows are top-edge / interior / (2 unused) /
+## south CLIFF FACE — the faces carry the shading and vegetation that
+## make a rock mass read as raised ground.
+##
+## Every CLUSTERED rock used to take a single hard-coded piece, (1,1),
+## which is the featureless plateau INTERIOR fill. So a rock field
+## rendered as a flat, light, featureless slab with a stepped outline —
+## the "weird light brown patch that doesn't fit and covers everything"
+## — instead of a rock formation. Note the two constants the old code
+## used are exactly the special cases of this mapping: a lone rock is
+## single-width with nothing below it, giving (3, 3), and a fully
+## enclosed rock is middle-column interior, giving (1, 1). The bug was
+## applying the interior fill to every rock that had ANY neighbour.
+const ROCK_COL_LEFT := 0
+const ROCK_COL_MID := 1
+const ROCK_COL_RIGHT := 2
+const ROCK_COL_SINGLE := 3
+const ROCK_ROW_TOP := 0
+const ROCK_ROW_INNER := 1
+const ROCK_ROW_FACE := 3  # nothing below: the south cliff face shows
+
+
+static func _rock_piece(cell: Vector2i, rock_cells: Dictionary) -> Vector2i:
+	var left := rock_cells.has(cell + Vector2i(-1, 0))
+	var right := rock_cells.has(cell + Vector2i(1, 0))
+	var above := rock_cells.has(cell + Vector2i(0, -1))
+	var below := rock_cells.has(cell + Vector2i(0, 1))
+	var col := ROCK_COL_SINGLE
+	if left and right:
+		col = ROCK_COL_MID
+	elif right:
+		col = ROCK_COL_LEFT
+	elif left:
+		col = ROCK_COL_RIGHT
+	var row := ROCK_ROW_FACE
+	if below:
+		row = ROCK_ROW_INNER if above else ROCK_ROW_TOP
+	return Vector2i(col, row)
 
 
 ## Vehicle grid: same as robots but water is impassable (zod PF_WATER).

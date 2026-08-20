@@ -174,7 +174,29 @@ static func run(ctx: Node) -> void:
 				if after <= before:
 					fails.append("queue row did not rebuild on enqueue (reselect bug)")
 				SelectionManager.current.clear_selection()
-			print("UI: %s" % (",".join(fails) if fails.size() > 0 else "all original-art kit present"))
+			# SIGNAL ARITY AUDIT. A 0-arg method connected to a 1-arg
+			# signal is not a parse error — it throws
+			# "Method expected 0 argument(s), but called with 1" at EMIT
+			# time and the handler simply never runs. That is how the
+			# minimap's ownership overlay silently stopped refreshing on
+			# every zone capture. Reflective, so it covers all present
+			# and future HUD wiring instead of the one case found.
+			for emitter in [MatchState.current, SelectionManager.current,
+					UnitRegistry.current, GameState]:
+				if emitter == null:
+					continue
+				for sig in emitter.get_signal_list():
+					var want: int = (sig["args"] as Array).size()
+					for conn in emitter.get_signal_connection_list(String(sig["name"])):
+						var cb: Callable = conn["callable"]
+						var got: int = cb.get_argument_count()
+						if got != want:
+							fails.append("%s.%s -> %s takes %d args, signal sends %d"
+								% [emitter.get_class(), sig["name"], cb, got, want])
+			# ASSERTED (this block used to only print its problem list)
+			var uir := TestRig.start("UI")
+			uir.check(fails.is_empty(), ", ".join(fails))
+			uir.finish("original-art kit + signal arity")
 	if "--mp-test" in args:
 			# multiplayer milestone 1: LAN discovery over loopback, and the
 			# full room protocol over a REAL ENet loopback — a second Net
@@ -562,6 +584,7 @@ static func run(ctx: Node) -> void:
 			ctx.get_tree().quit()
 	if "--path-test" in args:
 		PathTests.walk_a_pair(ctx, TestRig.start("PATH"))
+		PathTests.walkers_arrive(ctx, TestRig.start("ARRIVE"))
 	if "--fortkill-test" in args:
 		# forts must actually die: small arms scale with the target
 		# (original zsettings fractions — flat integers made a laser need
@@ -927,6 +950,43 @@ static func run(ctx: Node) -> void:
 			bot._order_done()
 			if not bot.is_idle() or bot.state != Unit2D.State.IDLE:
 				oproblems.append("order_done")
+			# ATTACK order: the unit must FOLLOW its target, not walk to
+			# where the target stood when the order was given. Right-click
+			# on an enemy used to fall through to a plain move.
+			var runner: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 2,
+				Vector2(1100, 600))
+			var hunter: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+				Vector2(700, 600))
+			if runner != null and hunter != null:
+				runner.hp = 100000000
+				runner.max_hp = 100000000
+				hunter.hp = 100000000
+				hunter.max_hp = 100000000
+				hunter.damage = 0  # never actually kill it: we want the chase
+				hunter.issue_order(Order.attack(runner))
+				if hunter.attack_target != runner:
+					oproblems.append("ATTACK order did not take the target")
+				var first_goal := hunter.move_target
+				# the quarry runs; the hunter must re-route after it
+				runner.global_position = Vector2(1100, 1000)
+				for i in 30:
+					hunter._process(0.05)
+					hunter._physics_process(0.05)
+				if hunter.attack_target != runner:
+					oproblems.append("ATTACK order dropped a live target")
+				elif hunter.move_target == first_goal \
+						and hunter.move_target != Vector2.ZERO:
+					oproblems.append("ATTACK kept routing to the stale position")
+				# and it ends when the target dies
+				runner.hp = 1
+				runner.die()
+				for i in 10:
+					hunter._process(0.05)
+				if hunter.attack_target != null:
+					oproblems.append("ATTACK order outlived its dead target")
+				hunter.queue_free()
+				if is_instance_valid(runner):
+					runner.queue_free()
 			if bot.attack_move:
 				oproblems.append("order_done kept attack_move")
 			# a robot ordered onto a NON-garrisonable building walks up
@@ -995,6 +1055,31 @@ static func run(ctx: Node) -> void:
 					break
 			if not manned:
 				oproblems.append("smart idle did not man nearby vehicle")
+			# ...and it must NOT hijack a unit that is executing an order,
+			# nor one that just ARRIVED where the player sent it. Auto-grab
+			# used to fire the instant move_target cleared, so reaching your
+			# destination handed the unit straight to the nearest hull or
+			# zone centre and the order looked cancelled.
+			var parked: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+				Vector2(560, 520))
+			parked.hp = 100000
+			var bait: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 0,
+				Vector2(560 + 60, 520))
+			parked.move_to(Vector2(566, 520))  # a short, quickly-finished order
+			var hijacked := false
+			for i in 40:  # ~2s of sim: inside AUTO_IDLE_DELAY
+				parked._process(0.05)
+				parked._physics_process(0.05)
+				if parked.enter_target != null or parked.state == Unit2D.State.ENTERING \
+						or bait.manned:
+					hijacked = true
+					break
+			if hijacked:
+				oproblems.append("auto-grab hijacked a unit inside the idle delay")
+			if is_instance_valid(parked):
+				parked.queue_free()
+			if is_instance_valid(bait):
+				bait.queue_free()
 			radar.queue_free()
 			GameState.over = false
 			if is_instance_valid(bot):
@@ -1717,7 +1802,12 @@ static func run(ctx: Node) -> void:
 			if z.owner_team != 0:
 				pre_owned += 1
 		var expect := MatchState.current.zones.size() - forts
-		fl.check(authored >= expect,
+		# 57 of the 58 shipped maps carry one id-0 marker per non-fort
+		# zone; the hand-authored sandbox map carries none at all. So the
+		# rule is all-or-nothing: if a map ships markers, EVERY non-fort
+		# zone must have got one (a partial count means the loader dropped
+		# some again).
+		fl.check(authored == 0 or authored >= expect,
 			"only %d of %d non-fort zones got their authored flag tile" % [
 				authored, expect])
 		fl.finish("authored_flags=%d pre_owned_zones=%d forts=%d" % [
@@ -1738,23 +1828,47 @@ static func run(ctx: Node) -> void:
 			"a team with no crates already has a damage bonus (%.2f/%.2f)" % [
 				robot_mult_before, hw_mult_before])
 
-		# 1. a ROBOT opens a grenade crate: throwables + the team upgrade
+		# 1. a ROBOT opens a grenade crate: throwables + the team upgrade.
+		# The collector is PLACED on the crate rather than walked to it —
+		# this block checks crate SEMANTICS, and every other block in this
+		# file mutates the same world, so a walk here depended on which
+		# flags ran first (the cursor block uses the same corner).
+		# ...and the spot must be clear of OTHER units: whichever unit the
+		# group scan reaches first opens the crate, and earlier blocks in
+		# this file park fixtures on shared coordinates (the cursor block
+		# leaves a team-2 robot on this very corner), so a stray neighbour
+		# would collect it for the wrong team.
+		var crate_spot := Vector2.INF
+		for probe in [Vector2(2400, 3080), Vector2(2000, 2600),
+				Vector2(1600, 3400), Vector2(2800, 2200), Vector2(1200, 2000)]:
+			var cand := NavWorld.current.find_free_spot(probe, "robot")
+			if cand == Vector2.INF:
+				continue
+			var crowded := false
+			for other in UnitRegistry.current.world_units():
+				if other.global_position.distance_to(cand) < 48.0:
+					crowded = true
+					break
+			if not crowded:
+				crate_spot = cand
+				break
+		pu.check(crate_spot != Vector2.INF, "no clear, unoccupied crate spot on this map")
+		if crate_spot == Vector2.INF:
+			crate_spot = Vector2(2400, 3080)
 		var pk := Pickup.new()
 		pk.pickup_type = "grenades"
-		pk.position = Vector2(2400, 3080)
+		pk.position = crate_spot
 		ctx.add_child(pk)
 		var collector: Unit2D = load("res://scenes/unit.tscn").instantiate()
 		collector.team = team
-		collector.position = Vector2(2370, 3080)
+		collector.position = crate_spot
 		collector.hp = 10000000
 		collector.max_hp = 10000000
 		ctx.add_child(collector)
 		var grenades_before: int = collector.grenades
-		collector.move_to(Vector2(2400, 3080))
-		for i in 100:
+		for i in 20:
 			collector._process(0.05)
-			collector._physics_process(0.05)
-			if is_instance_valid(pk):
+			if not pk._taken:
 				pk._process(0.05)
 			else:
 				break
@@ -1771,13 +1885,11 @@ static func run(ctx: Node) -> void:
 		# 2. a ROCKET crate is HARDWARE-only: a robot must walk over it
 		var rk := Pickup.new()
 		rk.pickup_type = "rockets"
-		rk.position = Vector2(2440, 3080)
+		rk.position = collector.global_position
 		ctx.add_child(rk)
-		collector.move_to(Vector2(2440, 3080))
-		for i in 100:
+		for i in 20:
 			collector._process(0.05)
-			collector._physics_process(0.05)
-			if is_instance_valid(rk):
+			if not rk._taken:
 				rk._process(0.05)
 			else:
 				break

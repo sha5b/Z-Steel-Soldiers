@@ -54,6 +54,7 @@ var carried := false
 var grenades := 0  # throwable grenades from crates (original grenade_item)
 var _grenade_timer := 0.0
 var attack_move := false  # AGRO order: stop and fight en route
+var attack_target: Node2D = null  # ATTACK order: chase THIS until it dies
 var defend_post := Vector2.INF  # DEFEND order: hold this spot
 var run_stamina := 1.0  # 0..1, sprinting drains it (original max_run_time)
 var _run_flag := false  # sprint the current order (shift-click)
@@ -120,10 +121,11 @@ func _process(delta: float) -> void:
 		if _enter_timer > 0.9:  # gesture missing or signal never came
 			_finish_entering()
 	_combat()
+	_chase(delta)
 	_try_enter()
 	if kind == "robot":
 		if GameSettings.auto_idle and defend_post == Vector2.INF:
-			_smart_idle()
+			_smart_idle(delta)
 		_return_to_post()
 		_idle(delta)
 	ring.queue_redraw()
@@ -267,7 +269,9 @@ func _on_arrived_extras() -> void:
 func _arrive() -> void:
 	move_target = Vector2.ZERO
 	velocity = Vector2.ZERO
-	if enter_target == null:
+	# an ATTACK order outlives arrival: _chase re-routes while the target
+	# lives, and only its death ends the order
+	if enter_target == null and attack_target == null:
 		if order != null and order.type == Order.Type.DEFEND:
 			defend_post = global_position  # hold this spot
 		state = State.IDLE
@@ -380,7 +384,7 @@ func _combat() -> void:
 	if velocity.length_squared() > 4.0:
 		return  # no fire-and-move yet
 	_grenade_timer = maxf(0.0, _grenade_timer - get_process_delta_time())
-	_target = _find_target()
+	_target = _ordered_or_nearest()
 	# throwable grenades: lobbed automatically at hardware and forts
 	# within reach (original: robots throw grenades at vehicles/guns)
 	if grenades > 0 and _target and _grenade_timer <= 0.0 \
@@ -410,6 +414,18 @@ func _target_point() -> Vector2:
 	if _target is Building2D:
 		return _target.visual_center()
 	return _target.global_position
+
+
+## An explicit ATTACK order outranks opportunistic targeting: a unit told
+## to kill something must not drift onto whatever wandered closer.
+func _ordered_or_nearest() -> Node2D:
+	if attack_target != null and is_instance_valid(attack_target) \
+			and attack_target.alive:
+		var aim: Vector2 = attack_target.visual_center() \
+				if attack_target is Building2D else attack_target.global_position
+		if global_position.distance_to(aim) <= range_px * sprite_scale:
+			return attack_target
+	return _find_target()
 
 
 func _find_target() -> Node2D:
@@ -554,7 +570,14 @@ func issue_order(new_order: Order) -> void:
 	_idle_time = 0.0
 	_entering = null
 	defend_post = Vector2.INF
-	if order.type == Order.Type.MOVE or order.type == Order.Type.MOVE_ATTACK 			or order.type == Order.Type.DEFEND:
+	attack_target = null
+	if order.type == Order.Type.ATTACK:
+		attack_move = false
+		enter_target = null
+		attack_target = order.target
+		_chase_repath()
+		state = State.MOVING
+	elif order.type == Order.Type.MOVE or order.type == Order.Type.MOVE_ATTACK 			or order.type == Order.Type.DEFEND:
 		attack_move = order.type == Order.Type.MOVE_ATTACK
 		enter_target = null
 		_begin_move(order.position)
@@ -630,6 +653,8 @@ func _begin_move(world_pos: Vector2) -> void:
 ## can't use used to stick in ENTERING forever, invisible to the AI).
 func _order_done() -> void:
 	enter_target = null
+	attack_target = null
+	_chase_anchor = Vector2.INF
 	move_target = Vector2.ZERO
 	order = null
 	state = State.IDLE
@@ -692,21 +717,87 @@ func _try_enter() -> void:
 			v.load_robot(self)
 
 
+## ATTACK order upkeep: close on the target, hold at weapon range, and
+## re-route whenever it has moved far enough that our route is stale.
+## The order ends only when the target dies — that is what makes an
+## attack FOLLOW instead of walking to a stale position.
+const CHASE_REPATH := 28.0  # target drift that invalidates our route
+var _chase_anchor := Vector2.INF
+
+
+func _chase(_delta: float) -> void:
+	if attack_target == null:
+		return
+	if not is_instance_valid(attack_target) or not attack_target.alive:
+		attack_target = null
+		_chase_anchor = Vector2.INF
+		_order_done()
+		return
+	var aim: Vector2 = attack_target.visual_center() \
+			if attack_target is Building2D else attack_target.global_position
+	var reach := range_px * sprite_scale
+	if global_position.distance_to(aim) <= reach:
+		# in range: stop and shoot. _combat locks onto attack_target.
+		move_target = Vector2.ZERO
+		waypoints = PackedVector2Array()
+		velocity = Vector2.ZERO
+		_chase_anchor = aim
+		return
+	if _chase_anchor == Vector2.INF or aim.distance_to(_chase_anchor) > CHASE_REPATH \
+			or move_target == Vector2.ZERO:
+		_chase_repath()
+
+
+func _chase_repath() -> void:
+	if attack_target == null or not is_instance_valid(attack_target):
+		return
+	var aim: Vector2 = attack_target.visual_center() \
+			if attack_target is Building2D else attack_target.global_position
+	_chase_anchor = aim
+	var was := state
+	_begin_move(aim)
+	if move_target == Vector2.ZERO:
+		# unreachable (water, walled in): keep the order but do not spin
+		state = was
+	else:
+		state = State.MOVING
+
+
 ## Smart idle (GameSettings.auto_idle, the grab-hand toggle): idle robots
 ## within the auto_grab radius man empty hardware or walk to a
 ## capturable flag — presence does the rest. Throttled: it scans.
 ## Halved from the original 220 (zsettings auto_grab_*_distance) as a
 ## playtest call — units no longer wander off half a screen.
 const AUTO_RADIUS := 110.0
+## Stand still THIS long before self-tasking, and wait this long between
+## attempts. Auto-grab is a convenience for units nobody is commanding —
+## it must never look like it cancelled an order.
+const AUTO_IDLE_DELAY := 3.0
+const AUTO_RETRY_SECONDS := 1.5
 var _auto_timer := 0.0
+var _idle_seconds := 0.0
 
-func _smart_idle() -> void:
-	_auto_timer -= get_process_delta_time()
+func _smart_idle(delta: float) -> void:
+	# ONLY a unit that has genuinely COME TO REST self-tasks. This used to
+	# fire the moment `move_target` cleared, i.e. the instant a robot
+	# reached the spot you sent it to — so 0.4s after arriving it walked
+	# off to a zone centre or an empty hull up to AUTO_RADIUS away, and
+	# the order you gave looked like it had been cancelled half-way. Worse,
+	# the zone branch re-issued `move_to(center)` every 0.4s forever for a
+	# zone the unit could not actually take (a live fort holds its
+	# ground), which reads as a unit standing still doing nothing while
+	# refusing new commands.
+	if move_target != Vector2.ZERO or order != null or state != State.IDLE \
+			or _entering != null or enter_target != null or attack_target != null:
+		_idle_seconds = 0.0
+		return
+	_idle_seconds += delta
+	if _idle_seconds < AUTO_IDLE_DELAY:
+		return
+	_auto_timer -= delta
 	if _auto_timer > 0.0:
 		return
-	_auto_timer = 0.4
-	if move_target != Vector2.ZERO or _entering != null or enter_target != null:
-		return
+	_auto_timer = AUTO_RETRY_SECONDS
 	for v in UnitRegistry.current.world_units():
 		if v is Vehicle2D and not v.manned and v.alive \
 				and global_position.distance_to(v.global_position) < AUTO_RADIUS:
@@ -714,6 +805,10 @@ func _smart_idle() -> void:
 			return
 	for z: Zone in MatchState.current.zones:
 		if z.owner_team == team:
+			continue
+		# already INSIDE it: presence is what captures, so walking to the
+		# centre again achieves nothing and just re-orders us on a loop
+		if z.world_rect().has_point(global_position):
 			continue
 		var center := z.world_rect().get_center()
 		if global_position.distance_to(center) < AUTO_RADIUS:

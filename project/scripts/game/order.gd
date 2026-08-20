@@ -8,6 +8,7 @@ extends RefCounted
 
 enum Type {
 	MOVE,           # plain move; fight only when stopped
+	ATTACK,         # chase THIS target until it dies
 	MOVE_ATTACK,    # AGRO: halt and engage anything en route
 	DEFEND,         # move there, then HOLD the post (returns when pushed off)
 	MAN_VEHICLE,    # robot walks up and mans empty hardware
@@ -27,6 +28,20 @@ static func move(world_pos: Vector2, sprint := false) -> Order:
 	var order := Order.new()
 	order.type = Type.MOVE
 	order.position = world_pos
+	order.run = sprint
+	return order
+
+
+## Attack a specific enemy: close on it, fire from weapon range, and
+## KEEP FOLLOWING it if it moves. Right-clicking an enemy used to fall
+## through to a plain move — the unit walked to where the enemy was
+## standing at click time and stopped there, which is why an attack
+## order looked like it went to a position instead of a target.
+static func attack(node: Node2D, sprint := false) -> Order:
+	var order := Order.new()
+	order.type = Type.ATTACK
+	order.target = node
+	order.position = node.global_position
 	order.run = sprint
 	return order
 

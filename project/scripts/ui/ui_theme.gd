@@ -53,6 +53,7 @@ static func apply(root: Control) -> void:
 	theme.set_color("font_color", "LineEdit", Color.WHITE)
 	theme.set_stylebox("panel", "PanelContainer", StyleBoxEmpty.new())
 	_theme_slider(theme)
+	_theme_scrollbar(theme)
 	root.theme = theme
 
 
@@ -106,6 +107,47 @@ static func _theme_slider(theme: Theme) -> void:
 	if knob != null:
 		theme.set_icon("grabber_icon", "HSlider", knob)
 		theme.set_icon("grabber_highlight_icon", "HSlider", knob)
+
+
+## Scrollbars from the zod list art. The list frame's RIGHT column is
+## 15px wide precisely because it is the original's scroll gutter
+## (`list_right`/`list_top_right`/`list_bottom_right` are all 15 wide),
+## and the set ships `list_scroller` plus up/down arrow buttons. None of
+## it was wired, so every scrolling list drew Godot's default grey
+## scrollbar inside Z's gutter.
+static func _theme_scrollbar(theme: Theme) -> void:
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(0.06, 0.06, 0.07, 0.7)
+	var grabber := StyleBoxFlat.new()
+	grabber.bg_color = Color(0.62, 0.55, 0.30)
+	grabber.set_corner_radius_all(1)
+	var grabber_hi := grabber.duplicate() as StyleBoxFlat
+	grabber_hi.bg_color = Color(0.80, 0.72, 0.40)
+	var scroller := _tex("%s/list_scroller.png" % LIST_DIR)
+	for kind in ["VScrollBar", "HScrollBar"]:
+		theme.set_stylebox("scroll", kind, track)
+		theme.set_stylebox("scroll_focus", kind, track)
+		theme.set_stylebox("grabber", kind, grabber)
+		theme.set_stylebox("grabber_highlight", kind, grabber_hi)
+		theme.set_stylebox("grabber_pressed", kind, grabber_hi)
+		if scroller != null:
+			# the grabber cap art, drawn at both ends of the thumb
+			theme.set_icon("grabber_icon", kind, scroller)
+	var up := _tex("%s/list_button_up_normal.png" % LIST_DIR)
+	var down := _tex("%s/list_button_down_normal.png" % LIST_DIR)
+	if up != null and down != null:
+		theme.set_icon("decrement", "VScrollBar", up)
+		theme.set_icon("increment", "VScrollBar", down)
+		theme.set_icon("decrement_highlight", "VScrollBar", up)
+		theme.set_icon("increment_highlight", "VScrollBar", down)
+		theme.set_icon("decrement_pressed", "VScrollBar",
+			_tex("%s/list_button_up_pressed.png" % LIST_DIR))
+		theme.set_icon("increment_pressed", "VScrollBar",
+			_tex("%s/list_button_down_pressed.png" % LIST_DIR))
+
+
+static func _tex(path: String) -> Texture2D:
+	return load(path) if ResourceLoader.exists(path) else null
 
 
 static func _knob() -> AtlasTexture:
@@ -171,15 +213,38 @@ static func _zod_button(state: String) -> StyleBoxTexture:
 	return _nine_piece(BUTTON_DIR, prefix, 2)
 
 
-## Compose <dir>/<prefix>_<part>.png into one scaled texture; part layout
-## is derived from the pieces' real sizes. Corners stay crisp.
+## Compose <dir>/<prefix>_<part>.png into ONE nine-patch texture.
+##
+## The old placement table was wrong for 6 of the 9 pieces:
+## `part.ends_with("left")` is also true for "top_left" and
+## "bottom_left", so the left column and both left corners were blended
+## at x = left_width instead of 0; `right` landed at y = 0 instead of the
+## middle row; and only the bare "bottom" piece matched
+## `ends_with("bottom")`, so both bottom corners sat in the middle row.
+## The composed atlas was scrambled, which is what made the map list's
+## right-hand scroll gutter render as a stack of mismatched colour
+## blocks. Placement is now an explicit (col, row) table.
+##
+## The margins come from the CORNERS, not the edge strips. This art is
+## not a uniform frame — zod's list ships 3px top/left edges but 17px
+## corners, because the right column is the 15px-wide scrollbar gutter.
+## Slicing at the edge heights cut straight through the corner art. The
+## thin edge strips are TILED to fill their row/column so nothing is
+## left transparent.
+const NINE_LAYOUT := {
+	"top_left": Vector2i(0, 0), "top": Vector2i(1, 0), "top_right": Vector2i(2, 0),
+	"left": Vector2i(0, 1), "center": Vector2i(1, 1), "right": Vector2i(2, 1),
+	"bottom_left": Vector2i(0, 2), "bottom": Vector2i(1, 2),
+	"bottom_right": Vector2i(2, 2),
+}
+
+
 static func _nine_piece(dir: String, prefix: String, s: int) -> StyleBoxTexture:
 	var cache_key := "%s/%s/%d" % [dir, prefix, s]
 	if _cache.has(cache_key):
 		return _cache[cache_key]
 	var pieces := {}
-	for part in ["top_left", "top", "top_right", "left", "center", "right",
-			"bottom_left", "bottom", "bottom_right"]:
+	for part in NINE_LAYOUT:
 		var path := "%s/%s_%s.png" % [dir, prefix, part]
 		if ResourceLoader.exists(path):
 			var img: Image = (load(path) as Texture2D).get_image()
@@ -188,45 +253,65 @@ static func _nine_piece(dir: String, prefix: String, s: int) -> StyleBoxTexture:
 				Image.INTERPOLATE_NEAREST)
 			pieces[part] = img
 	if pieces.is_empty():
-		var empty := StyleBoxTexture.new()
-		return empty
-	var lw := 0
-	var rw := 0
-	var th := 0
-	var bh := 0
-	if pieces.has("left"):
-		lw = (pieces["left"] as Image).get_width()
-	if pieces.has("right"):
-		rw = (pieces["right"] as Image).get_width()
-	if pieces.has("top"):
-		th = (pieces["top"] as Image).get_height()
-	if pieces.has("bottom"):
-		bh = (pieces["bottom"] as Image).get_height()
-	var cw := 29 * s
-	var ch := 11 * s
-	if pieces.has("center"):
-		cw = (pieces["center"] as Image).get_width()
-		ch = (pieces["center"] as Image).get_height()
-	var composed := Image.create(lw + cw + rw, th + ch + bh, false,
-		Image.FORMAT_RGBA8)
+		return StyleBoxTexture.new()
+	# column widths / row heights = the widest (tallest) piece in each
+	# band, so a corner is never sliced through
+	var cols := [0, 0, 0]
+	var rows := [0, 0, 0]
 	for part in pieces:
+		var at: Vector2i = NINE_LAYOUT[part]
 		var img: Image = pieces[part]
-		var pos := Vector2i(
-			lw if part.ends_with("left") or part == "top" or part == "center" else 0,
-			th if part.begins_with("bottom") or part == "left" or part == "center" else 0)
-		if part == "top_right" or part == "right" or part == "bottom_right":
-			pos.x = composed.get_width() - img.get_width()
-		if part.ends_with("bottom"):
-			pos.y = composed.get_height() - img.get_height()
-		composed.blend_rect(img, Rect2i(Vector2i.ZERO, img.get_size()), pos)
+		if at.x != 1:
+			cols[at.x] = maxi(cols[at.x], img.get_width())
+		if at.y != 1:
+			rows[at.y] = maxi(rows[at.y], img.get_height())
+	# the stretchable middle band: the center piece when there is one,
+	# else the edge strips' own run length
+	cols[1] = _band(pieces, ["center", "top", "bottom"], true, 29 * s)
+	rows[1] = _band(pieces, ["center", "left", "right"], false, 11 * s)
+	var composed := Image.create(cols[0] + cols[1] + cols[2],
+		rows[0] + rows[1] + rows[2], false, Image.FORMAT_RGBA8)
+	for part in pieces:
+		var at: Vector2i = NINE_LAYOUT[part]
+		var origin := Vector2i(
+			0 if at.x == 0 else (cols[0] if at.x == 1 else cols[0] + cols[1]),
+			0 if at.y == 0 else (rows[0] if at.y == 1 else rows[0] + rows[1]))
+		_tile_into(composed, pieces[part], origin,
+			Vector2i(cols[at.x], rows[at.y]))
 	var box := StyleBoxTexture.new()
 	box.texture = ImageTexture.create_from_image(composed)
-	box.texture_margin_left = lw
-	box.texture_margin_right = rw
-	box.texture_margin_top = th
-	box.texture_margin_bottom = bh
+	box.texture_margin_left = cols[0]
+	box.texture_margin_right = cols[2]
+	box.texture_margin_top = rows[0]
+	box.texture_margin_bottom = rows[2]
 	_cache[cache_key] = box
 	return box
+
+
+## Middle-band size: the first present piece's extent along `horizontal`.
+static func _band(pieces: Dictionary, order: Array, horizontal: bool,
+		fallback: int) -> int:
+	for part in order:
+		if pieces.has(part):
+			var img: Image = pieces[part]
+			return img.get_width() if horizontal else img.get_height()
+	return fallback
+
+
+## Repeat `img` over a `size` region at `origin` (clipped). A 3px edge
+## strip has to fill a 17px-tall corner band without leaving a hole.
+static func _tile_into(dst: Image, img: Image, origin: Vector2i,
+		size: Vector2i) -> void:
+	var y := 0
+	while y < size.y:
+		var x := 0
+		while x < size.x:
+			var w: int = mini(img.get_width(), size.x - x)
+			var h: int = mini(img.get_height(), size.y - y)
+			dst.blend_rect(img, Rect2i(Vector2i.ZERO, Vector2i(w, h)),
+				origin + Vector2i(x, y))
+			x += img.get_width()
+		y += img.get_height()
 
 
 static func list_panel() -> StyleBoxTexture:

@@ -14,6 +14,7 @@ static func dispatch(world_position: Vector2) -> void:
 		Net.relay_rally(selected[0], world_position)
 		Fx.ui_click()
 		return
+	var foe := _find_enemy(world_position)
 	var empty_vehicle := _find_empty_vehicle(world_position)
 	var apc := _find_apc(world_position)
 	var target_building := _find_interactable_building(world_position)
@@ -51,6 +52,13 @@ static func dispatch(world_position: Vector2) -> void:
 			# vehicles act on buildings: damaged hardware drives into the
 			# repair shop, cranes set up on wrecked buildings/bridges
 			_order(u, Order.for_target(target_building, sprint))
+			continue
+		# an ENEMY under the cursor is an ATTACK order, not a move to that
+		# spot. The cursor has always shown "attack" here while the
+		# dispatch fell through to a plain move, so the unit walked to
+		# where the enemy stood at click time and stopped.
+		if foe != null and is_instance_valid(foe) and u.kind != "cannon":
+			_order(u, Order.attack(foe, sprint))
 			continue
 		var ring := maxi(int(sqrt(float(movers.size()))), 1)
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0
@@ -124,6 +132,21 @@ static func _find_interactable_building(world_position: Vector2) -> Building2D:
 				and b.art_world_rect().has_point(world_position):
 			return b
 	return null
+
+
+## An ENEMY unit or building under the click point (the same Pick
+## priority the cursor uses, so what you see is what you get). Neutral
+## team-0 hardware is NOT a foe — clicking it means "go man it".
+static func _find_enemy(world_position: Vector2) -> Node2D:
+	var hit := Pick.at(world_position)
+	if hit == null or not is_instance_valid(hit):
+		return null
+	var team: int = int(hit.get("team"))
+	if team == 0 or team == MatchState.current.player_team:
+		return null
+	if hit is Building2D:
+		return hit if (hit as Building2D).alive and not (hit as Building2D).is_bridge() else null
+	return hit if hit is Unit2D and (hit as Unit2D).alive else null
 
 
 ## A fort under the click point belonging to the selected robots' team.

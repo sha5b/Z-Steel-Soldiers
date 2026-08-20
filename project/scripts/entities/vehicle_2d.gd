@@ -290,6 +290,7 @@ func _process(delta: float) -> void:
 	_lid_timer = maxf(0.0, _lid_timer - delta)
 	if manned:
 		_combat()
+		_chase(delta)
 	_try_enter()
 	_update_layer(delta)
 	_damage_fx(delta)

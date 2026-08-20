@@ -35,6 +35,36 @@ static func texture(map_name: String) -> ImageTexture:
 	return out
 
 
+## Square, aspect-preserved thumbnail for LIST rows. `texture()` returns
+## the map at one pixel per tile, so its size is the map's size — 64x86
+## for the smallest shipped map up to 256x256 for the biggest. Handing
+## those straight to an ItemList made every row as tall as its own icon
+## (86px to 256px), the widest item overflow the list horizontally, and
+## the scroll range balloon to ~6800px in a 319px viewport, which is why
+## the scrollbar rendered as an unreadable sliver. Letterboxed rather
+## than stretched so a tall map still looks tall.
+static var _thumbs := {}  # "<map>@<size>" -> ImageTexture
+
+static func thumbnail(map_name: String, size := 40) -> ImageTexture:
+	var key := "%s@%d" % [map_name, size]
+	if _thumbs.has(key):
+		return _thumbs[key]
+	var full := texture(map_name)
+	var out: ImageTexture = null
+	if full != null:
+		var img := full.get_image().duplicate()
+		var scale: float = float(size) / float(maxi(img.get_width(), img.get_height()))
+		img.resize(maxi(int(round(img.get_width() * scale)), 1),
+			maxi(int(round(img.get_height() * scale)), 1), Image.INTERPOLATE_BILINEAR)
+		var square := Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
+		square.fill(Color(0, 0, 0, 0))
+		square.blit_rect(img, Rect2i(Vector2i.ZERO, img.get_size()),
+			Vector2i((size - img.get_width()) / 2, (size - img.get_height()) / 2))
+		out = ImageTexture.create_from_image(square)
+	_thumbs[key] = out
+	return out
+
+
 ## True when the map data carries a tiles array we can sample.
 static func can_render(data: Dictionary) -> bool:
 	var w := int(data.width)

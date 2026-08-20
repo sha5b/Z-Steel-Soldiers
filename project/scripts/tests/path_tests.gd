@@ -14,6 +14,73 @@ extends Object
 const KNOWN_CROSSING_BASELINE := 0
 
 
+## MANY walkers, MANY routes: every unit handed a routable destination
+## must actually GET there. One walker (walk_a_pair) proves the route is
+## clean; this proves the ORDER completes, which is the failure the
+## "units stop halfway and do nothing" reports describe. Runs with the
+## fast direct-step so it can afford 24 routes.
+static func walkers_arrive(ctx: Node, rig: TestRig) -> void:
+	var grid: AStarGrid2D = NavWorld.current.nav_grid
+	if grid == null:
+		rig.check(false, "no nav grid")
+		rig.finish()
+		return
+	GameSettings.auto_idle = false  # no self-ordered detours mid-errand
+	GameState.over = true           # the map's own war must not kill them
+	var open := PackedVector2Array()
+	for y in grid.region.size.y:
+		for x in grid.region.size.x:
+			var c := grid.region.position + Vector2i(x, y)
+			if not grid.is_point_solid(c):
+				open.append(Vector2(c))
+	if open.size() < 2:
+		rig.finish("no open cells")
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var tried := 0
+	var stalled := 0
+	var worst := ""
+	for attempt in 400:
+		if tried >= 24:
+			break
+		var a: Vector2 = open[rng.randi_range(0, open.size() - 1)]
+		var b: Vector2 = open[rng.randi_range(0, open.size() - 1)]
+		if a.distance_to(b) < 40.0:
+			continue
+		var from := NavWorld.cell_center(Vector2i(a))
+		var to := NavWorld.cell_center(Vector2i(b))
+		if NavWorld.current.request_path(from, to, "robot").is_empty():
+			continue
+		tried += 1
+		var w: Unit2D = load("res://scenes/unit.tscn").instantiate()
+		w.team = 1
+		w.position = from
+		ctx.add_child(w)
+		w.hp = 100000000
+		w.max_hp = 100000000
+		w.move_to(to)
+		var steps := 0
+		# generous budget: the longest route on a 256x256 map at 60px/s
+		for i in 4000:
+			steps = i
+			w._process(0.05)
+			w._physics_process(0.05)
+			if w.move_target == Vector2.ZERO:
+				break
+		var left: float = w.global_position.distance_to(to)
+		if left > 24.0:
+			stalled += 1
+			if worst == "":
+				worst = "from %s to %s stopped %.0fpx short after %d steps" % [
+					from, to, left, steps]
+		w.queue_free()
+	rig.check(tried > 0, "no routable pairs found at all")
+	rig.check(stalled == 0, "%d of %d walkers never arrived (%s)" % [
+		stalled, tried, worst])
+	rig.finish("routes=%d stalled=%d" % [tried, stalled])
+
+
 ## Random-pair walking audit over the loaded map's nav grid: a robot
 ## walks a routable pair while its cell is sampled for solidity — any
 ## solid sample is a placement/nav regression, not a printout.
