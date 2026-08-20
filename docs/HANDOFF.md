@@ -31,7 +31,7 @@ Verified by test unless noted otherwise.
 
 | Area | What changed |
 |---|---|
-| Structures burn | Player-reported open item 2. Buildings had NO damage VFX: a fort one shot from collapse looked untouched, and the ruin it left sat clean for the rest of the match. The pack's burn set (`little_smoke`/`smoke`/`big_smoke`, `little_fire`/`small_fire_smoke`) was vehicle-only — `little_fire` had no consumer at all. Now: below 50% HP a structure smokes from a random point on its upper footprint, plume size and rate both climbing as it burns down and scaled by its area; a fresh ruin keeps open flame for 9s and then smoulders for good (the rule tank husks already followed). Bridges excluded — their damage state is the sheet's own wreck frame. `--art-test` asserts every burn set resolves, that `structure_smoke` returns art at each severity band, and that a real damaged fort and a real ruin both emit. |
+| Structures burn | Player-reported open item 2. Buildings had NO damage VFX: a fort one shot from collapse looked untouched, and the ruin it left sat clean for the rest of the match. Ported from the Zod Engine source rather than invented (`ZBuilding::ProcessBuildingsEffects`, see `RESEARCH.md` 2c): a damaged building holds a POPULATION of `max_effects * (1 - hp/max_hp)` looping effects, topped up when short, each at a uniform random point in a per-type `effects_box`; the mix is the original's one-roll 10/10/30/50 big_smoke / small_fire_smoke / fire / little_fire, so a burning structure is mostly FIRE. The loop has no destroyed check in zod either — that is exactly why a ruin goes on burning. Boxes and caps are verbatim from `bfort`/`brobot`/`bvehicle`/`brepair`/`bradar`. `--art-test` asserts the cap range, that the population grows with damage and maxes at death, that every fire lands inside the box, and that repair puts them out. |
 | Debris follows the footprint | Every piece left the exact visual centre, and a one-tile hut threw the same 4 pieces as a 128px fort. `Fx.building_debris` now takes the footprint rect: origins scatter across the structure's upper two thirds and the count scales with area (1 piece per ~2x2 tiles, 4-12). |
 
 ## Open
@@ -42,14 +42,11 @@ Verified by test unless noted otherwise.
    *spasm* is fixed (above). The reach half is unverified — it could not
    be reproduced headlessly. **Needs a repro: which map, which gun, and
    whether the gun is a fort tower mount or a free-standing cannon.**
-2. **Building smoke and debris effects** — LARGELY CLOSED, see below.
-   The root cause was not tuning: **structures never burned at all.**
-   Fixed (`Fx.structure_smoke`, `Building2D._damage_fx`/`_ruin_fx`,
-   `--art-test`). What is still unverified is the *pixel* match: nothing
-   in the pack records how fast the original's plumes came or which of
-   the five burn sets it used per structure size, so the rates and the
-   size bands are OURS. Eyeball with
-   `--screenshot 3 --burn-building`.
+2. **Building smoke and debris effects** — CLOSED. The root cause was
+   not tuning: **structures never burned at all.** Now ported verbatim
+   from the Zod Engine source, not guessed (`Fx.burn_effect`,
+   `Building2D._burn_fx`, `--art-test`; model and constants in
+   `RESEARCH.md` 2c). Eyeball with `--screenshot 3 --burn-building`.
 3. **Cliff faces** — improved but not confirmed against the original.
    Still unused in the autotile: the shadow column (col 4) and the
    rubble column (col 5) of `rocks_<planet>.png`, and row 5 (the ground
@@ -79,6 +76,30 @@ Verified by test unless noted otherwise.
    `factory_gui` art for a scrolling list (`main_entry`, `scrollbar_*`,
    `fup`/`fdown`) which is probably what the original used. The player
    said "forget it" for now — the art is copied and waiting.
+
+### THE ZOD ENGINE SOURCE IS READABLE (2026-08-20)
+
+The whole C++ source is public and fetchable file by file
+(`github.com/capehill/zodengine`, mirrors on `erezsh/zodengine` and
+SourceForge). Several items below and in `docs/BUGS.md` were written as
+"cannot be derived" when they only needed this. Already used it to port
+the building burn model and to verify every area-of-effect number.
+**Read it before calling anything underivable.** The 1996 Bitmap
+Brothers code itself was never released — Zod is the reimplementation
+the whole asset pack comes from, and is the reference of record.
+
+Known next candidates:
+- `orock.cpp` — the rock autotile table. `docs/BUGS.md` open item 9
+  says closing it "needs the original `orock.cpp` table; it cannot be
+  derived from the art alone". It can just be read.
+- `zbuilding.cpp` `level_img[MAX_BUILDING_LEVELS]` — loaded, but
+  `BFort::DoRender`/`DoAfterEffects` draw only the base surface, the
+  production `show_time_img` and the team flag. **No level digit is
+  drawn in the world**, so our `Building2D._build_level_plate` map digit
+  is ours (and its art comes out of `ui/hud/`). The production panel
+  already shows level as a gauge.
+- `zpath_finding*.cpp`, `zbot*.cpp` — formation movement (item 12) and
+  the AI's real behaviour list (item 13) instead of our approximations.
 
 ### Reverse-engineering still open
 

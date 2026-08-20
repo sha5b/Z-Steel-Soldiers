@@ -117,11 +117,33 @@ per-type `Init`/`DoRender`) against the actual sprite pixels:
   (`track_dust_r`), leak oil (`tank_oil_0-2`) and spark
   (`track_spark_r`/`ground_spark`); deaths use `death_effects/`
   (big_smoke/fire/little_fire/smoke/spark) and
-  `other/explosions/side_explosion`. STRUCTURES burn from the same set
-  (`Fx.structure_smoke`) — the plume size band per structure and the
-  emission rate are OURS, not read off the release: nothing in the pack
-  records either. `buildings/death_effects/` holds only the 7 tumbling
-  piece sets, so the smoke/fire art is shared with the vehicle folder.
+  `other/explosions/side_explosion`.
+- **Structures burn** — `ZBuilding::ProcessBuildingsEffects`, ported
+  exactly (read off the Zod Engine source, 2026-08-20). A damaged
+  building holds a POPULATION of effects, not a spawn rate:
+  `should_effects = max_effects * (1 - health/max_health)`, topped up
+  when short, each placed uniformly inside a per-type `effects_box` in
+  art-local px. The loop has **no destroyed check**, which is why a Z
+  ruin keeps burning — at zero health the population sits at
+  `max_effects` for good. The mix is one `rand() % 100` roll:
+  **<10 big_smoke, <20 small_fire_smoke, <50 fire, else little_fire** —
+  so a burning building is mostly FIRE, and `smoke`/`little_smoke`/
+  `spark` are the VEHICLE death effects, never used by a building.
+  Constructor values, verbatim:
+
+  | source | effects_box (x,y,w,h) | max_effects |
+  |---|---|---|
+  | `bfort.cpp` | 18, 18, 136, 118 | `20 + rand()%8` |
+  | `brobot.cpp` / `bvehicle.cpp` | 8, 8, w-24, h-24 | `8 + rand()%4` |
+  | `brepair.cpp` | 8, 8, w-24, h-24 | `6 + rand()%4` |
+  | `bradar.cpp` | 1, 6, 44, 30 | `6 + rand()%3` |
+  | `zbuilding.cpp` (fallback) | 16, 16, 32, 32 | 8 |
+
+  ONE deliberate deviation: zod never shrinks `extra_effects`, so a
+  repaired zod building burns for the rest of the match. We repair
+  buildings, so `_burn_fx` trims the population back down.
+  `buildings/death_effects/` holds only the 7 tumbling piece sets, so
+  the smoke/fire art is shared with the vehicle folder.
 
 ### Original art still without a consumer (future work)
 
@@ -240,6 +262,22 @@ AI, save/campaign, HUD panels/icons/minimap, gestures/idle anims.
 | medium | 12 | 128 | 80/240 r45 missile 160 | 2.34 | 50/74 | – | ~150 |
 
 (HP normalized to /74; damage is a fraction of target max HP per hit.)
+
+**AREAS OF EFFECT ARE VERIFIED (2026-08-20)** against
+`zsettings.cpp SetDefaults` in the Zod Engine source. Every non-zero
+`attack_damage_radius` matches ours exactly — tough 40, light 40,
+medium 45, heavy 50, missile_launcher 80, gun 40, howitzer 40,
+missile_cannon 50 — as do the zeros (grunt/psycho/sniper/pyro/laser/
+jeep/apc/crane/gatling) and `grenade_damage_radius = 30`. The fort
+turret's radius is not a setting at all: `OMapObject::
+ServerFireTurrentMissile` hardcodes `radius = 40`, which is what
+`fort_building.gd` uses. The splash MODEL matches too
+(`ZServer::ProcessMissileDamage`): one roll per object, LINEAR falloff
+`damage * (1 - mag/radius)`, friendly fire OFF, a circle not a box,
+buildings and rocks included. One knowing divergence — the original
+measures `mag` to the object's CENTRE; we clamp to a building's
+footprint rect (`BuildingRegistry.blast_targets`) so a shell on a big
+factory's wall does not measure to its middle.
 
 **THIS TABLE IS NOW PORTED, and `--balance-test` asserts it** — every
 stat above plus the per-level build lists from `zbuildlist.cpp

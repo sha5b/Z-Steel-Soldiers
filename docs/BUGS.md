@@ -71,8 +71,30 @@ They are listed in the order I would tackle them.
 9. **Rock autotiling ignores diagonals** — `MapLoader._rock_piece` uses
     8 of the 36 sheet pieces and only 4-neighbour masks, so inner
     corners where two arms of a formation meet show a straight edge.
-    Closing it needs the original `orock.cpp` table; it cannot be
-    derived from the art alone.
+    **NO LONGER UNDERIVABLE** (2026-08-20): `orock.cpp` is public and
+    readable. It is not a table — it is a cascade of ~15 conditions per
+    layer over `r/l/up/dn` PLUS diagonals (`dl/dr/ur`) PLUS
+    DISTANCE-2 neighbours (`ddn`, `uup`, `uur`, `ddr`), selecting from
+    named surfaces (`rock_center_top`, `rock_up_left_top`,
+    `rock_vert_down_top`, ...). Each rock renders TWO layers
+    (`render_img[0][j]` / `render_img[1][j]`, j = 0..2 vertical cells),
+    which is also where the unused shadow and rubble columns go. Porting
+    it is transcription now, not reverse engineering.
+
+10. **Map-item TURRETS are missing entirely** — we load `map_item`
+    scenery as an inert `Sprite2D` (`MapLoader._spawn_map_item`): no
+    health, no weapon, indestructible. In the original `OMapObject` is a
+    destructible object (`map_item_health = 40/240`) that FIRES:
+    `ServerFireTurrentMissile` lobs a missile of
+    `map_item_turrent_damage` (50/240) with a hardcoded `radius = 40` at
+    a UNIFORM RANDOM point in a `max_turrent_horizontal_distance` x
+    `max_turrent_vertical_distance` box (300 x 300, so +-300 = a 600px
+    square) around its own centre — suppressive scatter, not aimed fire.
+    This is the most likely root cause of the player's "turrets don't
+    reach all around the building" (HANDOFF open item 1): the original's
+    emplacements cover a huge area around themselves and ours do
+    nothing at all. NOT YET IMPLEMENTED — it is a new gameplay feature
+    (destructible, firing scenery), so it needs a scope decision.
 
 ## Fixed
 - 2026-08-20 — **THE ORIGINAL 20-LEVEL CAMPAIGN IS IN.**

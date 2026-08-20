@@ -143,6 +143,7 @@ func _ready() -> void:
 		MatchState.current.register_facility(self)
 	if not is_bridge():
 		apply_footprint()
+	_max_burn = _roll_max_burn()
 
 
 func _exit_tree() -> void:
@@ -268,7 +269,6 @@ func _build_sprite() -> void:
 			set_flag_team(team)
 
 	_build_overlays()
-	_build_level_plate(ts)
 
 	if is_fort:
 		# the ORIGINAL team-coloured bar art, cropped right-to-left as
@@ -298,37 +298,16 @@ func _build_sprite() -> void:
 ## NOWHERE — the original stamps it on the structure with the 6x7 digit
 ## glyphs the pack ships as `level_1..6`. Producers only: a bridge or a
 ## radar has no roster to unlock.
-const LEVEL_DIGITS := "res://assets/z/ui/hud/level_%d.bmp"
-var _level_plate: Sprite2D = null
-
-
-func _build_level_plate(art_size: Vector2) -> void:
-	var bdef := ContentDB.building_def(building_id)
-	if bdef == null or not (bdef.produces or is_fort) or is_bridge():
-		return
-	var path := LEVEL_DIGITS % (clampi(level, 0, 5) + 1)
-	if not ResourceLoader.exists(path):
-		return
-	_level_plate = Sprite2D.new()
-	_level_plate.name = "LevelPlate"
-	_level_plate.texture = load(path)
-	_level_plate.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_level_plate.centered = false
-	# bottom-left of the art, clear of the ground split line and drawn
-	# over the structure (the sprite sits at the art's top-left - 8,-8)
-	_level_plate.position = Vector2(-6.0, art_size.y - 8.0 - 9.0)
-	_level_plate.z_index = 1
-	add_child(_level_plate)
-
-
-## Level changes with an upgrade — the plate follows.
+## Level is a PANEL readout, not a world sprite. We used to stamp
+## `ui/hud/level_<n>.bmp` at the art's bottom-left, which put an
+## unlabelled yellow digit on bare ground beside every producer. The
+## original draws no such thing: `BFort::DoRender`/`DoAfterEffects`
+## stamp the base surface, the production `show_time_img` and the team
+## flag, and nothing else — `level_img` is HUD art (which is why it
+## lives under `ui/hud/`), and the production panel already shows level
+## as one of its two vertical gauges.
 func set_level(new_level: int) -> void:
 	level = clampi(new_level, 0, 5)
-	if _level_plate == null:
-		return
-	var path := LEVEL_DIGITS % (level + 1)
-	if ResourceLoader.exists(path):
-		_level_plate.texture = load(path)
 
 
 ## GROUND/STRUCTURE SPLIT. A building's art is one image that also
@@ -757,12 +736,13 @@ func update_flag(for_team: int) -> void:
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		return
+	# the burn population runs DESTROYED too: the original's loop has no
+	# IsDestroyed check, which is why a Z ruin goes on burning
+	_burn_fx()
 	if not alive:
-		_ruin_fx(delta)
-		return  # a ruin produces nothing but smoke
+		return  # a ruin produces nothing but fire
 	_follow_zone_owner()
 	_tick_behaviours(delta)
-	_damage_fx(delta)
 
 
 ## Zone-follow, ONE implementation: whichever zone contains the
@@ -884,63 +864,88 @@ func _repair_tick(delta: float) -> void:
 
 
 # ----------------------- burning -----------------------
-# The original burns a hurt structure. We burned nothing: a fort one
-# shot from collapse looked identical to an untouched one, and the ruin
-# it left sat there clean for the rest of the match. Vehicles already
-# had this (Vehicle2D._damage_fx, the original's ETankSmoke); structures
-# use the same shipped art through Fx.structure_smoke.
-
-const SMOKE_AT := 0.5  # fraction of max HP where a structure starts smoking
-const RUIN_BURN := 9.0  # seconds a fresh ruin keeps OPEN FLAME, then smoulders
-var _smoke_timer := 0.0
-var _ruin_burn := 0.0
-
-
-## Smoke off a damaged structure. The plume leaves a random point on the
-## upper part of the footprint — the walls and roof, not the apron in
-## front — and both the rate and the plume size climb as the structure
-## burns down. Big structures carry proportionally more fires than a
-## radar hut. Bridges are excluded: their damage state is the sheet's
-## own wreck frame, and a span of rubble in a river does not smoke.
-func _damage_fx(delta: float) -> void:
-	if is_bridge() or float(hp) >= float(max_hp) * SMOKE_AT:
-		return
-	_smoke_timer -= delta
-	if _smoke_timer > 0.0:
-		return
-	# 0 at the smoking threshold, 1 at destruction
-	var hurt := 1.0 - clampf(float(hp) / (float(max_hp) * SMOKE_AT), 0.0, 1.0)
-	var fp := world_footprint()
-	var area_scale := clampf(fp.size.x * fp.size.y / 4096.0, 0.6, 2.5)
-	_smoke_timer = randf_range(0.5, 1.1) / (area_scale * (0.4 + hurt))
-	Fx.structure_smoke(_burn_point(fp), hurt,
-		hurt > 0.6 and randf() < 0.35)
+# ZBuilding::ProcessBuildingsEffects, ported. A hurt structure holds a
+# POPULATION of burn effects, not a spawn rate:
+#
+#     should_effects = max_effects * (1 - health / max_health)
+#
+# topped up whenever it is short, each new effect placed at a uniform
+# random point inside a per-type `effects_box` in art-local pixels. The
+# loop has NO destroyed check, which is why a Z ruin keeps burning: at
+# zero health the population sits at max_effects for good.
+#
+# The box and the cap are verbatim from the Zod Engine constructors
+# (bfort/brobot/bvehicle/brepair/bradar; ZBuilding is the fallback) —
+# see docs/RESEARCH.md. `rand()` ranges are kept, so two forts on one
+# map burn at slightly different intensities like they do in the
+# original.
+const BURN_BOX_DEFAULT := Rect2(16.0, 16.0, 32.0, 32.0)  # ZBuilding
+const BURN_BOX_FORT := Rect2(18.0, 18.0, 136.0, 118.0)   # BFort
+const BURN_BOX_RADAR := Rect2(1.0, 6.0, 44.0, 30.0)      # BRadar
+var _burn_effects: Array[Node] = []
+var _max_burn := 0
 
 
-## A fallen structure keeps burning: open flame for the first seconds,
-## then a thinner column that never quite goes out — the same rule tank
-## husks follow (Vehicle2D._update_wreck).
-func _ruin_fx(delta: float) -> void:
+## The original's per-type cap, rolled once per building like the
+## constructors do.
+func _roll_max_burn() -> int:
 	if is_bridge():
-		return
-	_ruin_burn = maxf(0.0, _ruin_burn - delta)
-	_smoke_timer -= delta
-	if _smoke_timer > 0.0:
-		return
-	var burning := _ruin_burn > 0.0
-	_smoke_timer = randf_range(0.3, 0.7) if burning else randf_range(1.3, 2.6)
-	Fx.structure_smoke(_burn_point(world_footprint()),
-		1.0 if burning else 0.4, burning)
+		return 0  # zod bridges carry no effects_box
+	if is_fort:
+		return 20 + (randi() % 8)      # BFort
+	match building_id:
+		2:
+			return 6 + (randi() % 3)   # BRadar
+		3:
+			return 6 + (randi() % 4)   # BRepair
+		4, 5:
+			return 8 + (randi() % 4)   # BRobot / BVehicle
+	return 8                           # ZBuilding default
 
 
-## Where a plume leaves the structure: anywhere across its width, in the
-## top 40% of its height. Inset proportionally so a one-tile hut still
-## emits from inside its own outline.
-func _burn_point(fp: Rect2) -> Vector2:
-	var inset := minf(4.0, fp.size.x * 0.25)
-	return Vector2(
-		randf_range(fp.position.x + inset, fp.end.x - inset),
-		randf_range(fp.position.y, fp.position.y + fp.size.y * 0.4))
+## `effects_box` in art-local px. The factories and the repair shop
+## derive it from their own art (`8, 8, w - 24, h - 24`); the fort and
+## the radar carry literal boxes.
+func _burn_box() -> Rect2:
+	if is_fort:
+		return BURN_BOX_FORT
+	if building_id == 2:
+		return BURN_BOX_RADAR
+	if building_id in [3, 4, 5] and _art_size != Vector2.ZERO:
+		return Rect2(8.0, 8.0,
+			maxf(_art_size.x - 24.0, 8.0), maxf(_art_size.y - 24.0, 8.0))
+	return BURN_BOX_DEFAULT
+
+
+## Top the burn population up to what the current damage calls for.
+## Cheap: the loop body only runs on the frames the count is short.
+func _burn_fx() -> void:
+	if _max_burn == 0 or _art_size == Vector2.ZERO:
+		return
+	var want := int(_max_burn * (1.0 - clampf(
+		float(hp) / float(maxi(max_hp, 1)), 0.0, 1.0)))
+	_burn_effects = _burn_effects.filter(func(fx): return is_instance_valid(fx))
+	# DEVIATION, deliberate: the original never shrinks `extra_effects`,
+	# so a repaired building burns for the rest of the match. We repair
+	# buildings (crane + repair shop), so the fires have to go back out.
+	while _burn_effects.size() > want:
+		var done: Node = _burn_effects.pop_back()
+		if is_instance_valid(done):
+			done.queue_free()
+	if _burn_effects.size() >= want:
+		return
+	var box := _burn_box()
+	var art_origin := art_world_rect().position - global_position
+	while _burn_effects.size() < want:
+		var fx: AnimatedSprite2D = Fx.burn_effect()
+		if fx == null:
+			_max_burn = 0  # art missing: stop asking every frame
+			return
+		fx.position = art_origin + box.position + Vector2(
+			randf() * box.size.x, randf() * box.size.y)
+		fx.z_index = 2  # over the structure, under the flag and the plate
+		add_child(fx)
+		_burn_effects.append(fx)
 
 
 ## `at` is the impact point in world px when the caller knows it (every
@@ -1004,9 +1009,8 @@ func _death_visuals() -> void:
 	# generic ones for everything else
 	Fx.building_debris(visual_center(), is_fort,
 		maxf(_art_size.x, 32.0) * 0.5, world_footprint())
-	# the ruin goes on burning (see _ruin_fx)
-	_ruin_burn = RUIN_BURN
-	_smoke_timer = 0.0
+	# the ruin goes on burning by itself: hp is 0, so _burn_fx tops the
+	# population up to max_effects and never takes it down again
 	if _sprite:
 		_set_building_texture(_texture_path(true))
 		for child in get_children():

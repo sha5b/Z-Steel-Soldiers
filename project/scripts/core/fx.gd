@@ -149,36 +149,40 @@ func building_debris(world_pos: Vector2, fort: bool, spread := 40.0,
 	return thrown
 
 
-## A HURT OR BURNING STRUCTURE. The pack ships the original's whole
-## burn set (`death_effects/`: little_smoke/smoke/big_smoke and
-## little_fire/small_fire_smoke) and only vehicles ever used it — a fort
-## one shot from collapse looked exactly like an untouched one, and its
-## ruin then sat there clean forever. `severity` is 0..1 and picks the
-## size of the plume; `with_fire` puts a flame at its foot. Returns
-## false when none of the art resolves (so a test can tell).
-const STRUCTURE_SMOKE := ["little_smoke", "smoke", "big_smoke"]
-const STRUCTURE_FIRE := ["little_fire", "small_fire_smoke"]
+## A BURNING STRUCTURE, exactly the original's mix. `ZBuilding::
+## ProcessBuildingsEffects` rolls `rand() % 100` per effect and takes
+## BIG_SMOKE under 10, SMALL_FIRE_SMOKE under 20, FIRE under 50 and
+## LITTLE_FIRE otherwise — so a burning building is mostly FIRE, and the
+## `smoke`/`little_smoke`/`spark` sets it never uses are the VEHICLE
+## death effects. The building owns the node it gets back (the original
+## holds them in its own `extra_effects` vector and tops the population
+## up); returns null when the art does not resolve.
+##
+## Cumulative thresholds on one 0..99 roll, in the original's order.
+const BURN_MIX := [
+	[10, "big_smoke", 8.0],
+	[20, "small_fire_smoke", 9.0],
+	[50, "fire", 10.0],
+	[100, "little_fire", 10.0],
+]
 var _loop_frames := {}  # effect folder -> SpriteFrames (built once, shared)
 
 
-func structure_smoke(world_pos: Vector2, severity: float,
-		with_fire := false) -> bool:
-	var sizes: Array = STRUCTURE_SMOKE
-	var pick: String = sizes[clampi(int(clampf(severity, 0.0, 0.999)
-		* sizes.size()), 0, sizes.size() - 1)]
-	var frames := _looping_effect(pick, 8.0)
-	if frames != null:
-		_spawn_drifting(frames, world_pos + Vector2(randf_range(-3.0, 3.0), 0.0),
-			randf_range(9.0, 18.0), randf_range(1.0, 1.7))
-	if with_fire:
-		# the flame sits low and lives briefly; the plume above it is
-		# what carries the eye
-		var flame := _looping_effect(
-			String(STRUCTURE_FIRE[randi() % STRUCTURE_FIRE.size()]), 10.0)
-		if flame != null:
-			_spawn_drifting(flame, world_pos + Vector2(randf_range(-4.0, 4.0), 3.0),
-				randf_range(2.0, 5.0), randf_range(0.5, 0.9))
-	return frames != null
+func burn_effect() -> AnimatedSprite2D:
+	var roll := randi() % 100
+	for entry in BURN_MIX:
+		if roll >= int(entry[0]):
+			continue
+		var frames := _looping_effect(String(entry[1]), float(entry[2]))
+		if frames == null:
+			return null
+		var fx := AnimatedSprite2D.new()
+		fx.sprite_frames = frames
+		fx.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		fx.frame = randi() % maxi(frames.get_frame_count("fx"), 1)
+		fx.play("fx")
+		return fx
+	return null
 
 
 ## Looping frames for a named effect folder, built ONCE. A burning fort

@@ -177,42 +177,88 @@ static func _audit_wired_art(ctx: Node, rig: TestRig) -> void:
 	rig.check(large_wreck > small_wreck,
 		"debris count ignored footprint size (%d vs %d)"
 			% [large_wreck, small_wreck])
-	# a HURT STRUCTURE BURNS. The pack's whole burn set was vehicle-only:
-	# buildings never smoked at any damage level and their ruins never
-	# smouldered (docs/HANDOFF.md open item 2).
-	var burn_sets: Array = Fx.STRUCTURE_SMOKE + Fx.STRUCTURE_FIRE
-	for burn_name in burn_sets:
+	# a HURT STRUCTURE BURNS (ZBuilding::ProcessBuildingsEffects). The
+	# pack's burn set was vehicle-only: buildings never burned at any
+	# damage level and their ruins sat clean (docs/HANDOFF.md item 2).
+	# The mix is the original's rand()%100 roll, so the four sets it
+	# names must all resolve — and the three it does NOT name
+	# (smoke/little_smoke/spark) are the VEHICLE death effects.
+	for entry in Fx.BURN_MIX:
+		var burn_name := String(entry[1])
 		var burn: SpriteFrames = AnimLibrary.effect_frames(
-			"res://assets/z/effects/%s" % burn_name, String(burn_name), 8.0)
+			"res://assets/z/effects/%s" % burn_name, burn_name, float(entry[2]))
 		rig.check(burn != null and burn.has_animation("fx")
 				and burn.get_frame_count("fx") > 0,
 			"burn set '%s' has no frames" % burn_name)
-	for severity in [0.0, 0.5, 1.0]:
-		rig.check(Fx.structure_smoke(Vector2(4000, 4000), severity, true),
-			"structure smoke at severity %.1f resolved no art" % severity)
+	rig.check(int(Fx.BURN_MIX[Fx.BURN_MIX.size() - 1][0]) == 100,
+		"burn mix thresholds do not close at 100")
+	for _i in 40:
+		rig.check(Fx.burn_effect() != null, "burn effect roll resolved no art")
+	# POPULATION, not a rate: max_effects * (1 - hp/max_hp), topped up,
+	# and never taken down again once the structure is dead
 	var burner: Building2D = ContentDB.building_def(0).behaviour.new()
 	burner.setup(0, 1, "desert", 1)
 	ctx.add_child(burner)
-	burner.hp = int(burner.max_hp * 0.1)
-	var puffs := Fx.get_child_count()
-	burner._damage_fx(1.0)
-	rig.check(Fx.get_child_count() > puffs, "a burning fort emitted no smoke")
-	# and the ruin it leaves keeps burning, like a tank husk does
-	burner.alive = false
-	burner._ruin_burn = Building2D.RUIN_BURN
-	burner._smoke_timer = 0.0
-	puffs = Fx.get_child_count()
-	burner._ruin_fx(1.0)
-	rig.check(Fx.get_child_count() > puffs, "a fort's ruin did not smoulder")
+	rig.check(burner._max_burn >= 20 and burner._max_burn <= 27,
+		"fort burn cap %d outside the original's 20+rand%%8" % burner._max_burn)
+	rig.check(burner._burn_effects.is_empty(),
+		"an undamaged fort was already burning")
+	burner.hp = int(burner.max_hp * 0.5)
+	burner._burn_fx()
+	var half := burner._burn_effects.size()
+	rig.check(half > 0, "a half-destroyed fort held no fires")
+	burner.hp = 0
+	burner._burn_fx()
+	rig.check(burner._burn_effects.size() > half,
+		"burn population did not grow with damage (%d then %d)"
+			% [half, burner._burn_effects.size()])
+	rig.check(burner._burn_effects.size() == burner._max_burn,
+		"a dead structure holds %d fires, want max_effects %d"
+			% [burner._burn_effects.size(), burner._max_burn])
+	# every fire sits inside the original's effects_box, in art-local px
+	var box: Rect2 = burner._burn_box()
+	rig.check(box == Building2D.BURN_BOX_FORT,
+		"fort effects_box drifted from BFort's 18,18,136,118")
+	var art_origin: Vector2 = burner.art_world_rect().position \
+			- burner.global_position
+	for fx in burner._burn_effects:
+		var local: Vector2 = (fx as Node2D).position - art_origin
+		rig.check(box.has_point(local),
+			"a fire sits at %s, outside effects_box %s" % [local, box])
+	# repaired: the fires go back out (our deviation — zod never shrinks
+	# the vector, so a repaired zod building burns for the whole match)
+	burner.hp = burner.max_hp
+	burner._burn_fx()
+	rig.check(burner._burn_effects.is_empty(),
+		"a fully repaired structure kept %d fires"
+			% burner._burn_effects.size())
 	burner.queue_free()
-	# the building LEVEL digit, on every producer
+	# the radar carries its own literal box, the factories derive theirs
+	for id in [2, 4]:
+		var other: Building2D = ContentDB.building_def(id).behaviour.new()
+		other.setup(id, 1, "desert", 1)
+		ctx.add_child(other)
+		rig.check(other._max_burn > 0,
+			"building %d rolled no burn cap" % id)
+		if id == 2:
+			rig.check(other._burn_box() == Building2D.BURN_BOX_RADAR,
+				"radar effects_box drifted from BRadar's 1,6,44,30")
+		else:
+			rig.check(other._burn_box().position == Vector2(8.0, 8.0),
+				"factory effects_box does not start at 8,8")
+		other.queue_free()
+	# NO level digit in the world: the original stamps only the base
+	# surface, the production Time readout and the flag (BFort::DoRender
+	# / DoAfterEffects), and `level_<n>.bmp` is HUD art. Level is a
+	# production-panel gauge. Assert the world sprite stays gone.
 	for id in [0, 4, 5]:
 		var bdef := ContentDB.building_def(id)
 		var b: Building2D = bdef.behaviour.new()
 		b.setup(id, 1, "desert", 3)
 		ctx.add_child(b)
-		rig.check(b.get_node_or_null("LevelPlate") != null,
-			"%s shows no level digit" % bdef.bname)
+		rig.check(b.get_node_or_null("LevelPlate") == null,
+			"%s stamps a level digit in the world" % bdef.bname)
+		rig.check(b.level == 3, "%s lost its level value" % bdef.bname)
 		b.queue_free()
 
 
