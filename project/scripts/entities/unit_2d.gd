@@ -103,7 +103,7 @@ func _process(delta: float) -> void:
 	_combat()
 	_try_enter()
 	if kind == "robot":
-		if MatchState.auto_idle and defend_post == Vector2.INF:
+		if GameSettings.auto_idle and defend_post == Vector2.INF:
 			_smart_idle()
 		_return_to_post()
 		_idle(delta)
@@ -174,7 +174,7 @@ func _steer(delta: float) -> void:
 		# REAL collision (modern engine, no grid-only limits): the slide
 		# follows the A* route and pushes back off building walls — the
 		# corner-cutting that steered units through solid cells is gone
-		if MatchState.direct_step:
+		if TestLevers.direct_step:
 			global_position += velocity * delta
 		else:
 			move_and_slide()  # real collision — slides along building walls
@@ -184,7 +184,7 @@ func _steer(delta: float) -> void:
 			# step hit a wall: sliding along a building also increases
 			# the distance, and consuming then sent the beeline straight
 			# across the wall corner (units jammed against factories)
-			var slid_into_wall := not MatchState.direct_step \
+			var slid_into_wall := not TestLevers.direct_step \
 					and get_last_slide_collision() != null
 			if not slid_into_wall:
 				if not waypoints.is_empty():
@@ -622,7 +622,7 @@ func _try_enter() -> void:
 			v.load_robot(self)
 
 
-## Smart idle (MatchState.auto_idle, the grab-hand toggle): idle robots
+## Smart idle (GameSettings.auto_idle, the grab-hand toggle): idle robots
 ## within the auto_grab radius man empty hardware or walk to a
 ## capturable flag — presence does the rest. Throttled: it scans.
 ## Halved from the original 220 (zsettings auto_grab_*_distance) as a

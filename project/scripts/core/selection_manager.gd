@@ -7,6 +7,13 @@ signal drag_started
 signal drag_moved
 signal drag_ended
 
+## What a right-click order DOES (set by the Q/E/R hotkeys and the
+## stance bar next to the minimap): MOVE ignores enemies en route,
+## ATTACK_MOVE halts and engages, DEFEND walks there and holds the
+## post. Player UI intent lives with selection, not with the economy.
+enum OrderStance { MOVE, ATTACK_MOVE, DEFEND }
+var order_stance: OrderStance = OrderStance.MOVE
+
 var selected: Array[Node] = []
 var drag_start := Vector2.ZERO
 var drag_current := Vector2.ZERO

@@ -345,7 +345,7 @@ func _steer(delta: float) -> void:
 		_play_body()
 		var dist_before := offset_to_next_waypoint()
 		var prev_pos := global_position
-		if MatchState.direct_step:
+		if TestLevers.direct_step:
 			global_position += velocity * delta
 		else:
 			move_and_slide()  # real collision — slides along building walls  # real collision — slides along building walls
@@ -358,7 +358,7 @@ func _steer(delta: float) -> void:
 		# increases the distance and must NOT consume the waypoint)
 		var final_before: float = global_position.distance_to(move_target) \
 				if move_target != Vector2.ZERO else INF
-		var slid_into_wall := not MatchState.direct_step \
+		var slid_into_wall := not TestLevers.direct_step \
 				and get_last_slide_collision() != null
 		if not slid_into_wall:
 			if not waypoints.is_empty():

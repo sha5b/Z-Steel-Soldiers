@@ -223,19 +223,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_Q:
-				MatchState.order_stance = MatchState.OrderStance.ATTACK_MOVE
+				SelectionManager.order_stance = SelectionManager.OrderStance.ATTACK_MOVE
 				Fx.ui_click()
 				return
 			KEY_E:
-				MatchState.order_stance = MatchState.OrderStance.DEFEND
+				SelectionManager.order_stance = SelectionManager.OrderStance.DEFEND
 				Fx.ui_click()
 				return
 			KEY_R:
-				MatchState.order_stance = MatchState.OrderStance.MOVE
+				SelectionManager.order_stance = SelectionManager.OrderStance.MOVE
 				Fx.ui_click()
 				return
 			KEY_T:
-				MatchState.auto_idle = not MatchState.auto_idle
+				GameSettings.auto_idle = not GameSettings.auto_idle
 				Fx.ui_click()
 				return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:

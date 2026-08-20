@@ -16,7 +16,7 @@ static func _clear(u: Unit2D) -> bool:
 
 
 static func run(ctx: Node, rig: TestRig) -> void:
-	MatchState.direct_step = false  # real move_and_slide this block
+	TestLevers.direct_step = false  # real move_and_slide this block
 	# fixture: a vehicle factory (5x5 solid art) on open ground near the
 	# map's second zone — same spot the factory tests use
 	var vf := VehicleFactory.new()
@@ -98,5 +98,5 @@ static func run(ctx: Node, rig: TestRig) -> void:
 	rig.check(walker.move_target == Vector2.ZERO, "physics walker never arrived (stuck at %s)" % [
 		walker.global_position])
 	walker.queue_free()
-	MatchState.direct_step = true  # restore the harness default
+	TestLevers.direct_step = true  # restore the harness default
 	rig.finish("samples=%d bad=%d" % [samples, bad])

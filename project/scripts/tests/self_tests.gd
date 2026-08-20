@@ -56,7 +56,7 @@ static func run(ctx: Node) -> void:
 	# movement is physics-driven (move_and_slide) in the real game; the
 	# harness steps units directly for speed — logic-only, the physics
 	# path is exercised by playing (and by --path-test's solid audit)
-	MatchState.direct_step = true
+	TestLevers.direct_step = true
 	Engine.time_scale = 4.0  # awaited-frame sims run 4x faster; manual loops pass fixed deltas
 
 	# isolate the micro-tests from the live CPU brain: the AI now really
@@ -331,7 +331,7 @@ static func run(ctx: Node) -> void:
 			b._process(0.05)
 		print("COMBAT: a_alive=%s b_alive=%s hp_a=%d hp_b=%d" % [a.alive, b.alive, a.hp, b.hp])
 	if "--factory-test" in args:
-		MatchState.fast_build = true  # real build times are 72-373s
+		TestLevers.fast_build = true  # real build times are 72-373s
 		var f := RobotFactory.new()
 		var z2: Node2D = MatchState.zones[1]
 		f.position = z2.position + z2.world_rect().get_center() - Vector2(24, 24)
@@ -359,7 +359,7 @@ static func run(ctx: Node) -> void:
 			before, tree.get_nodes_in_group("units").size(),
 			money_before, MatchState.player_money(), f.queue.items.size(), ruin_spawned])
 	if "--ai-test" in args:
-		MatchState.fast_build = true  # real build times are 72-373s
+		TestLevers.fast_build = true  # real build times are 72-373s
 		var ai := ctx.get_node_or_null("CpuAi_T2")
 		if ai:
 			var moved := 0
@@ -457,8 +457,8 @@ static func run(ctx: Node) -> void:
 		# unmanned hardware must not take rally orders — the AI rallies
 		# every facility at an enemy fort, and empty vehicles used to
 		# drive there themselves; a crewed vehicle honors orders again
-		MatchState.fast_build = true
-		MatchState.auto_idle = false  # deterministic: no ambient grabs
+		TestLevers.fast_build = true
+		GameSettings.auto_idle = false  # deterministic: no ambient grabs
 		var rr := TestRig.start("RALLY")
 		var vf := VehicleFactory.new()
 		var vz: Node2D = MatchState.zones[1]
@@ -688,7 +688,7 @@ static func run(ctx: Node) -> void:
 			# elimination cascade would die() our bot mid-order; over=
 			# true blocks report_fort_destroyed for the test's duration
 			GameState.over = true
-			MatchState.auto_idle = false  # deterministic order sequence
+			GameSettings.auto_idle = false  # deterministic order sequence
 			bot.issue_order(Order.move(Vector2(700, 600)))
 			if bot.state != Unit2D.State.MOVING or bot.attack_move \
 					or bot.enter_target != null:
@@ -762,7 +762,7 @@ static func run(ctx: Node) -> void:
 			# (AUTO_RADIUS, playtested to 110) gets a crew without any
 			# order — a FRESH robot (defenders hold their post and never
 			# auto-grab by design). Plant the jeep INSIDE the radius.
-			MatchState.auto_idle = true  # ...and back on for the grab test
+			GameSettings.auto_idle = true  # ...and back on for the grab test
 			var idle_bot: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
 				Vector2(560, 520))
 			idle_bot.hp = 100000
@@ -1095,7 +1095,7 @@ static func run(ctx: Node) -> void:
 		print("POSESUM: lines=%d missing_layers=%d %s" % [lines.size(),
 			pose_missing, "OK" if pose_missing == 0 else "FAIL"])
 	if "--level-test" in args:
-		MatchState.fast_build = true  # real build times are 72-373s
+		TestLevers.fast_build = true  # real build times are 72-373s
 		# building levels gate the build roster (original zbuildlist) and
 		# speed up production; forts build robots AND vehicles AND cannons
 		var lproblems: Array[String] = []
@@ -1377,7 +1377,7 @@ static func run(ctx: Node) -> void:
 		print("COMBAT2: problems=%d %s" % [cproblems.size(),
 			", ".join(cproblems) if not cproblems.is_empty() else "OK"])
 	if "--tactics-test" in args:
-		MatchState.fast_build = true  # real build times are 72-373s
+		TestLevers.fast_build = true  # real build times are 72-373s
 		# the tactical AI, end to end: with funds and hardware on the
 		# map it must produce units, man empty vehicles/cannons and
 		# take zones — not just charge the enemy fort
@@ -1515,7 +1515,7 @@ static func run(ctx: Node) -> void:
 		print("PICKUP: rockets crate grenades %d -> %d (want +20)" % [
 			gren_before, collector.grenades])
 	if "--prod-test" in args:
-		MatchState.fast_build = true  # real build times are 72-373s
+		TestLevers.fast_build = true  # real build times are 72-373s
 		var f2: RobotFactory = null
 		for c in ctx.get_children():
 			if c is RobotFactory:
@@ -1543,7 +1543,7 @@ static func run(ctx: Node) -> void:
 					ok, count_before, tree.get_nodes_in_group("units").size(),
 					psychos, f2.queue.items.size()])
 	if "--fortprod-test" in args:
-		MatchState.fast_build = true  # real build times are 72-373s
+		TestLevers.fast_build = true  # real build times are 72-373s
 		var fort2: FortBuilding = null
 		for c in ctx.get_children():
 			if c is FortBuilding and c.team == MatchState.player_team:
@@ -1784,7 +1784,7 @@ static func run(ctx: Node) -> void:
 		print("MOUNT: types_without_manned_art=%s team_colored_empty=%s turret_issues=%s" % [
 			no_manned, team_colored, no_turret])
 	if "--cap-test" in args:
-		MatchState.fast_build = true  # real build times are 72-373s
+		TestLevers.fast_build = true  # real build times are 72-373s
 		# unit cap: base 25 + zone bonuses; production refuses beyond it
 		var fort: FortBuilding = null
 		for c in ctx.get_children():

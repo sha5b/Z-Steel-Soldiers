@@ -18,35 +18,35 @@ var _toggle: Button = null
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
 	var defs := [
-		["cursor_red_n00", "Move without attacking (R)", MatchState.OrderStance.MOVE],
-		["attack_red_n00", "Attack move (Q)", MatchState.OrderStance.ATTACK_MOVE],
-		["place_red_n00", "Defend position (E)", MatchState.OrderStance.DEFEND],
+		["cursor_red_n00", "Move without attacking (R)", SelectionManager.OrderStance.MOVE],
+		["attack_red_n00", "Attack move (Q)", SelectionManager.OrderStance.ATTACK_MOVE],
+		["place_red_n00", "Defend position (E)", SelectionManager.OrderStance.DEFEND],
 	]
 	for d in defs:
 		var btn := _make_button(String(d[0]), String(d[1]))
 		var stance: int = d[2]
 		btn.pressed.connect(func():
-			MatchState.order_stance = stance
+			SelectionManager.order_stance = stance
 			Fx.ui_click())
 		_buttons.append(btn)
 		add_child(btn)
 	_toggle = _make_button("grab_red_n00", "Smart idle (T): robots auto-man\nhardware and capture flags")
 	_toggle.toggle_mode = true
-	_toggle.button_pressed = MatchState.auto_idle
+	_toggle.button_pressed = GameSettings.auto_idle
 	_toggle.toggled.connect(func(on: bool):
-		MatchState.auto_idle = on
+		GameSettings.auto_idle = on
 		Fx.ui_click())
 	add_child(_toggle)
 
 
 func _process(_delta: float) -> void:
 	# hotkeys change the stance outside the bar — keep visuals honest
-	var active := _buttons[MatchState.order_stance]
+	var active := _buttons[SelectionManager.order_stance]
 	for i in _buttons.size():
 		var selected: bool = _buttons[i] == active
 		_buttons[i].modulate = Color.WHITE if selected else Color(0.55, 0.55, 0.55)
-	if _toggle.button_pressed != MatchState.auto_idle:
-		_toggle.set_pressed_no_signal(MatchState.auto_idle)
+	if _toggle.button_pressed != GameSettings.auto_idle:
+		_toggle.set_pressed_no_signal(GameSettings.auto_idle)
 
 
 func _make_button(icon: String, tooltip: String) -> Button:

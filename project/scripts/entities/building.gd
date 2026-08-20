@@ -64,7 +64,7 @@ func producer_key() -> String:
 ## time, not money), trimmed by the producer's level. fast_build is the
 ## self-test lever.
 func produce_seconds(item := "") -> float:
-	if MatchState.fast_build:
+	if TestLevers.fast_build:
 		return 2.0
 	if item == "" and not queue.items.is_empty():
 		item = queue.items[0]
@@ -224,8 +224,13 @@ func _ready() -> void:
 	var bdef := ContentDB.building_def(building_id)
 	if (bdef != null and bdef.produces) or is_fort:
 		add_to_group("facilities")
+		MatchState.register_facility(self)
 	if not is_bridge():
 		apply_footprint()
+
+
+func _exit_tree() -> void:
+	MatchState.unregister_facility(self)
 
 
 func _build_sprite() -> void:

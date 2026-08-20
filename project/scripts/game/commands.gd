@@ -24,7 +24,7 @@ static func dispatch(world_position: Vector2) -> void:
 	# the stance (Q/E/R hotkeys or the stance bar) decides what a move
 	# order does; shift sprints the order (the entity never reads Input
 	# itself)
-	var stance: MatchState.OrderStance = MatchState.order_stance
+	var stance: SelectionManager.OrderStance = SelectionManager.order_stance
 	var sprint := Input.is_key_pressed(KEY_SHIFT)
 	# deterministic order (instance ids) so formations don't reshuffle
 	movers.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())
@@ -52,9 +52,9 @@ static func dispatch(world_position: Vector2) -> void:
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0
 		var dest := world_position + offset
 		match stance:
-			MatchState.OrderStance.ATTACK_MOVE:
+			SelectionManager.OrderStance.ATTACK_MOVE:
 				u.issue_order(Order.move_attack(dest, sprint))
-			MatchState.OrderStance.DEFEND:
+			SelectionManager.OrderStance.DEFEND:
 				u.issue_order(Order.move_defend(dest, sprint))
 			_:
 				u.issue_order(Order.move(dest, sprint))

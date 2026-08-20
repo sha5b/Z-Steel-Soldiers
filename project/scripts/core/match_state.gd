@@ -9,17 +9,7 @@ signal tech_level_changed
 
 const INCOME_PER_ZONE := 1.0
 const LEVEL_SECONDS := 150.0  # original: forts/factories tech up over match TIME (~2.5 min/level)
-var fast_build := false  # self-test lever: 2s builds regardless of defs
-var direct_step := false  # self-test lever: bypass move_and_slide (no physics ticks in tight loops)
 
-## What a right-click order DOES (set by the Q/E/R hotkeys and the
-## stance bar next to the minimap): MOVE ignores enemies en route,
-## ATTACK_MOVE halts and engages, DEFEND walks there and holds the post.
-enum OrderStance { MOVE, ATTACK_MOVE, DEFEND }
-var order_stance: OrderStance = OrderStance.MOVE
-## Smart idle (grab-hand toggle): idle robots auto-man nearby empty
-## hardware and auto-walk to capturable flags (original auto_grab radii).
-var auto_idle := true   # money per owned zone per tick
 const TICK_SECONDS := 1.0
 
 var map_root: Node2D = null  # where units and decals live (set at load)
@@ -39,6 +29,7 @@ func reset() -> void:
 	_accum = 0.0
 	match_time = 0.0
 	upgrades = {}
+	_facilities.clear()
 
 
 func over_reset() -> void:
@@ -70,14 +61,29 @@ func _tech_tick() -> void:
 	if want <= 0:
 		return
 	var bumped := false
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group("facilities"):
-		if b is Building2D and b.alive and b.owner_team != 0 and b.level < 5:
+	for b in _facilities:
+		if is_instance_valid(b) and b.alive and b.owner_team != 0 and b.level < 5:
 			var new_level: int = clampi(want, b.level, 5)
 			if new_level > b.level:
 				b.level = new_level
 				bumped = true
 	if bumped:
 		tech_level_changed.emit()
+
+
+## Facilities register on spawn / unregister on exit — the tech tick
+## iterates this array instead of walking the whole scene tree from an
+## autoload every second.
+var _facilities: Array[Building2D] = []
+
+
+func register_facility(b: Building2D) -> void:
+	if not _facilities.has(b):
+		_facilities.append(b)
+
+
+func unregister_facility(b: Building2D) -> void:
+	_facilities.erase(b)
 
 
 func player_money() -> int:
