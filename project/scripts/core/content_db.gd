@@ -50,20 +50,14 @@ func ai_profile(difficulty: int) -> AiProfileDef:
 	return _ai_profiles.get(key, AiProfileDef.new())
 
 
+## PackFiles, not a raw DirAccess listing: an export converts every
+## `.tres` to a binary `.res`, so `entry.ends_with(".tres")` registered
+## NOTHING in a packaged build and the game started with no defs at all.
 func _scan_dir(path: String) -> void:
-	var dir := DirAccess.open(path)
-	if dir == null:
-		return
-	dir.list_dir_begin()
-	var entry := dir.get_next()
-	while entry != "":
-		var full := path + "/" + entry
-		if dir.current_is_dir():
-			_scan_dir(full)
-		elif entry.ends_with(".tres"):
-			_register(load(full))
-		entry = dir.get_next()
-	dir.list_dir_end()
+	for sub in PackFiles.dirs(path):
+		_scan_dir(path + "/" + sub)
+	for entry in PackFiles.with_ext(path, "tres"):
+		_register(load(path + "/" + entry))
 
 
 var _last_res_path := ""  # basename keying for AI profiles and projectiles
@@ -215,29 +209,21 @@ func _synthesized(kind: String, name: String) -> UnitDef:
 ## art in it becomes a unit def (defaults + dir). The shared `robots`
 ## folder (no type suffix) is skipped.
 func _discover_unit_folders() -> void:
-	var dir := DirAccess.open(ASSET_ROOT)
-	if dir == null:
-		return
-	dir.list_dir_begin()
-	var folder := dir.get_next()
-	while folder != "":
-		if dir.current_is_dir():
-			var prefix := ""
-			if folder.begins_with("robots_"):
-				prefix = "robot"
-			elif folder.begins_with("vehicles_"):
-				prefix = "vehicle"
-			elif folder.begins_with("cannons_") and folder != "cannons_common":
-				prefix = "cannon"  # cannons_common = shared install art, not a unit
-			if prefix != "" and folder != "robots":
-				var type_name := folder.substr(folder.find("_") + 1)
-				if not _units[prefix].has(type_name) \
-						and not _folder_covered(prefix, ASSET_ROOT + "/" + folder) \
-						and _dir_has_art(ASSET_ROOT + "/" + folder):
-					var def := _synthesized(prefix, type_name)
-					_units[prefix][type_name] = def
-		folder = dir.get_next()
-	dir.list_dir_end()
+	for folder in PackFiles.dirs(ASSET_ROOT):
+		var prefix := ""
+		if folder.begins_with("robots_"):
+			prefix = "robot"
+		elif folder.begins_with("vehicles_"):
+			prefix = "vehicle"
+		elif folder.begins_with("cannons_") and folder != "cannons_common":
+			prefix = "cannon"  # cannons_common = shared install art, not a unit
+		if prefix == "" or folder == "robots":
+			continue
+		var type_name := folder.substr(folder.find("_") + 1)
+		if not _units[prefix].has(type_name) \
+				and not _folder_covered(prefix, ASSET_ROOT + "/" + folder) \
+				and _dir_has_art(ASSET_ROOT + "/" + folder):
+			_units[prefix][type_name] = _synthesized(prefix, type_name)
 
 
 # ------------------------- buildings / pickups / effects -------------------------
@@ -294,18 +280,11 @@ func buildable(kind: String) -> Array:
 ## Every folder under assets/z/effects/ becomes an effect def named after
 ## the folder (frames follow `<folder>/<name>_n00.png`).
 func _discover_effects() -> void:
-	var dir := DirAccess.open(ASSET_ROOT + "/effects")
-	if dir == null:
-		return
-	dir.list_dir_begin()
-	var folder := dir.get_next()
-	while folder != "":
-		if dir.current_is_dir() and not _effects.has(folder):
+	for folder in PackFiles.dirs(ASSET_ROOT + "/effects"):
+		if not _effects.has(folder):
 			var def := EffectDef.new()
 			def.id = folder
 			_effects[folder] = def
-		folder = dir.get_next()
-	dir.list_dir_end()
 
 
 func _dir_has_art(path: String) -> bool:
@@ -316,15 +295,5 @@ func _dir_has_art(path: String) -> bool:
 			or ResourceLoader.exists(path + "/fire_r000_n00.png") \
 			or ResourceLoader.exists(path + "/empty.png"):
 		return true
-	var dir := DirAccess.open(path)
-	if dir == null:
-		return false
-	dir.list_dir_begin()
-	var f := dir.get_next()
-	while f != "":
-		if f.get_extension() == "png":
-			dir.list_dir_end()
-			return true
-		f = dir.get_next()
-	dir.list_dir_end()
-	return false
+	# an export renames every imported .png to .ctex — see PackFiles
+	return PackFiles.has_ext(path, "png")

@@ -1773,7 +1773,7 @@ static func run(ctx: Node) -> void:
 		for kind in ["robot", "vehicle", "cannon"]:
 			for name in ContentDB.defs_of(kind):
 				var d := ContentDB.def_for(kind, String(name))
-				if d.asset_dir == "" or not DirAccess.dir_exists_absolute(d.asset_dir):
+				if d.asset_dir == "" or PackFiles.list(d.asset_dir).is_empty():
 					dproblems.append("%s:%s asset_dir" % [kind, name])
 				if d.hp <= 0 or d.pop <= 0 or d.cost < 0:
 					dproblems.append("%s:%s stats" % [kind, name])
@@ -3337,13 +3337,15 @@ static func run(ctx: Node) -> void:
 		# anim for the whole team (invisible unit), so fail loudly here
 		var scan_dirs := ["res://assets/z/robots", "res://assets/z/flags",
 			"res://assets/z/buildings/fort", "res://assets/z/ui/hud"]
-		for d in DirAccess.get_directories_at("res://assets/z"):
+		for d in PackFiles.dirs("res://assets/z"):
 			if d.begins_with("robots_") or d.begins_with("vehicles_") \
 					or d.begins_with("cannons_"):
 				scan_dirs.append("res://assets/z/%s" % d)
 		var checked := 0
 		for dir in scan_dirs:
-			for f in DirAccess.get_files_at(dir):
+			# PackFiles: an export renames every .png to .ctex, so a raw
+			# listing filtered on "png" audited NOTHING in a build
+			for f in PackFiles.list(dir):
 				if f.get_extension() != "png" \
 						or not ("_red_" in f or f.get_basename().ends_with("_red")):
 					continue
@@ -3353,7 +3355,15 @@ static func run(ctx: Node) -> void:
 					if not ResourceLoader.exists(sibling):
 						fails.append("%s: no %s variant" % [f, tn])
 		if checked == 0:
-			fails.append("parity audit scanned nothing")
+			# say WHAT was seen — "scanned nothing" alone cost a whole
+			# debug cycle when this first fired in an exported build
+			var sample := PackedStringArray()
+			for dir in scan_dirs:
+				var got := PackFiles.list(dir)
+				sample.append("%s=%d%s" % [dir.get_file(), got.size(),
+					"" if got.is_empty() else "(%s)" % got[0]])
+			fails.append("parity audit scanned nothing; dirs: %s"
+				% ", ".join(sample))
 		# ASSERTED (printed "FAIL <list>" before, which nothing greps for)
 		var te := TestRig.start("TEAMS")
 		te.check(fails.is_empty(), ", ".join(fails))

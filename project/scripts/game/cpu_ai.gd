@@ -514,7 +514,6 @@ const SLOTS_BUILDING := 4
 const RETREAT_AT := 0.4
 
 var _next_assign_ms := 0
-var _last_posture := "losing"
 
 
 func posture() -> Dictionary:
@@ -705,8 +704,6 @@ func _assign(robots: Array[Node], vehicles: Array[Node]) -> void:
 	if now < _next_assign_ms:
 		return
 	var post := posture()
-	_last_posture = "all_out" if bool(post.all_out) \
-		else ("holding" if float(post.commit) < 0.3 else "losing")
 	# difficulty rides the CADENCE, not the original's fractions: an easy
 	# brain re-tasks less often, a hard one at the source's own rate
 	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)

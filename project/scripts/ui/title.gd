@@ -15,6 +15,21 @@ func _ready() -> void:
 	splash.texture = UiTheme.trimmed("res://assets/z/ui/splash.png")
 	continue_btn.visible = GameState.has_save()
 	Net.leave()  # backing out of the menus ends any session
+	# AN EXPORTED BUILD MUST BE TESTABLE. `main_scene` is this title
+	# screen, and a release binary refuses a scene override on the command
+	# line ("compiled without support for path overrides"), so every test
+	# flag was unreachable once the game was packaged — the 47 lanes only
+	# ever ran the editor's copy of the project, and nothing could tell
+	# whether an EXPORT loaded its art. Hand straight over to the match
+	# scene when a test flag is present; the flags then behave in the
+	# build exactly as they do in the editor.
+	if SelfTests.should_run():
+		# DEFERRED: swapping the scene from inside _ready leaves the tree
+		# mid-add, and main.tscn then wires its HUD against a half-built
+		# node list (--ui-test caught exactly that: "panel/facility
+		# missing for queue-wiring check")
+		get_tree().change_scene_to_file.call_deferred("res://scenes/main.tscn")
+		return
 	await SelfTests.maybe_screenshot(self, "screenshot_title.png")
 
 

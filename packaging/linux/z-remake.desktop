@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Z Remake (1996)
+GenericName=Real-time strategy game
+Comment=Fan remake of Z by The Bitmap Brothers
+Exec=z-remake
+Icon=z-remake
+Terminal=false
+Categories=Game;StrategyGame;
+Keywords=rts;strategy;z;bitmap brothers;remake;
+StartupWMClass=Z Remake (1996)

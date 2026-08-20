@@ -26,21 +26,16 @@ static func entries() -> Array:
 	# the other only fills in names the preferred pass did not cover
 	var taken := {}
 	for pass_scenes in ([true, false] if PREFER_SCENES else [false, true]):
-		var dir := DirAccess.open("res://assets/maps_scenes" if pass_scenes
-			else "res://assets/maps")
-		if dir == null:
-			continue
-		dir.list_dir_begin()
-		var f := dir.get_next()
-		while f != "":
-			var want := ".tscn" if pass_scenes else ".json"
-			if f.ends_with(want) and not taken.has(f.get_basename()):
+		# PackFiles: an export packs `.tscn` as `.scn`, so this scan
+		# found no map SCENES in a build and every map silently fell
+		# back to its JSON (or to nothing)
+		var folder := "assets/maps_scenes" if pass_scenes else "assets/maps"
+		for f in PackFiles.with_ext("res://" + folder,
+				"tscn" if pass_scenes else "json"):
+			if not taken.has(f.get_basename()):
 				taken[f.get_basename()] = true
-				_register(f.get_basename(), "res://%s/%s" % [
-					"assets/maps_scenes" if pass_scenes else "assets/maps", f],
+				_register(f.get_basename(), "res://%s/%s" % [folder, f],
 					not pass_scenes)
-			f = dir.get_next()
-		dir.list_dir_end()
 	_entries.sort_custom(func(a, b): return String(a.name) < String(b.name))
 	return _entries
 

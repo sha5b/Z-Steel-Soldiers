@@ -79,7 +79,11 @@ func _debris_pick(prefix: String, sizes: Array) -> String:
 		var pool: Array = []
 		for size in sizes:
 			var id := key if size == "" else "%s_%s" % [key, size]
-			if DirAccess.dir_exists_absolute("res://assets/z/effects/%s" % id):
+			# a probe on the FIRST FRAME, not on the directory: an export
+			# can pack a folder whose only members are imported images in
+			# a way that dir_exists_absolute no longer answers for
+			if ResourceLoader.exists(
+					"res://assets/z/effects/%s/%s_n00.png" % [id, id]):
 				pool.append(id)
 		_debris_pools[key] = pool
 	var pool: Array = _debris_pools[key]

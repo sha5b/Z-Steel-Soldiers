@@ -22,6 +22,10 @@ __pycache__/
 # GOG installer (copyrighted, never committed)
 setup_*.exe
 
+# Release builds — self-contained binaries that EMBED the original
+# copyrighted art. Never commit or publish these.
+build/
+
 # dev screenshot helper output
 project/screenshot_*.png
 project/screenshot_*.png.import

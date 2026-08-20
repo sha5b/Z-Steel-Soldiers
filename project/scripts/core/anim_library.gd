@@ -76,7 +76,7 @@ static func asset_dir_for(kind: String, unit_name: String) -> String:
 	if folder == "":
 		return ""
 	var dir := "res://assets/z/%s_%s" % [folder, unit_name]
-	return dir if DirAccess.dir_exists_absolute(dir) else ""
+	return dir if not PackFiles.list(dir).is_empty() else ""
 
 
 ## Crane arm + hook offsets (hook hangs at hull + arm + hook offsets).

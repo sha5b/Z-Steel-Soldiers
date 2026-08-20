@@ -97,6 +97,16 @@ They are listed in the order I would tackle them.
     (destructible, firing scenery), so it needs a scope decision.
 
 ## Fixed
+- 2026-08-20 — **an EXPORTED BUILD loaded none of its content, and nothing
+  could see it.** Godot packs an imported file as a `.import` sidecar and
+  renames the real texture under `.godot/imported/`; text resources are
+  converted to binary. Every scan filtered on the source extension, so a
+  packaged game had no building defs, no unit folders, no effect art and no
+  map scenes — with all 47 lanes green in the editor. Two fixes, and the
+  second is the one that matters long-term: `PackFiles` normalises packed
+  listings, and `title.gd` hands over to `main.tscn` on a test flag so the
+  suite RUNS INSIDE THE SHIPPED BINARY. 47/47 now pass both ways; the export
+  lane is what found the defect.
 - 2026-08-20 — **THE ORIGINAL 20-LEVEL CAMPAIGN IS IN.**
   `tools/gog/level_to_json.py` reads the retail data in
   `assets_original/gog/` and writes our map schema, so `map_loader.gd`

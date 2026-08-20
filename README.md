@@ -8,10 +8,19 @@ assets and format knowledge from the open-source
 > **Status:** single-player feature-complete — the ORIGINAL 20-level
 > campaign converted from the retail data plus the 57 zod maps,
 > full unit roster, territory economy, production, campaign, save/load,
-> AI with difficulty, and a 46-flag headless test suite (every flag
-> asserts). Multiplayer: P2P lobby, in-match intent replication,
-> host-authoritative resync and late join. See `docs/ROADMAP.md` and
-> `docs/BUGS.md`.
+> a tactical CPU opponent with difficulty, and a 47-flag headless test
+> suite (every flag asserts). Multiplayer: P2P lobby, in-match intent
+> replication, host-authoritative resync and late join. See
+> `docs/ROADMAP.md` and `docs/BUGS.md`.
+
+The Zod Engine's **C++ source is the reference of record** — the 1996
+Bitmap Brothers code was never released, and Zod is the reimplementation
+this project's asset pack comes from. Behaviour is ported from it and
+cited in `docs/RESEARCH.md` rather than guessed: the building burn model
+(`ZBuilding::ProcessBuildingsEffects`), every explosive radius and the
+splash model (`zsettings.cpp`, `ZServer::ProcessMissileDamage`), and the
+AI's adaptive commitment (`ZBot::GoAllOut_3`). Read it before calling
+anything underivable.
 
 ## Environment
 
@@ -70,7 +79,7 @@ signal-driven). Adding content (units, buildings, pickups, effects,
 maps, team colours) is documented step by step in
 `docs/ASSET_CONVENTIONS.md` — copy a `.tres`, drop an art folder.
 
-Headless test suite: 46 flags (`--combat-test`, `--teams-test`,
+Headless test suite: 47 flags (`--combat-test`, `--teams-test`,
 `--scenes-test`, ...), run in parallel lanes from `project/`:
 `res://scenes/main.tscn --<flag>-test --quit-after N`. **`--quit-after`
 counts FRAMES, not seconds** (Godot's own option): the real-physics
@@ -83,6 +92,61 @@ out of self_tests.gd). EVERY flag now reports through TestRig, so a
 regression fails the run instead of printing a number nobody reads.
 Screenshot verification: add `--screenshot <seconds>` (warps the mouse
 so edge pan stays put).
+
+## The CPU opponent
+
+One brain per non-player fort team, running a full loop each think pass:
+produce from every owned facility, defend owned ground, crew the empty
+hardware lying around the map, run maintenance (cranes repair, damaged
+tanks visit the repair shop), hold the frontier **bridges** (the only
+place armour crosses a Z map), then **assign** the rest.
+
+The assignment is the `ZBot Stage1AI_3` port and it is what stops the
+brain swarming one point:
+
+1. **Posture** (`GoAllOut_3`) — the bot reads its share of the map's
+   zones against a fair share (1/teams) and picks two numbers from it:
+   what fraction of the idle army is re-tasked, and how long until the
+   next cycle. Holding a fair share means a *small* slice on a *slow*
+   cadence with a *wider* target list (`all_out` adds enemy units and
+   robots); falling behind means re-tasking a third of the army every
+   few seconds.
+2. **Targets in the original's priority order** — map items (zone flags,
+   crates), then buildings, then empty hardware, and enemy units only
+   once all out.
+3. **Mutual-nearest matching** (`MatchTargets_3` / `GiveOutOrders_3`) —
+   a pair is ordered only when the unit is that target's nearest
+   candidate *and* that target is the unit's. A unit with no mutual
+   partner is left alone this cycle. Buildings take a squad (focus
+   fire); everything else takes one, so the army fans out.
+
+`--tactics-test` asserts the posture table flips with the map share and
+that the matching spreads units instead of piling them.
+
+## Building the desktop releases
+
+All three targets cross-build from Linux. You need the matching Godot
+**4.7.1** export templates and the icon set:
+
+```bash
+python3 tools/gog/make_icons.py        # cuts the Z logo out of the retail splash
+tools/build_releases.sh                # linux + windows + macos
+tools/build_rpm.sh                     # wraps the Linux binary as a Fedora RPM
+```
+
+| Target  | Output | Notes |
+|---|---|---|
+| Fedora  | `build/rpm/z-remake-*.rpm` (+ raw `build/linux/z-remake.x86_64`) | installs `/usr/bin/z-remake`, a `.desktop` entry and the full hicolor icon tree |
+| Windows | `build/windows/z-remake.exe` | self-contained. The **Explorer file icon** stays Godot's default: embedding one needs `rcedit`, which needs wine, which is deliberately not installed. The in-game window icon is correct. |
+| macOS   | `build/macos/z-remake.zip` | universal (x86_64 + arm64), **unsigned**. Cross-building is fine but signing/notarization need a Mac, so first launch needs right-click → Open, or `xattr -dr com.apple.quarantine "Z Remake (1996).app"`. A `.dmg` cannot be produced off a Mac. |
+
+The icon is the release's own riveted metal **Z**, cropped out of
+`PNG/IPSplash.png`. Because that is Bitmap Brothers art it is generated
+locally into the gitignored `project/assets/icon/`, never committed.
+
+> **Every built binary embeds the original art and sound.** The builds
+> are for local use. Do not attach them to a release or redistribute
+> them — `build/` is gitignored for that reason.
 
 ## Asset licensing
 

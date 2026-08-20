@@ -103,12 +103,17 @@ static func _audit_wired_art(ctx: Node, rig: TestRig) -> void:
 	for planet in PLANETS:
 		var rock := 0
 		for size in Fx.ROCK_DEBRIS_SIZES:
-			if DirAccess.dir_exists_absolute(
-					"res://assets/z/effects/rock_debris_%s_%s" % [planet, size]):
+			# probe the FIRST FRAME, not the folder — the same rule
+			# Fx._debris_pick follows, so the test and the game agree in
+			# an exported build as well as in the editor
+			var id := "rock_debris_%s_%s" % [planet, size]
+			if ResourceLoader.exists(
+					"res://assets/z/effects/%s/%s_n00.png" % [id, id]):
 				rock += 1
 		rig.check(rock >= 4, "%s: %d rock debris sets, want 4+" % [planet, rock])
-		rig.check(DirAccess.dir_exists_absolute(
-				"res://assets/z/effects/bridge_debris_%s" % planet),
+		var bid := "bridge_debris_%s" % planet
+		rig.check(ResourceLoader.exists(
+				"res://assets/z/effects/%s/%s_n00.png" % [bid, bid]),
 			"%s: no bridge debris set" % planet)
 	# order-confirmation markers: one per order kind, all NEUTRAL art
 	for marker in ["placed", "attacked", "entered", "cannoned", "repaired",
@@ -301,13 +306,13 @@ static func _audit_robot_anims(rig: TestRig) -> void:
 static func _audit_world_scale(rig: TestRig) -> void:
 	for folder in ["res://scenes/units", "res://scenes/vehicles",
 			"res://scenes/cannons"]:
-		var dir := DirAccess.open(folder)
-		if dir == null:
-			continue
-		for f in dir.get_files():
-			if not f.ends_with(".tscn"):
+		for f in PackFiles.with_ext(folder, "tscn"):
+			# source text only exists in the editor — an export ships the
+			# binary .scn, so this audit is editor-only by nature
+			var handle := FileAccess.open("%s/%s" % [folder, f], FileAccess.READ)
+			if handle == null:
 				continue
-			var text := FileAccess.open("%s/%s" % [folder, f], FileAccess.READ).get_as_text()
+			var text := handle.get_as_text()
 			for line in text.split("\n"):
 				if line.contains("sprite_scale") \
 						and not line.contains("sprite_scale = 1.0"):
@@ -406,19 +411,16 @@ static func _audit_ground_split(ctx: Node, rig: TestRig) -> void:
 ## must actually exist (a dangling reference is a silent tracer
 ## fallback).
 static func _audit_projectiles(rig: TestRig) -> void:
-	var dir := DirAccess.open("res://content/projectiles")
-	if dir == null:
-		rig.check(false, "no content/projectiles dir")
-		return
-	for f in dir.get_files():
-		if not f.ends_with(".tres"):
-			continue
+	var files := PackFiles.with_ext("res://content/projectiles", "tres")
+	rig.check(not files.is_empty(), "no projectile defs found")
+	for f in files:
 		var def: ProjectileDef = load("res://content/projectiles/" + f) as ProjectileDef
 		if def == null:
 			continue
 		rig.check(def.texture != null,
 			"%s: no projectile texture" % f.get_basename())
-		rig.check(DirAccess.dir_exists_absolute("res://assets/z/effects/%s" % def.impact),
+		rig.check(not PackFiles.list(
+				"res://assets/z/effects/%s" % def.impact).is_empty(),
 			"%s: impact effect folder '%s' missing" % [f.get_basename(), def.impact])
 
 
@@ -426,17 +428,13 @@ static func _audit_units(rig: TestRig) -> void:
 	for spec in [["robot", "res://content/units"],
 			["vehicle", "res://content/vehicles"],
 			["cannon", "res://content/cannons"]]:
-		var dir := DirAccess.open(String(spec[1]))
-		if dir == null:
-			continue
-		for f in dir.get_files():
-			if not f.ends_with(".tres"):
-				continue
+		var defs := PackFiles.with_ext(String(spec[1]), "tres")
+		rig.check(not defs.is_empty(), "no %s defs in %s" % [spec[0], spec[1]])
+		for f in defs:
 			var def: UnitDef = load("%s/%s" % [spec[1], f]) as UnitDef
 			if def == null:
 				continue
-			var art := DirAccess.open(def.asset_dir)
-			rig.check(art != null and not art.get_files().is_empty(),
+			rig.check(not PackFiles.list(def.asset_dir).is_empty(),
 				"%s: asset_dir empty (%s)" % [def.id, def.asset_dir])
 	# stand/walk art is SHARED across robot types (robots/ folder) —
 	# every team palette must ship its stand set there
