@@ -1,0 +1,7 @@
+Everything here is BUILT from assets_original/ by tools/setup_assets.py, and
+none of it is committed. Expected after a run:
+  z/          the working art and audio set (units, buildings, effects, ui, sounds, music)
+  maps/       one JSON per map
+  maps_scenes/ the editable Godot scene per map
+  tilesets/   per-planet terrain lookup tables
+  icon/       window and desktop icons, cut from the retail splash

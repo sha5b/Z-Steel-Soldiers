@@ -1,0 +1,4 @@
+The RETAIL game data goes here: LEVEL01.MAP, BUILD01.DAT, ARCTIC.PAL, audio/, PNG/, Maps/.
+Install Z from GOG and copy the game directory's contents in, or drop the
+installer in the repository root as setup_z*.exe and run tools/setup_assets.py.
+Nothing in this directory is committed - see .gitignore and LICENSE.

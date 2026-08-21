@@ -1,0 +1,5 @@
+The ZOD ENGINE asset pack goes here: units/, buildings/, planets/, teams/,
+sounds/, fonts/. It carries the unit and map sprites the retail release keeps
+engine-packed. Get it from zod.sourceforge.net (or the capehill/zodengine
+mirror) and copy its data directory in.
+Nothing in this directory is committed - see .gitignore and LICENSE.

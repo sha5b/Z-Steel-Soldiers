@@ -77,12 +77,15 @@ towers.
 
 ## Play it
 
-You need Godot **4.7.1** and your own asset copy.
+Download a build from the
+[releases page](https://github.com/sha5b/Z-Steel-Soldiers/releases) and
+run it. Nothing to install.
+
+To run it from source you need Godot **4.7.1** and your own copy of the
+game — see [Get the assets in](#get-the-assets-in) below, then:
 
 ```bash
-python3 tools/gog/convert_assets.py   # sfx, music, HUD art from the GOG release
-python3 tools/zod/copy_art.py         # unit and map sprites from the Zod pack
-flatpak run org.godotengine.Godot     # open project/project.godot, then press F5
+flatpak run org.godotengine.Godot   # open project/project.godot, press F5
 ```
 
 **Controls.** The arrow keys, the screen edge, a middle-mouse drag or
@@ -118,6 +121,52 @@ Two original habits are on by default: an order drops the selection
 a click on a unit centers the camera on it. Both are switchable in
 Settings. The release's own 7 tutorial pages are on the title menu under
 **How To Play**.
+
+## Get the assets in
+
+None of the game's art, sound or map data is in this repository. You
+supply it, and one command converts it:
+
+```bash
+python3 tools/setup_assets.py
+```
+
+That is all of it. The script finds what you have, runs all ten
+converters in dependency order, rebuilds the editable map scenes, and
+tells you what it produced. It is idempotent, so run it again whenever
+you change a converter.
+
+It needs two source sets. Both directories are already in the tree with
+a note in each saying what belongs there:
+
+| Put it here | What it is |
+|---|---|
+| `assets_original/gog/` | The **retail game data**. Install Z from GOG and copy the game directory's contents in. Expected inside: `LEVEL01.MAP`, `BUILD01.DAT`, `ARCTIC.PAL`, `audio/`, `PNG/`, `Maps/`. |
+| `assets_original/zod/` | The **Zod Engine asset pack**, which carries the unit and map sprites the retail release keeps engine-packed. Get it from [zod.sourceforge.net](https://zod.sourceforge.net) and copy its data directory in. Expected inside: `units/`, `buildings/`, `planets/`, `teams/`, `sounds/`, `fonts/`. |
+
+Still packed? Drop the GOG installer in the repository root as
+`setup_z*.exe` and run the script — it unpacks the installer for you with
+`innoextract`, or `7z` if that is what you have, and lifts the game data
+up out of whatever subdirectory the installer buried it in.
+
+```bash
+python3 tools/setup_assets.py --where          # what is missing, and where it comes from
+python3 tools/setup_assets.py --only campaign  # re-run one step
+python3 tools/setup_assets.py --skip-scenes    # skip the Godot pass at the end
+```
+
+The script never downloads game art. It only reads files you already
+own. What it writes lands in `project/assets/`, which is gitignored.
+
+Then check it converted cleanly:
+
+```bash
+godot --headless --path project res://scenes/main.tscn --art-test --quit-after 6000
+```
+
+The individual converters still work on their own, and
+`docs/ASSET_CONVENTIONS.md` documents each one. `setup_assets.py` only
+puts them in the right order with the right arguments.
 
 ## Build the desktop releases
 
@@ -176,7 +225,7 @@ and that the matching spreads units instead of piling them.
 | `docs/` | research notes, roadmap, bug tracker, asset conventions |
 | `project/` | the Godot project |
 | `packaging/linux/` | RPM spec and desktop entry |
-| `tools/` | asset converters and build scripts |
+| `tools/` | asset converters and build scripts — start at `setup_assets.py` |
 | `assets_original/`, `project/assets/` | your own asset copy and the working set built from it (both gitignored) |
 
 **Asset tools.** `gog/level_to_json.py` converts the original 20 levels

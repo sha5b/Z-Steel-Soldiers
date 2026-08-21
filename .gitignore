@@ -2,11 +2,22 @@
 .godot/
 *.translation
 
-# Original game assets — copyrighted, extracted locally, never committed.
-# See docs/RESEARCH.md#licensing.
-assets_original/
-# Derived from original assets (glTF conversions, level JSON).
-project/assets/
+# Original game assets — copyrighted, supplied locally, never committed.
+# See LICENSE. The FOLDER SKELETON is committed (each .gitkeep says what
+# belongs in it) so a fresh clone shows where the art goes; git will not
+# descend into a wholly-ignored directory, which is why each level is
+# re-included before its contents are excluded again.
+assets_original/*
+!assets_original/gog/
+assets_original/gog/*
+!assets_original/gog/.gitkeep
+!assets_original/zod/
+assets_original/zod/*
+!assets_original/zod/.gitkeep
+
+# Built from assets_original/ by tools/setup_assets.py.
+project/assets/*
+!project/assets/.gitkeep
 
 
 # Scraped/downloaded raw data
