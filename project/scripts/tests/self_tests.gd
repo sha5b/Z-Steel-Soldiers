@@ -1653,6 +1653,24 @@ static func run(ctx: Node) -> void:
 				and int(Order.Type.STOP) == 9,
 			"Order.Type wire ids moved (MOVE=%d ATTACK=%d STOP=%d)" % [
 				int(Order.Type.MOVE), int(Order.Type.ATTACK), int(Order.Type.STOP)])
+		# THE TREE'S PAUSE FLAG MUST NOT OUTLIVE THE MATCH IT PAUSED.
+		# `paused` belongs to the SceneTree, so it survives
+		# change_scene_to_file: the game-over overlay set it and never
+		# lifted it, and the next screen came up with every button dead
+		# (only PROCESS_MODE_ALWAYS nodes process while it is set). That
+		# is "I won a skirmish and then Back did nothing".
+		q.check(not tree.paused, "the match started with the tree paused")
+		var over_screen: Control = load("res://scenes/game_over.tscn").instantiate()
+		ctx.get_node("CanvasLayer").add_child(over_screen)
+		q.check(tree.paused, "the game-over overlay did not pause the match")
+		q.check(over_screen.process_mode == Node.PROCESS_MODE_ALWAYS,
+			"the game-over overlay cannot process while it is pausing the tree")
+		over_screen.get_parent().remove_child(over_screen)
+		q.check(not tree.paused,
+			"leaving the game-over overlay left the tree paused — every button on the next screen is dead")
+		over_screen.free()
+		q.check(GameState.has_method("leave_match"),
+			"the one leave-a-match path (unpause + time scale + reset) is gone")
 		# PAN KEYS ARE NOT COMMAND KEYS. WASD used to pan the camera AND
 		# press the HUD's plates: holding D to look right flipped the
 		# DEFEND stance, and S/A/H would have done the same to stop, the
