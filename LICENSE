@@ -1,0 +1,45 @@
+MIT License
+
+Copyright (c) 2026 sha5b
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+-------------------------------------------------------------------------------
+WHAT THIS LICENSE COVERS
+-------------------------------------------------------------------------------
+
+The MIT license above covers THE CODE IN THIS REPOSITORY: the GDScript, the
+Godot project and scenes, the asset converters and build scripts under
+`tools/`, the packaging under `packaging/`, and the documentation under
+`docs/`. Take it, read it, port it, reuse it.
+
+It does NOT cover the original game's graphics, sound, music, voice lines or
+map data. Those belong to The Bitmap Brothers, and nobody here can license
+them to you. They are not in this repository — `assets_original/` and
+`project/assets/` are gitignored, and the converters read from your own copy
+of the retail release. The screenshots under `docs/screenshots/` are included
+for documentation.
+
+A build produced by `tools/build_releases.sh` EMBEDS those assets, so a
+binary is not covered by the license above either. Build one for yourself
+from your own copy of the game.
+
+Z is a trademark of its owners. This project is unaffiliated with The Bitmap
+Brothers and with GOG.

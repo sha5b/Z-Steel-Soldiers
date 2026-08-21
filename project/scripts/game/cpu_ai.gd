@@ -778,7 +778,11 @@ func _attack(robots: Array[Node], vehicles: Array[Node], enemy_army: int) -> voi
 ## destination when it doesn't (or when none was set yet).
 func _refresh_attack_focus(focus: Vector2) -> Vector2:
 	if focus != Vector2.INF:
-		for b in get_tree().get_nodes_in_group(Groups.BUILDINGS):
+		# ALL_BUILDINGS, like _attack_destination below: "buildings" is
+		# forts only, so a focus on an enemy FACTORY could never be
+		# confirmed alive and was re-picked every single think pass —
+		# the brain never committed to the factory it chose.
+		for b in get_tree().get_nodes_in_group(Groups.ALL_BUILDINGS):
 			if b is Node2D and b.alive and b.team != 0 and b.team != team \
 					and b.visual_center().distance_to(focus) < 96.0:
 				return focus
