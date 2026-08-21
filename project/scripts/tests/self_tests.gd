@@ -1562,6 +1562,43 @@ static func run(ctx: Node) -> void:
 					oproblems.append("dead units take no orders")
 			jeep4.queue_free()
 			fort2.queue_free()
+		# THE ORDER PATH MUST BE DRAWN, and drawn WHOLE. Path smoothing
+		# collapses an open-ground route to its corners, so a move order
+		# usually comes back as two points and _begin_move drops the
+		# first (the cell the unit stands on). PathIndicator then had one
+		# point, built no segments and drew only the destination marker.
+		# Assert on the SEGMENT COUNT and on the route reaching from the
+		# unit to its destination, so a stub cannot pass.
+		var walker: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+			MatchState.current.player_team, Vector2(600, 600))
+		if walker != null:
+			var far := Vector2(600, 600) + Vector2(360, 0)
+			walker.issue_order(Order.move(far))
+			var drawn: PathIndicator = null
+			for child in walker.get_parent().get_children():
+				if child is PathIndicator:
+					drawn = child
+			if drawn == null:
+				oproblems.append("a move order drew no path indicator")
+			else:
+				var segs: Array = drawn._segments
+				if segs.is_empty():
+					oproblems.append("the order path has no segments (marker only)")
+				else:
+					var start: Vector2 = segs[0]["from"]
+					var span := 0.0
+					for seg in segs:
+						span += (Vector2(seg["to"]) - Vector2(seg["from"])).length()
+					if start.distance_to(walker.global_position) > 12.0:
+						oproblems.append(
+							"the path starts %.0fpx from the unit, not at it"
+								% start.distance_to(walker.global_position))
+					if span < walker.global_position.distance_to(
+							walker.move_target) * 0.8:
+						oproblems.append(
+							"the path spans %.0fpx of a %.0fpx move" % [span,
+								walker.global_position.distance_to(walker.move_target)])
+			walker.queue_free()
 		var orders_rig := TestRig.start("ORDERS")
 		# DISPATCH ON EVERY PICK TARGET. Pick.at answers with units,
 		# CRATES and buildings, and Commands._find_enemy read `team` off
@@ -1771,6 +1808,50 @@ static func run(ctx: Node) -> void:
 			if far != null:
 				far.queue_free()
 			probe.queue_free()
+		# ---- B CYCLES THE PLAYER'S PRODUCERS, and each press must actually
+		# SELECT one. Both halves were broken: the scan walked
+		# Groups.BUILDINGS (forts only, so a factory was never a
+		# candidate) and select_single dropped everything that was not a
+		# Unit2D, so the camera flew to a fort and selected nothing —
+		# the build menu never opened.
+		# a ROBOT FACTORY of the player's, so the cycle is asserted against
+		# a real factory on every map (this one's player owns only a fort,
+		# which is the one producer the old Groups.BUILDINGS scan DID see)
+		var plant: Building2D = ContentDB.building_def(4).behaviour.new()
+		plant.setup(4, MatchState.current.player_team, MatchState.current.planet)
+		plant.position = NavWorld.current.find_free_spot(
+			Vector2(900, 1500), "vehicle")
+		ctx.add_child(plant)
+		var producers: Array[Node] = []
+		for b in tree.get_nodes_in_group(Groups.FACILITIES):
+			if is_instance_valid(b) and b is Building2D and b.alive \
+					and b.owner_team == MatchState.current.player_team \
+					and b.produces_anything():
+				producers.append(b)
+		q.check(not producers.is_empty(),
+			"the player owns no producer on this map — B has nothing to cycle")
+		var factories := 0
+		for b in producers:
+			if not b.is_fort:
+				factories += 1
+		q.check(factories > 0,
+			"only forts were found: the B scan would pass on Groups.BUILDINGS too")
+		var seen_ids := {}
+		for i in producers.size():
+			SelectionFilters.activate("building")
+			var picked: Array[Node] = SelectionManager.current.selected
+			q.check(picked.size() == 1,
+				"press %d of B selected %d things, want 1" % [i + 1, picked.size()])
+			if picked.size() == 1:
+				q.check(picked[0] is Building2D and picked[0].produces_anything()
+						and picked[0].owner_team == MatchState.current.player_team,
+					"B selected %s, which is not one of the player's producers" % picked[0])
+				seen_ids[picked[0].get_instance_id()] = true
+		q.check(seen_ids.size() == producers.size(),
+			"B visited %d of the player's %d producers in a full cycle" % [
+				seen_ids.size(), producers.size()])
+		SelectionManager.current.clear_selection()
+		plant.queue_free()
 		# ---- a chain works for HARDWARE too: one movement engine means one
 		# arrival path, and the queue advances from that arrival
 		var hull_at := NavWorld.current.find_free_spot(Vector2(760, 1320), "vehicle")
@@ -1856,8 +1937,9 @@ static func run(ctx: Node) -> void:
 				while not line.queue_items().is_empty():
 					line.cancel_at(0)
 		q.check(line_filled != 0, "the shift-fill loop queued nothing at all")
-		q.finish("chain_cap=%d ping_window=%.0fs line_filled=%d" % [
-			Unit2D.MAX_QUEUED_ORDERS, Fx.PING_SECONDS, line_filled])
+		q.finish("chain_cap=%d ping_window=%.0fs line_filled=%d producers=%d" % [
+			Unit2D.MAX_QUEUED_ORDERS, Fx.PING_SECONDS, line_filled,
+			seen_ids.size()])
 	if "--scenes-test" in args:
 		# every per-type scene instantiates with the right identity and
 		# rig nodes; buildings resolve scenes; a generated map loads

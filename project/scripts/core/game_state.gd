@@ -16,6 +16,21 @@ var pending_config: MatchConfig = null
 var _eliminated: Array[int] = []
 
 
+## LEAVING A MATCH FOR A MENU. Two pieces of state outlive the scene
+## being replaced, and both used to leak into the menu that followed:
+## `paused` belongs to the SceneTree (a menu reached from a paused match
+## came up with every button dead — nothing but PROCESS_MODE_ALWAYS
+## nodes process while it is set), and `Engine.time_scale` is global (a
+## menu reached from a 200% match animated at 200%). Every exit from a
+## match to a menu goes through here; a match re-applies its own speed
+## in match.gd _ready.
+func leave_match(scene_path: String) -> void:
+	get_tree().paused = false
+	Engine.time_scale = 1.0
+	reset_for_new_map()
+	get_tree().change_scene_to_file(scene_path)
+
+
 func reset_for_new_map() -> void:
 	over = false
 	_eliminated.clear()

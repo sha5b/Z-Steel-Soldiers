@@ -28,15 +28,30 @@ var _marker := "placed"
 var _t := 0.0
 
 
+## `from` is where the route STARTS — the unit itself. Pass it: the
+## waypoint list is not the whole route.
+##
+## Path smoothing (NavWorld.string_pull) collapses an open-ground route
+## to its corners, so most orders come back as just two points, and
+## Unit2D._begin_move then drops the first one because it is the cell
+## centre the unit is already standing on. That left ONE point here, no
+## segments at all, and the order drew nothing but the destination marker
+## — the "I cannot see the path anymore, only a short bit at the end"
+## regression. Building the first segment from the unit's own position
+## fixes it and is what the original does (it draws from the object).
 static func show_path(parent: Node, waypoints: PackedVector2Array,
-		marker := "placed") -> void:
+		marker := "placed", from := Vector2.INF) -> void:
 	if parent == null or waypoints.is_empty():
 		return
 	var p := PathIndicator.new()
 	p._marker = marker
-	var prev := Vector2(waypoints[0])
-	for i in range(1, waypoints.size()):
-		var to := Vector2(waypoints[i])
+	var route := PackedVector2Array()
+	if from.is_finite() and from.distance_to(Vector2(waypoints[0])) >= 1.0:
+		route.append(from)
+	route.append_array(waypoints)
+	var prev := Vector2(route[0])
+	for i in range(1, route.size()):
+		var to := Vector2(route[i])
 		var seg := to - prev
 		if seg.length() >= 1.0:
 			p._segments.append({"from": prev, "to": to,

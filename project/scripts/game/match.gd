@@ -13,6 +13,11 @@ var _map_index := 0
 
 func _ready() -> void:
 	Engine.time_scale = GameSettings.game_speed()  # options-screen speed
+	# A MATCH NEVER STARTS PAUSED. `paused` is the SceneTree's, so it
+	# survives a scene change — anything that leaves it set (a game-over
+	# overlay, a pause menu torn down the wrong way) would otherwise
+	# freeze the next match on frame one, input included.
+	get_tree().paused = false
 	# match-scoped subsystems (NavWorld, UnitRegistry, SelectionManager,
 	# MatchState) are SCENE CHILDREN above — they ready before the HUD
 	# connects and die with the scene (state per match; two matches can

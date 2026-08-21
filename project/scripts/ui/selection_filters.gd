@@ -46,15 +46,18 @@ static func _select_kind(kind_a: String, kind_b := "", kind_c := "") -> void:
 
 
 ## Round-robin through the player's producers, centring on each.
+## GROUPS.BUILDINGS IS FORTS ONLY (its own comment says so — legacy
+## name, do not widen), so this scan never saw a factory at all: B could
+## only ever cycle forts. FACILITIES is the group every producer joins.
 static func _cycle_buildings() -> void:
 	var mine: Array[Node] = []
 	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(
-			Groups.BUILDINGS):
+			Groups.FACILITIES):
 		if not is_instance_valid(b) or not b.alive:
 			continue
 		if b.owner_team != MatchState.current.player_team:
 			continue
-		if b.is_fort or b is RobotFactory or b is VehicleFactory:
+		if b.produces_anything():
 			mine.append(b)
 	if mine.is_empty():
 		Fx.cap_denied()

@@ -831,7 +831,8 @@ func _begin_move(world_pos: Vector2) -> void:
 		play_gesture("point")
 		_play_voice("acknowledge")
 		PathIndicator.show_path(get_parent(), waypoints,
-			order.confirm_marker() if order != null else "placed")
+			order.confirm_marker() if order != null else "placed",
+			global_position)
 
 
 ## Order finished or superseded — one clear point instead of scattered

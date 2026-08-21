@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="Z Remake (1996)"
-config/version="0.2.0"
 config/description="Fan remake of Z (The Bitmap Brothers, 1996). Graphics and sound are (c) The Bitmap Brothers, extracted locally from the Zod Engine pack and the GOG release; the code is original. Do not redistribute with assets."
+config/version="0.2.0"
 run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://assets/icon/icon.png"
@@ -81,10 +81,8 @@ command={
 
 [rendering]
 
-; macOS universal/arm64 exports refuse to build without this
-textures/vram_compression/import_etc2_astc=true
-
 textures/canvas_textures/default_texture_filter=0
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
 2d/snap/snap_2d_transforms_to_pixel=true

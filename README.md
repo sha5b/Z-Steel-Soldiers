@@ -46,21 +46,30 @@ needed somebody to open the file.
 
 ## Screenshots
 
-The original chrome, and a unit selected. The sidebar shows the animated
-head portrait, the name plate, the equipment art and the health bar.
+All five planets ship with their own tileset, scenery, rubble and
+minimap palette. These four are arctic, city, volcanic and jungle.
 
-![The HUD](docs/screenshots/02-hud.png)
+A Psycho selected on the arctic ice. The sidebar carries the head
+portrait, the name plate, the weapon plate and the health bar, and the
+radar window shows the planet's own minimap colors.
 
-The production menu, on the release's own 112x80 window, with the Time
-countdown and the level and progress gauges.
+![Arctic, with a unit selected](docs/screenshots/02-arctic.png)
 
-![Production](docs/screenshots/03-production.png)
+A robot factory on the city streets, with the production window on the
+release's own 112x80 frame — the Time countdown, the building health
+readout, and the level and progress gauges.
 
-A fort under fire. A damaged building holds a population of fires and
-smoke plumes that grows as its health falls, and the ruin goes on
-burning after it falls.
+![City, with the production menu open](docs/screenshots/03-city.png)
 
-![A burning fort](docs/screenshots/04-burning.png)
+A fort burning on volcanic rock. The count of fires and smoke plumes
+grows as its health falls, and the ruin goes on burning after it falls.
+
+![A burning fort on the volcanic planet](docs/screenshots/04-volcanic.png)
+
+Armour on the jungle grass, in front of a fort with guns mounted on its
+towers.
+
+![Jungle, with armour and a manned fort](docs/screenshots/05-jungle.png)
 
 ## Play it
 

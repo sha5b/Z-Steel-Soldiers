@@ -89,11 +89,16 @@ func drop_from_selection(unit: Node) -> void:
 		selection_changed.emit(selected)
 
 
-## One click, one unit — the old clear-then-add dance in one place.
-func select_single(unit: Node) -> void:
+## One click, one entity — the old clear-then-add dance in one place.
+## ANY living selectable, not just a Unit2D: the B button cycles the
+## player's FACTORIES through here, and the old `unit is Unit2D` guard
+## dropped every building on the floor. The camera flew to the factory
+## and nothing was selected, so the build menu never opened — which is
+## what "B does nothing" looked like.
+func select_single(entity: Node) -> void:
 	clear_selection()
-	if unit is Unit2D and unit.alive:
-		selected.append(unit)
+	if is_instance_valid(entity) and bool(entity.get("alive")):
+		selected.append(entity)
 	_cleanup()
 	selection_changed.emit(selected)
 
