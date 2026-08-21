@@ -16,8 +16,14 @@
 %global __requires_exclude_from ^%{_bindir}/z-remake$
 
 Name:           z-remake
-Version:        0.1.0
-Release:        1%{?dist}
+Version:        0.2.0
+# BUILD STAMP. Without it every rebuild is the same NEVRA
+# (z-remake-0.1.0-1.fc44) with different contents, so dnf sees no reason
+# to replace what is installed and you cannot tell two builds apart --
+# which is exactly how a stale binary with broken texture loading stayed
+# installed. tools/build_rpm.sh passes `buildstamp` as .YYYYmmddHHMM, so
+# a fresh package always sorts newer and `dnf install` upgrades in place.
+Release:        1%{?buildstamp}%{?dist}
 Summary:        Fan remake of Z (The Bitmap Brothers, 1996)
 
 # The CODE in this project is original. The embedded graphics and sound
@@ -71,6 +77,14 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
+* Fri Aug 21 2026 sha5b <cloud@fiber-elements.com> - 0.2.0-1
+- Fix an exported build loading none of its content: Godot packs an
+  imported file as a .import sidecar, and every directory scan filtered
+  on the source extension. PackFiles folds packed names back.
+- Run the test suite inside the exported binary. The title screen hands
+  over to the match scene on a test flag, so a build is testable.
+- Carry a build stamp in Release, so a rebuild always upgrades in place.
+
 * Thu Aug 20 2026 sha5b <cloud@fiber-elements.com> - 0.1.0-1
 - First packaged build: retail campaign, original HUD, tactical CPU
   opponent, adaptive AI posture ported from the Zod Engine bot.

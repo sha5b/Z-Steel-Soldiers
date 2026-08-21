@@ -18,14 +18,15 @@ func _exit_tree() -> void:
 
 
 signal selection_changed(units: Array)
-signal order_issued(world_position: Vector2)
+## `queued` (ctrl+right-click) means APPEND to each unit's order chain.
+signal order_issued(world_position: Vector2, queued: bool)
 signal stance_changed
 signal drag_started
 signal drag_moved
 signal drag_ended
 
-## What a right-click order DOES (set by the Q/E/R hotkeys and the
-## stance bar next to the minimap): MOVE ignores enemies en route,
+## What a right-click order DOES (set by the sidebar's D/Z plates and
+## their hotkeys): MOVE ignores enemies en route,
 ## ATTACK_MOVE halts and engages, DEFEND walks there and holds the
 ## post. Player UI intent lives with selection, not with the economy.
 enum OrderStance { MOVE, ATTACK_MOVE, DEFEND }
@@ -107,8 +108,10 @@ func _on_unit_died(unit: Node) -> void:
 	drop_from_selection(unit)
 
 
-func select_area(world_rect: Rect2) -> void:
-	if not Input.is_key_pressed(KEY_SHIFT):
+## Box select. `additive` (shift-drag) keeps what was already picked —
+## the caller reads the keyboard, not this node (same rule as Commands).
+func select_area(world_rect: Rect2, additive := false) -> void:
+	if not additive:
 		clear_selection()
 	for unit in get_tree().get_nodes_in_group(Groups.SELECTABLE):
 		# own units only — enemy hardware is never selectable/orderable
@@ -119,6 +122,31 @@ func select_area(world_rect: Rect2) -> void:
 			selected.append(unit)
 	_cleanup()
 	selection_changed.emit(selected)
+
+
+## DOUBLE-CLICK: every unit of the SAME TYPE inside `world_rect` (the
+## visible world), which is how every RTS since has meant "and the rest
+## of these". Returns how many were picked. `additive` adds them to the
+## squad instead of replacing it.
+func select_same_type(like: Node, world_rect: Rect2, additive := false) -> int:
+	if not (like is Unit2D) or not (like as Unit2D).alive:
+		return 0
+	var model := like as Unit2D
+	if not additive:
+		clear_selection()
+	for unit in get_tree().get_nodes_in_group(Groups.SELECTABLE):
+		if not (unit is Unit2D) or not unit.alive or unit.carried \
+				or unit.team != MatchState.current.player_team:
+			continue
+		if unit.kind != model.kind or unit.unit_name != model.unit_name:
+			continue
+		if world_rect.has_point(unit.global_position) and unit not in selected:
+			selected.append(unit)
+	if model not in selected:
+		selected.append(model)  # the unit under the cursor is always in
+	_cleanup()
+	selection_changed.emit(selected)
+	return selected.size()
 
 
 ## Store the live selection in a slot; returns how many units went in.
@@ -167,8 +195,8 @@ func group_center(slot: int) -> Vector2:
 	return sum / float(members.size())
 
 
-func issue_order(world_position: Vector2) -> void:
-	order_issued.emit(world_position)
+func issue_order(world_position: Vector2, queued := false) -> void:
+	order_issued.emit(world_position, queued)
 
 
 ## Drag state flows through here so the rectangle view can follow the

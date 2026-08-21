@@ -204,7 +204,7 @@ func _build_side() -> void:
 	# camera to whatever the commander last shouted about.
 	var alert := HudButton.make("a", A_BUTTON.position, BUTTON_SIZE,
 			"Jump to the last alert")
-	alert.pressed.connect(_jump_to_alert)
+	alert.pressed.connect(jump_to_alert)
 	_side.add_child(alert)
 
 	_clock = Label.new()
@@ -281,7 +281,9 @@ func _sync_modes() -> void:
 		HudButton.set_state(z, on)
 
 
-func _jump_to_alert() -> void:
+## The A plate, and the A hotkey that presses it (match.gd): fly to
+## wherever the commander last shouted.
+func jump_to_alert() -> void:
 	Fx.ui_click()
 	var at: Vector2 = Fx.last_alert_at
 	if at == Vector2.INF:

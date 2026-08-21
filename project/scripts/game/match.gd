@@ -20,6 +20,7 @@ func _ready() -> void:
 	if GameState.pending_config:
 		MatchState.current.player_team = GameState.pending_config.player_team
 	MatchState.current.ai_difficulty = GameSettings.difficulty
+	Fx.clear_alerts()  # Fx outlives the scene: no alerts from the last match
 	# the ORIGINAL's animated, context-swapping team cursor, drawn in the
 	# stretched canvas so it scales with the window (a 16px OS cursor
 	# reads as a speck on a maximized window); the OS pointer hides for
@@ -58,7 +59,8 @@ func _ready() -> void:
 	if minimap:
 		var tileset: Texture2D = load(MapLoader.PLANET_TILESETS.get(String(data.terrain), MapLoader.PLANET_TILESETS.desert))
 		minimap.build(data, tileset)
-		minimap.move_order.connect(func(world: Vector2): SelectionManager.current.issue_order(world))
+		minimap.move_order.connect(func(world: Vector2, queued: bool):
+			SelectionManager.current.issue_order(world, queued))
 	MusicPlayer.play_battle(MatchState.current.planet)
 	var shot_args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	if SelfTests.should_run():
@@ -161,6 +163,9 @@ func _burn_first_building() -> void:
 			var hurt := b as Building2D
 			hurt.hp = maxi(1, int(hurt.max_hp * 0.12))
 			camera.pan_to(hurt.visual_center())
+			# the whole under-attack story in one shot: the burn VFX AND the
+			# radar's alert ping that now marks where it happened
+			Fx.ping(hurt.visual_center())
 			return
 
 
@@ -338,6 +343,20 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_X:
 				Commands.eject()  # get garrisoned/crewed units back out
 				return
+			KEY_S:
+				Commands.stop()  # CANCEL: call the selection off
+				return
+			KEY_H:
+				Commands.hold()  # hold the ground you stand on
+				return
+			KEY_A:
+				# the sidebar's A plate. Ctrl+A is the whole army instead —
+				# the one selection the R/V filters cannot express.
+				if event.ctrl_pressed:
+					SelectionFilters.activate("army")
+				elif HudFrame.current:
+					HudFrame.current.jump_to_alert()
+				return
 		# CONTROL GROUPS: Ctrl+digit assigns the selection to a slot,
 		# digit recalls it, and a second recall inside GROUP_JUMP_SECONDS
 		# jumps the camera to the squad. 1-9 then 0 = ten slots.
@@ -358,6 +377,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
+				# DOUBLE-CLICK takes every unit of that type on screen
+				if event.double_click:
+					_select_same_type(event.position)
+					return
 				SelectionManager.current.begin_drag(event.position)
 			else:
 				SelectionManager.current.end_drag()
@@ -367,9 +390,14 @@ func _unhandled_input(event: InputEvent) -> void:
 				else:
 					var a := SelectionManager.current.screen_to_world(rect.position)
 					var b := SelectionManager.current.screen_to_world(rect.position + rect.size)
-					SelectionManager.current.select_area(Rect2(a, b - a).abs())
+					SelectionManager.current.select_area(Rect2(a, b - a).abs(),
+						Input.is_key_pressed(KEY_SHIFT))
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-			SelectionManager.current.issue_order(SelectionManager.current.screen_to_world(event.position))
+			# ctrl+right-click QUEUES the order behind what the unit is
+			# already doing instead of replacing it
+			SelectionManager.current.issue_order(
+				SelectionManager.current.screen_to_world(event.position),
+				event.ctrl_pressed)
 	elif event is InputEventMouseMotion and SelectionManager.current.is_dragging:
 		SelectionManager.current.move_drag(event.position)
 
@@ -443,11 +471,27 @@ func _pick_select(screen_pos: Vector2) -> void:
 		SelectionManager.current.clear_selection()
 
 
-func _on_order(world_position: Vector2) -> void:
-	Commands.dispatch(world_position)
+func _on_order(world_position: Vector2, queued := false) -> void:
+	Commands.dispatch(world_position, queued)
 	# AND THE ORIGINAL DROPS THE SELECTION once the order is away. That is
 	# deliberate in Z — it is what makes the game reward decisive clicking
 	# and punish dithering — and it is why the original never needed a
 	# "stop giving my squad new orders" affordance.
-	if GameSettings.auto_deselect:
+	# A QUEUED click is the exception: dropping the squad after the first
+	# waypoint would make a chain impossible to build.
+	if GameSettings.auto_deselect and not queued:
 		SelectionManager.current.clear_selection()
+
+
+## Double-click: the clicked unit plus every unit of the same type in
+## view (shift keeps the existing squad).
+func _select_same_type(screen_pos: Vector2) -> void:
+	var world := SelectionManager.current.screen_to_world(screen_pos)
+	var hit := Pick.selectable_at(world, MatchState.current.player_team)
+	if hit == null or hit is Building2D:
+		return
+	var view := SelectionManager.current.screen_to_world_rect(HudFrame.view_rect())
+	var took := SelectionManager.current.select_same_type(hit, view,
+		Input.is_key_pressed(KEY_SHIFT))
+	if took > 0:
+		Fx.ui_click()

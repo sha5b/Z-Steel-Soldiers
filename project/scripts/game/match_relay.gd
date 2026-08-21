@@ -140,6 +140,7 @@ static func _order(intent: Dictionary) -> Order:
 	o.type = int(intent.get("otype", 0)) as Order.Type
 	o.position = Vector2(float(intent.get("x", 0.0)), float(intent.get("y", 0.0)))
 	o.run = bool(intent.get("run", false))
+	o.queued = bool(intent.get("q", false))
 	var tid := int(intent.get("target", 0))
 	if tid != 0:
 		o.target = _entity(tid)

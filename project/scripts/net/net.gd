@@ -243,7 +243,7 @@ func relay_order(u: Unit2D, o: Order) -> void:
 	_send_intent({
 		"kind": "order", "team": match_team, "unit": u.net_id,
 		"otype": int(o.type), "x": o.position.x, "y": o.position.y,
-		"run": o.run, "target": target_id,
+		"run": o.run, "target": target_id, "q": o.queued,
 	})
 
 

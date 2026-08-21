@@ -38,7 +38,7 @@ static func should_run() -> bool:
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
 			"mp", "rally", "placement", "fortkill", "parity", "art", "mpmatch",
-			"garrison", "terrain", "group", "veteran", "retail"]:
+			"garrison", "terrain", "group", "veteran", "retail", "qol"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -1601,6 +1601,263 @@ static func run(ctx: Node) -> void:
 		for problem in oproblems:
 			orders_rig.check(false, String(problem))
 		orders_rig.finish()
+	if "--qol-test" in args:
+		# THE QUALITY-OF-LIFE COMMANDS. Every one of these is OURS — the
+		# original had no cancel, no hold, no waypoint chain and no way to
+		# fill a production line in one press — so nothing else in the
+		# suite covers them.
+		var q := TestRig.start("QOL")
+		GameState.over = true           # the map's own 8-team war must not
+		GameSettings.auto_idle = false  # kill or retask the probes
+		# WIRE IDS: a multiplayer order intent travels as int(type), so a
+		# new order kind must be APPENDED. If STOP ever moves, every peer
+		# misreads every order after it.
+		q.check(int(Order.Type.MOVE) == 0 and int(Order.Type.ATTACK) == 1
+				and int(Order.Type.STOP) == 9,
+			"Order.Type wire ids moved (MOVE=%d ATTACK=%d STOP=%d)" % [
+				int(Order.Type.MOVE), int(Order.Type.ATTACK), int(Order.Type.STOP)])
+		# PAN KEYS ARE NOT COMMAND KEYS. WASD used to pan the camera AND
+		# press the HUD's plates: holding D to look right flipped the
+		# DEFEND stance, and S/A/H would have done the same to stop, the
+		# army select and hold. Panning is arrows, screen edge,
+		# middle-drag and the radar; the letters belong to the frame.
+		var command_keys := [KEY_T, KEY_D, KEY_Z, KEY_R, KEY_V, KEY_B,
+			KEY_G, KEY_X, KEY_S, KEY_H, KEY_A]
+		for action in ["cam_forward", "cam_back", "cam_left", "cam_right"]:
+			q.check(InputMap.has_action(action), "pan action %s is gone" % action)
+			if not InputMap.has_action(action):
+				continue
+			for ev in InputMap.action_get_events(action):
+				if ev is InputEventKey:
+					var code: int = (ev as InputEventKey).physical_keycode
+					q.check(code not in command_keys,
+						"%s is bound to a HUD command key (%s)" % [
+							action, OS.get_keycode_string(code)])
+		var anchor := NavWorld.current.find_free_spot(Vector2(700, 1200), "robot")
+		var probe: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+			MatchState.current.player_team, anchor) as Unit2D
+		if probe == null:
+			q.check(false, "probe spawn failed at %s" % anchor)
+		else:
+			probe.hp = 100000000
+			probe.max_hp = 100000000
+			# ---- a QUEUED order joins the chain instead of replacing it
+			probe.issue_order(Order.move(anchor + Vector2(160, 0)))
+			var leg2 := Order.move(anchor + Vector2(160, 120))
+			leg2.queued = true
+			probe.issue_order(leg2)
+			q.check(probe.order_queue.size() == 1,
+				"a queued order did not join the chain (%d waiting)" % probe.order_queue.size())
+			q.check(probe.order != null and probe.order.position.distance_to(
+					anchor + Vector2(160, 0)) < 1.0,
+				"a queued order replaced the order in flight")
+			q.check(not probe.is_idle(),
+				"a unit with a waypoint chain reported idle — the AI would steal it")
+			# ---- STOP drops the order AND the whole chain
+			probe.issue_order(Order.stop())
+			q.check(probe.order == null and probe.order_queue.is_empty()
+					and probe.is_idle() and not probe.has_move_target()
+					and probe.defend_post == Vector2.INF,
+				"STOP left work behind (order=%s queued=%d idle=%s target=%s)" % [
+					probe.order, probe.order_queue.size(), probe.is_idle(),
+					probe.has_move_target()])
+			# ---- a queued order given to an IDLE unit starts NOW
+			var lone := Order.move(anchor + Vector2(0, 60))
+			lone.queued = true
+			probe.issue_order(lone)
+			q.check(probe.order_queue.is_empty() and probe.state == Unit2D.State.MOVING,
+				"a queued order to an idle unit must start at once (queued=%d state=%d)" % [
+					probe.order_queue.size(), probe.state])
+			probe.halt()
+			# ---- the chain really RUNS: both legs, one after the other
+			probe.global_position = anchor
+			var end_a := NavWorld.current.find_free_spot(anchor + Vector2(72, 0), "robot")
+			var end_b := NavWorld.current.find_free_spot(anchor + Vector2(72, 72), "robot")
+			probe.issue_order(Order.move(end_a))
+			var chained := Order.move(end_b)
+			chained.queued = true
+			probe.issue_order(chained)
+			var saw_leg_two := false
+			for i in 600:
+				probe._process(0.05)
+				probe._physics_process(0.05)
+				if probe.order_queue.is_empty() and not saw_leg_two:
+					saw_leg_two = true  # leg one finished and popped the next
+				if saw_leg_two and probe.global_position.distance_to(end_b) < 24.0:
+					break
+			q.check(saw_leg_two, "the chain never advanced past its first leg")
+			q.check(probe.global_position.distance_to(end_b) < 24.0,
+				"the chained leg never arrived (%s, want %s)" % [
+					probe.global_position.round(), end_b.round()])
+			# ---- HOLD POSITION arms the post in place (no path to its
+			# own feet, which would return an empty route and arm nothing)
+			probe.halt()
+			var stand := probe.global_position
+			probe.issue_order(Order.hold(stand))
+			q.check(probe.defend_post.distance_to(stand) < 1.0,
+				"hold position did not arm the post (%s)" % probe.defend_post)
+			q.check(not probe.has_move_target() and probe.state == Unit2D.State.IDLE,
+				"hold position walked somewhere (target=%s state=%d)" % [
+					probe.has_move_target(), probe.state])
+			# and STOP releases the post again
+			probe.issue_order(Order.stop())
+			q.check(probe.defend_post == Vector2.INF,
+				"STOP left the unit pinned to its DEFEND post")
+			# ---- the chain is CAPPED, and a full chain says so
+			probe.issue_order(Order.move(anchor + Vector2(200, 0)))
+			for i in Unit2D.MAX_QUEUED_ORDERS + 4:
+				var extra := Order.move(anchor + Vector2(200, 8 * i))
+				extra.queued = true
+				probe.issue_order(extra)
+			q.check(probe.order_queue.size() == Unit2D.MAX_QUEUED_ORDERS,
+				"chain grew past its cap (%d, cap %d)" % [
+					probe.order_queue.size(), Unit2D.MAX_QUEUED_ORDERS])
+			probe.halt()
+			# ---- DOUBLE-CLICK: every unit of the SAME TYPE in view
+			var mates: Array[Unit2D] = []
+			for i in 2:
+				var m: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+					MatchState.current.player_team,
+					NavWorld.current.find_free_spot(
+						anchor + Vector2(24 + 20 * i, 24), "robot")) as Unit2D
+				if m != null:
+					mates.append(m)
+			var other: Unit2D = Spawner.spawn(ctx, "robot", "laser",
+				MatchState.current.player_team,
+				NavWorld.current.find_free_spot(anchor + Vector2(24, -24), "robot")) as Unit2D
+			var view := Rect2(anchor - Vector2(60, 60), Vector2(120, 120))
+			var sel := SelectionManager.current
+			var took := sel.select_same_type(probe, view)
+			q.check(took >= 1 + mates.size(),
+				"double-click took %d of %d grunts in view" % [took, 1 + mates.size()])
+			for m in mates:
+				q.check(m in sel.selected, "double-click missed a grunt in view")
+			q.check(other == null or other not in sel.selected,
+				"double-click took a laser as well as the grunts")
+			q.check(probe in sel.selected,
+				"double-click dropped the unit under the cursor")
+			# a unit OUTSIDE the view stays out
+			var far: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+				MatchState.current.player_team,
+				NavWorld.current.find_free_spot(anchor + Vector2(600, 0), "robot")) as Unit2D
+			sel.select_same_type(probe, view)
+			q.check(far == null or far not in sel.selected,
+				"double-click reached outside the visible world")
+			# ---- box select: additive is the CALLER's decision now
+			sel.clear_selection()
+			sel.select_area(view, false)
+			var boxed := sel.selected.size()
+			sel.select_area(Rect2(anchor + Vector2(560, -40), Vector2(120, 120)), true)
+			q.check(sel.selected.size() >= boxed,
+				"an additive box select dropped the earlier squad (%d -> %d)" % [
+					boxed, sel.selected.size()])
+			sel.select_area(Rect2(anchor + Vector2(560, -40), Vector2(120, 120)), false)
+			q.check(sel.selected.size() <= boxed + 1 or boxed == 0,
+				"a non-additive box select kept the earlier squad")
+			# ---- CTRL+A: the whole army is exactly robots + hardware
+			SelectionFilters.activate("robot")
+			var robots_only := sel.selected.size()
+			SelectionFilters.activate("vehicle")
+			var hardware_only := sel.selected.size()
+			SelectionFilters.activate("army")
+			q.check(sel.selected.size() == robots_only + hardware_only,
+				"ctrl+A took %d, want %d robots + %d hardware" % [
+					sel.selected.size(), robots_only, hardware_only])
+			sel.clear_selection()
+			for m in mates:
+				m.queue_free()
+			if other != null:
+				other.queue_free()
+			if far != null:
+				far.queue_free()
+			probe.queue_free()
+		# ---- a chain works for HARDWARE too: one movement engine means one
+		# arrival path, and the queue advances from that arrival
+		var hull_at := NavWorld.current.find_free_spot(Vector2(760, 1320), "vehicle")
+		var hull: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep",
+			MatchState.current.player_team, hull_at, true) as Vehicle2D
+		if hull == null:
+			q.check(false, "jeep spawn failed at %s" % hull_at)
+		else:
+			hull.hp = 100000000
+			hull.max_hp = 100000000
+			var hull_a := NavWorld.current.find_free_spot(hull_at + Vector2(72, 0), "vehicle")
+			var hull_b := NavWorld.current.find_free_spot(hull_at + Vector2(72, 72), "vehicle")
+			hull.issue_order(Order.move(hull_a))
+			var hull_leg := Order.move(hull_b)
+			hull_leg.queued = true
+			hull.issue_order(hull_leg)
+			q.check(hull.order_queue.size() == 1,
+				"a vehicle refused a queued order (%d waiting)" % hull.order_queue.size())
+			for i in 600:
+				hull._process(0.05)
+				hull._physics_process(0.05)
+				if hull.order_queue.is_empty() \
+						and hull.global_position.distance_to(hull_b) < 28.0:
+					break
+			q.check(hull.global_position.distance_to(hull_b) < 28.0,
+				"the vehicle's chained leg never arrived (%s, want %s)" % [
+					hull.global_position.round(), hull_b.round()])
+			hull.queue_free()
+		# ---- RADAR ALERT PINGS: throttled per area, expiring, and they
+		# are what the sidebar's A button jumps to
+		Fx.clear_alerts()
+		q.check(Fx.alert_pings.is_empty() and Fx.last_alert_at == Vector2.INF,
+			"a new match kept the last match's alerts")
+		var spot := Vector2(1000, 1000)
+		q.check(Fx.ping(spot), "the first ping was throttled")
+		q.check(Fx.last_alert_at.distance_to(spot) < 1.0,
+			"a ping did not set the A button's jump target")
+		q.check(not Fx.ping(spot + Vector2(6, 6)),
+			"a second ping in the same area was not throttled")
+		q.check(Fx.ping(spot + Vector2(Fx.PING_GRID * 2.0, 0)),
+			"a ping in a different area was throttled")
+		q.check(not Fx.ping(Vector2.INF), "an unplaced ping was accepted")
+		q.check(Fx.alert_pings.size() == 2,
+			"%d pings recorded, want 2" % Fx.alert_pings.size())
+		q.check(HudFrame.current == null or HudFrame.current.has_method("jump_to_alert"),
+			"the A plate lost its jump-to-alert action")
+		# ---- SHIFT-FILL a production line: every unit goes through the
+		# same intake, and the first refusal stops the run
+		var line: Building2D = null
+		var line_filled := -1
+		for b in tree.get_nodes_in_group(Groups.FACILITIES):
+			if b is Building2D and b.alive and b.produces_anything() \
+					and b.owner_team == MatchState.current.player_team:
+				line = b
+				break
+		if line != null:
+			var options: Array = line.build_options()
+			if options.is_empty():
+				q.check(false, "the player's producer offers nothing to build")
+			else:
+				var item := String(options[0])
+				var parts: PackedStringArray = item.split(":")
+				var cost: int = ContentDB.def_for(parts[0], parts[1]).cost
+				while not line.queue_items().is_empty():
+					line.cancel_at(0)
+				MatchState.current.set_money(line.owner_team, cost * 40)
+				var purse: int = MatchState.current.money[line.owner_team]
+				var filled := 0
+				for i in ProductionQueue.MAX_ITEMS:
+					if not line.queue_unit(item):
+						break
+					filled += 1
+				line_filled = filled
+				q.check(filled == line.queue_items().size(),
+					"the fill loop queued %d but the line holds %d" % [
+						filled, line.queue_items().size()])
+				var left: int = MatchState.current.money[line.owner_team]
+				q.check(left == purse - cost * filled,
+					"filling the line charged %d, want %d" % [
+						purse - left, cost * filled])
+				q.check(line.queue_items().size() <= ProductionQueue.MAX_ITEMS,
+					"the line took more than its cap")
+				while not line.queue_items().is_empty():
+					line.cancel_at(0)
+		q.check(line_filled != 0, "the shift-fill loop queued nothing at all")
+		q.finish("chain_cap=%d ping_window=%.0fs line_filled=%d" % [
+			Unit2D.MAX_QUEUED_ORDERS, Fx.PING_SECONDS, line_filled])
 	if "--scenes-test" in args:
 		# every per-type scene instantiates with the right identity and
 		# rig nodes; buildings resolve scenes; a generated map loads

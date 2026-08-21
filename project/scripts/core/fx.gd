@@ -374,6 +374,54 @@ const ALERTS := ["fort_under_attack", "territory_lost", "youre_losing"]
 ## Where the last ALERT happened, Vector2.INF until one does.
 var last_alert_at := Vector2.INF
 
+## RADAR PINGS. `announce` only fires for the events that ship a voice
+## line, so a factory or a squad taking fire off-screen produced nothing
+## the player could point at. `ping` is the silent channel: it records
+## the spot for the sidebar's A button and the minimap flashes it.
+const PING_SECONDS := 4.0
+## One ping per this many world px per this many seconds — a burning
+## building would otherwise ping on every shell that lands on it.
+const PING_GRID := 96.0
+const PING_GAP := 3.0
+const MAX_PINGS := 12
+var alert_pings: Array = []  # [{at: Vector2, until: float}]
+var _ping_gates := {}        # coarse cell -> next allowed time
+
+
+## Wall-clock seconds, so pings expire on the same clock the minimap
+## reads them with (named clock_seconds, not now: a local `now` already
+## exists in this file and GDScript will not have both).
+func clock_seconds() -> float:
+	return float(Time.get_ticks_msec()) / 1000.0
+
+
+## A new match starts with no alerts. Fx is an autoload and outlives the
+## match scene, so without this the A button would fly to a coordinate
+## from the PREVIOUS match and the radar would flash a stale spot.
+func clear_alerts() -> void:
+	alert_pings.clear()
+	_ping_gates.clear()
+	last_alert_at = Vector2.INF
+
+
+## Flash a spot on the radar and make it the A button's jump target.
+## Returns true when the ping passed the throttle.
+func ping(at: Vector2) -> bool:
+	if at == Vector2.INF:
+		return false
+	var cell := Vector2i((at / PING_GRID).floor())
+	var t := clock_seconds()
+	if t < float(_ping_gates.get(cell, -1.0)):
+		return false
+	_ping_gates[cell] = t + PING_GAP
+	last_alert_at = at
+	alert_pings.append({"at": at, "until": t + PING_SECONDS})
+	# expired entries go here, so nothing has to sweep them on a timer
+	alert_pings = alert_pings.filter(func(p): return float(p.until) > t)
+	while alert_pings.size() > MAX_PINGS:
+		alert_pings.pop_front()
+	return true
+
 
 func announce(event: String, at := Vector2.INF) -> void:
 	if event == "":
@@ -382,7 +430,7 @@ func announce(event: String, at := Vector2.INF) -> void:
 	if until > Time.get_ticks_msec():
 		return
 	if at != Vector2.INF and ALERTS.has(event):
-		last_alert_at = at
+		ping(at)  # sets last_alert_at and flashes the radar
 	_announce_gates[event] = Time.get_ticks_msec() + int(ANNOUNCE_THROTTLE.get(event, 10000))
 	announced.emit(event)
 	if event == "youre_losing":

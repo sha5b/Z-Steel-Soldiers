@@ -30,11 +30,18 @@ cp "$PKG/z-remake.desktop" "$TOP/SOURCES/"
 # the spec unpacks this to pick up whichever sizes exist
 tar -cf "$TOP/SOURCES/icons.tar" -C "$(dirname "$ICONS")" hicolor
 
-rpmbuild --define "_topdir $TOP" -bb "$PKG/z-remake.spec"
+# a monotonic stamp in Release: see the comment in the spec
+STAMP=".$(date +%Y%m%d%H%M)"
+rpmbuild --define "_topdir $TOP" --define "buildstamp $STAMP" \
+	-bb "$PKG/z-remake.spec"
 
 find "$TOP/RPMS" -name '*.rpm' -exec cp {} "$OUT/" \;
 echo
 echo "built:"
 ls -la "$OUT"/*.rpm
 echo
-echo "install with:  sudo dnf install $OUT/$(cd "$OUT" && ls *.rpm | head -1)"
+RPMFILE="$(cd "$OUT" && ls -t *.rpm | head -1)"
+echo "install/upgrade with:"
+echo "  sudo dnf install -y $OUT/$RPMFILE"
+echo "or replace an installed copy from scratch:"
+echo "  sudo dnf remove -y z-remake && sudo dnf install -y $OUT/$RPMFILE"

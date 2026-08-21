@@ -3,10 +3,12 @@ extends Object
 ## Order dispatch for the current selection: formation move orders, and
 ## the Z-style special targets — ordering robots onto an empty
 ## vehicle/cannon mans it once they walk up; onto a friendly manned APC
-## loads them as passengers.
+## loads them as passengers. `queued` (ctrl+right-click) appends the
+## order to each unit's chain instead of replacing what it is doing.
+## stop()/hold() are the two commands the game had no way to give.
 
 
-static func dispatch(world_position: Vector2) -> void:
+static func dispatch(world_position: Vector2, queued := false) -> void:
 	# a selected producing building: right-click sets its rally point
 	var selected := SelectionManager.current.selected
 	if selected.size() == 1 and is_instance_valid(selected[0]) 			and selected[0] is Building2D and selected[0].alive 			and (selected[0].is_fort or selected[0] is RobotFactory or selected[0] is VehicleFactory) 			and selected[0].owner_team == MatchState.current.player_team:
@@ -27,7 +29,7 @@ static func dispatch(world_position: Vector2) -> void:
 	# the player's robots bark an acknowledgement — once per dispatch
 	if movers.size() > 0:
 		Fx.acknowledge()
-	# the stance (Q/E/R hotkeys or the stance bar) decides what a move
+	# the stance (the D/Z plates and their hotkeys) decides what a move
 	# order does; shift sprints the order (the entity never reads Input
 	# itself)
 	var stance: SelectionManager.OrderStance = SelectionManager.current.order_stance
@@ -39,27 +41,27 @@ static func dispatch(world_position: Vector2) -> void:
 		if u.kind == "robot" and own_fort and is_instance_valid(own_fort) \
 				and own_fort.team == u.team and own_fort.alive:
 			# garrison: man the fort missiles
-			_order(u, Order.for_target(own_fort, sprint))
+			_order(u, Order.for_target(own_fort, sprint), queued)
 			continue
 		if u.kind == "robot":
 			if empty_vehicle and is_instance_valid(empty_vehicle):
-				_order(u, Order.for_target(empty_vehicle, sprint))
+				_order(u, Order.for_target(empty_vehicle, sprint), queued)
 				continue
 			if apc and is_instance_valid(apc) and u.team == apc.team:
-				_order(u, Order.for_target(apc, sprint))
+				_order(u, Order.for_target(apc, sprint), queued)
 				continue
 		elif target_building and is_instance_valid(target_building) \
 				and _wants_building_order(u, target_building):
 			# vehicles act on buildings: damaged hardware drives into the
 			# repair shop, cranes set up on wrecked buildings/bridges
-			_order(u, Order.for_target(target_building, sprint))
+			_order(u, Order.for_target(target_building, sprint), queued)
 			continue
 		# an ENEMY under the cursor is an ATTACK order, not a move to that
 		# spot. The cursor has always shown "attack" here while the
 		# dispatch fell through to a plain move, so the unit walked to
 		# where the enemy stood at click time and stopped.
 		if foe != null and is_instance_valid(foe) and u.kind != "cannon":
-			_order(u, Order.attack(foe, sprint))
+			_order(u, Order.attack(foe, sprint), queued)
 			continue
 		var ring := maxi(int(sqrt(float(movers.size()))), 1)
 		var offset := Vector2((i % ring) - (ring - 1) * 0.5, (i / ring) - (ring - 1) * 0.5) * 20.0
@@ -76,7 +78,7 @@ static func dispatch(world_position: Vector2) -> void:
 		# but the confirmation says what the click meant
 		if u.kind == "robot" and crate != null and is_instance_valid(crate):
 			move_order.confirm = "grabbed"
-		_order(u, move_order)
+		_order(u, move_order, queued)
 
 
 ## THE dismount action (X, or the panel's EXIT button): hand back
@@ -113,9 +115,44 @@ static func eject() -> int:
 
 ## Issue + relay: the single place a player order enters the game AND
 ## the network (no-op offline — Net guards in_match itself).
-static func _order(u: Node2D, o: Order) -> void:
+static func _order(u: Node2D, o: Order, queued := false) -> void:
+	o.queued = queued
 	u.issue_order(o)
 	Net.relay_order(u, o)
+
+
+## STOP (S): cancel whatever the selection is doing and hold ground.
+## Returns how many units were called off, so the caller can beep on a
+## selection with nothing to cancel.
+static func stop() -> int:
+	var called_off := 0
+	for node in SelectionManager.current.selected:
+		if is_instance_valid(node) and node is Unit2D and node.alive \
+				and not (node as Unit2D).carried:
+			_order(node, Order.stop())
+			called_off += 1
+	if called_off == 0:
+		Fx.cap_denied()
+	else:
+		Fx.ui_click()
+	return called_off
+
+
+## HOLD POSITION (H): every selected unit takes the ground it stands on
+## as a DEFEND post — it fights from there and walks back if shoved off,
+## instead of chasing whatever wandered past.
+static func hold() -> int:
+	var held := 0
+	for node in SelectionManager.current.selected:
+		if is_instance_valid(node) and node is Unit2D and node.alive \
+				and not (node as Unit2D).carried:
+			_order(node, Order.hold((node as Unit2D).global_position))
+			held += 1
+	if held == 0:
+		Fx.cap_denied()
+	else:
+		Fx.ui_click()
+	return held
 
 
 

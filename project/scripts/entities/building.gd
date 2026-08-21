@@ -960,6 +960,11 @@ func take_damage(amount: int, at := Vector2.INF) -> void:
 	if is_fort and team == MatchState.current.player_team:
 		Fx.announce("fort_under_attack", global_position)  # forts only — factories have
 		# their own distinct original voice lines
+	elif team == MatchState.current.player_team:
+		# A FACTORY UNDER FIRE HAS NO VOICE LINE, so losing one off-screen
+		# used to be completely silent. Ping the radar instead (throttled
+		# per area by Fx) — the A button then jumps there.
+		Fx.ping(visual_center())
 	_hit_flash(at)
 	if _hp_bar:
 		_hp_bar.region_rect.size.x = maxf(6.0,

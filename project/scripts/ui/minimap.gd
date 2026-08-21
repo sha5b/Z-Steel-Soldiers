@@ -7,7 +7,9 @@ extends Control
 ## drawn on top each frame. Left-click/drag moves the camera, right-click
 ## issues a move order (see match.gd wiring).
 
-signal move_order(world_position: Vector2)
+## Right-click on the radar orders the selection there; ctrl+right-click
+## QUEUES it behind whatever they are doing (same rule as the world).
+signal move_order(world_position: Vector2, queued: bool)
 
 const PANEL_BG := Color(0.05, 0.06, 0.05, 0.9)
 const PANEL_EDGE := Color(0.35, 0.38, 0.3)
@@ -109,12 +111,34 @@ func _draw() -> void:
 		if u.team != MatchState.current.player_team and not radar:
 			continue
 		_blip(u.global_position, Teams.minimap_color(u.team), 2.0)
+	_draw_alerts()
 	# camera viewport in world space (works under stretch + zoom)
 	var xform: Transform2D = get_viewport().get_canvas_transform()
 	var world_rect: Rect2 = xform.affine_inverse() * get_viewport().get_visible_rect()
 	var r := Rect2(_to_panel(world_rect.position),
 		world_rect.size / (Vector2(map_size) * 16.0) * _map_rect.size)
 	draw_rect(r, Color(1, 1, 1, 0.85), false, 1.0)
+
+
+## ALERT PINGS: where the commander last shouted. A fight off-screen used
+## to announce itself with a voice line and nothing to point at — the
+## radar now flashes an expanding box there for a few seconds, which is
+## the same place the sidebar's A button jumps to.
+func _draw_alerts() -> void:
+	for ping in Fx.alert_pings:
+		var left: float = float(ping.get("until", 0.0)) - Fx.clock_seconds()
+		if left <= 0.0:
+			continue
+		var p := _to_panel(ping.get("at", Vector2.ZERO))
+		if not _map_rect.grow(4.0).has_point(p):
+			continue
+		# flashes twice a second and grows as it fades, so the eye catches
+		# it against the static blips
+		var phase: float = 1.0 - left / Fx.PING_SECONDS
+		var half: float = 3.0 + 5.0 * phase
+		if fmod(left, 0.5) < 0.25:
+			draw_rect(Rect2(p - Vector2(half, half), Vector2(half, half) * 2.0),
+				Color(1.0, 0.85, 0.2, 1.0 - phase * 0.7), false, 1.0)
 
 
 func _player_has_radar() -> bool:
@@ -147,7 +171,7 @@ func _gui_input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			_move_camera(_to_world(mb.position))
 		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
-			move_order.emit(_to_world(mb.position))
+			move_order.emit(_to_world(mb.position), mb.ctrl_pressed)
 	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
 		_move_camera(_to_world((event as InputEventMouseMotion).position))
 

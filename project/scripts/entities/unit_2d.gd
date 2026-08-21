@@ -329,6 +329,7 @@ func _arrive() -> void:
 			defend_post = global_position  # hold this spot
 		state = State.IDLE
 		order = null
+		_advance_order_queue()  # next leg of a queued chain, if there is one
 	_on_arrived_extras()
 
 
@@ -636,11 +637,92 @@ func _on_anim_finished() -> void:
 			state = State.IDLE
 
 
+## QUEUED ORDERS (ctrl+right-click). Orders wait in a FIFO and the next
+## one starts the moment the current one finishes — the standard RTS
+## waypoint chain, and the only way to route a squad around a chokepoint
+## instead of through it. A plain click still wipes the queue, so the
+## habit of clicking once and being obeyed is unchanged.
+const MAX_QUEUED_ORDERS := 8
+var order_queue: Array[Order] = []
+## How close counts as "already standing on the post" for a DEFEND
+## order — hold position arms the ground under the unit's feet.
+const HOLD_REACH := 10.0
+
+
 ## Single order intake for players (Commands), the AI (CpuAi) and tests —
 ## nothing outside may write move_target/enter_target/attack_move.
+## Three intents pass through here: STOP cancels, a QUEUED order joins
+## the tail, anything else starts now and clears the tail.
 func issue_order(new_order: Order) -> void:
 	if not alive or carried:
 		return
+	if new_order.type == Order.Type.STOP:
+		halt()
+		return
+	if new_order.queued and not _is_at_rest():
+		if order_queue.size() < MAX_QUEUED_ORDERS:
+			order_queue.append(new_order)
+			if team == MatchState.current.player_team:
+				# mark the waypoint NOW: a chain you cannot see is a chain
+				# you cannot build (the red dotted path only ever shows the
+				# leg being walked)
+				PathIndicator.show_marker(get_parent(),
+					_queued_anchor(new_order), new_order.confirm_marker())
+		else:
+			Fx.cap_denied()  # the chain is full: say so instead of nothing
+		return
+	order_queue.clear()
+	_begin_order(new_order)
+
+
+## Where a queued order will take the unit — its destination, or the
+## thing it is about to walk to.
+static func _queued_anchor(o: Order) -> Vector2:
+	if o.target != null and is_instance_valid(o.target):
+		return o.target.global_position
+	return o.position
+
+
+## STOP: drop the order, the queue, the chase and the post, and stand
+## still. Everything a cancel has to release is released here — the queue
+## included, or a halted unit would sit on a chain nothing advances.
+func halt() -> void:
+	if not alive or carried:
+		return
+	order_queue.clear()
+	waypoints = PackedVector2Array()
+	velocity = Vector2.ZERO
+	_target = null
+	_run_flag = false
+	defend_post = Vector2.INF
+	_order_done()
+
+
+## True while we are pulling the next leg out of the queue, so the
+## _order_done inside _begin_order cannot re-enter this.
+var _advancing := false
+
+
+## Start the next queued order, if any. Called from the ONE place an
+## order ends (_order_done) and from arrival, so a chain advances
+## whatever ended it — arrival, failure, or a dead target.
+func _advance_order_queue() -> void:
+	if _advancing or not alive or carried:
+		return
+	_advancing = true
+	while not order_queue.is_empty():
+		var next: Order = order_queue.pop_front()
+		# a leg whose target died while we walked the previous one is
+		# skipped, not attempted against a corpse
+		if next.target != null and (not is_instance_valid(next.target) \
+				or not next.target.get("alive")):
+			continue
+		_begin_order(next)
+		break
+	_advancing = false
+
+
+func _begin_order(new_order: Order) -> void:
 	# a REAL command is a fresh start: forget what smart idle already
 	# tried, so a unit the player moves elsewhere may self-task again
 	if not _auto_issuing:
@@ -659,6 +741,21 @@ func issue_order(new_order: Order) -> void:
 		attack_target = order.target
 		_chase_repath()
 		state = State.MOVING
+	elif order.type == Order.Type.DEFEND \
+			and global_position.distance_to(order.position) <= HOLD_REACH:
+		# HOLD POSITION: the post IS the ground under our feet. Pathing to
+		# your own position returns an empty route, which drops the order
+		# and arms nothing — so arm it here and stay put.
+		attack_move = false
+		enter_target = null
+		waypoints = PackedVector2Array()
+		clear_move_target()
+		velocity = Vector2.ZERO
+		defend_post = global_position
+		state = State.IDLE
+		order = null
+		if team == MatchState.current.player_team:
+			PathIndicator.show_marker(get_parent(), global_position, "placed")
 	elif order.type == Order.Type.MOVE or order.type == Order.Type.MOVE_ATTACK 			or order.type == Order.Type.DEFEND:
 		attack_move = order.type == Order.Type.MOVE_ATTACK
 		enter_target = null
@@ -689,10 +786,13 @@ func apply_dict(d: Dictionary) -> void:
 	_last_dir = wrapi(int(d.get("dir", _last_dir)), 0, AnimLibrary.DIRECTIONS)
 
 
-## Idle = alive, not hidden in an APC, no order in flight. The AI and
-## the idle-flavour system share this one definition.
+## Idle = alive, not hidden in an APC, no order in flight AND nothing
+## queued behind it. The AI and the idle-flavour system share this one
+## definition, so a unit part-way through a waypoint chain still has
+## work and neither may steal it.
 func is_idle() -> bool:
-	return alive and not carried and state == State.IDLE
+	return alive and not carried and state == State.IDLE \
+			and order_queue.is_empty()
 
 
 ## Compat wrapper: plain move order without building an Order by hand.
@@ -746,6 +846,7 @@ func _order_done() -> void:
 	order = null
 	state = State.IDLE
 	attack_move = false
+	_advance_order_queue()
 
 
 ## Man/load the assigned vehicle once actually adjacent to it.
@@ -878,7 +979,7 @@ var _auto_issuing := false  # true while WE issue, so issue_order can tell
 ## missed: a multi-leg path empties `move_target` between legs.
 func _is_at_rest() -> bool:
 	return not has_move_target() and waypoints.is_empty() and order == null \
-			and state == State.IDLE and _entering == null \
+			and state == State.IDLE and _entering == null and order_queue.is_empty() \
 			and enter_target == null and attack_target == null and not carried
 
 
@@ -936,6 +1037,7 @@ func _maybe_call_for_help() -> void:
 		return
 	_distress_quiet_until = now + DISTRESS_GAP
 	Fx.distress()
+	Fx.ping(global_position)  # and the radar shows WHERE they are shouting from
 
 
 ## DEFEND stance: a unit pushed off its post walks back and re-holds it.

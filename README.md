@@ -1,156 +1,242 @@
+<div align="center">
+
+<img src="docs/screenshots/logo.png" width="120" alt="Z">
+
 # Z (1996) — Godot Remake
 
-A fan remake of the original **Z** (The Bitmap Brothers, 1996) — the 2D
-robot RTS — in Godot 4, as faithful to the original as possible using the
-assets and format knowledge from the open-source
-[Zod Engine](https://github.com/a-sf-mirror/zod_engine) project.
+A fan remake of **Z**, the robot real-time strategy game by The Bitmap
+Brothers, rebuilt in Godot 4.
 
-> **Status:** single-player feature-complete — the ORIGINAL 20-level
-> campaign converted from the retail data plus the 57 zod maps,
-> full unit roster, territory economy, production, campaign, save/load,
-> a tactical CPU opponent with difficulty, and a 47-flag headless test
-> suite (every flag asserts). Multiplayer: P2P lobby, in-match intent
-> replication, host-authoritative resync and late join. See
-> `docs/ROADMAP.md` and `docs/BUGS.md`.
+</div>
 
-The Zod Engine's **C++ source is the reference of record** — the 1996
-Bitmap Brothers code was never released, and Zod is the reimplementation
-this project's asset pack comes from. Behaviour is ported from it and
-cited in `docs/RESEARCH.md` rather than guessed: the building burn model
-(`ZBuilding::ProcessBuildingsEffects`), every explosive radius and the
-splash model (`zsettings.cpp`, `ZServer::ProcessMissileDamage`), and the
-AI's adaptive commitment (`ZBot::GoAllOut_3`). Read it before calling
-anything underivable.
+![Title screen](docs/screenshots/01-title.png)
 
-## Environment
+The remake plays the original 20 campaign levels in the game's own
+order. A converter reads them out of the retail data. It also plays the
+57 Zod maps and 5 skirmish maps.
 
-- Godot **4.7.1 stable** (Flatpak: `org.godotengine.Godot`)
-  ```bash
-  flatpak run org.godotengine.Godot   # open project/project.godot, press F5
-  ```
-- Controls: WASD/arrows/edge pan, wheel zoom, drag = box select,
-  right-click = order. **Every hotkey is the letter printed on the HUD
-  plate it presses**, so the frame teaches its own keyboard — sidebar
-  `T` smart idle, `D` defend, `Z` attack-move (D and Z are toggles;
-  neither lit = plain move), bottom bar `R` all robots, `V` all
-  hardware, `B` cycle factories, `G` cycle control groups, plus `X`
-  dismount and Ctrl+digit / digit for control groups (a second press
-  jumps the camera to that squad). Two original habits are on by
-  default: an order DROPS the selection, and clicking a unit CENTRES
-  the camera on it. The release's own 7 tutorial pages are on the title
-  menu under **How To Play**.
+The game runs inside the original HUD frame, and uses the original
+sprites, sounds and voice lines.
 
-## Repository layout
+The code in this repository is original. The graphics and sound belong to
+The Bitmap Brothers and stay out of the repository. You supply your own
+copy — see [Asset licensing](#asset-licensing).
 
-| Path                | Purpose                                             |
-|---------------------|-----------------------------------------------------|
-| `docs/`             | Research notes, roadmap, asset conventions          |
-| `project/`          | Godot project (2D)                                  |
-| `assets_original/gog/` | Extracted GOG release: sfx, soundtrack, HUD art (gitignored, 383 MB) |
-| `assets_original/zod/` | Zod Engine asset set — unit/map sprites (gitignored, 84 MB) |
-| `project/assets/z/` | Working asset set, built by `tools/gog/convert_assets.py` (gitignored) |
+**Status.** Single player is feature complete. Multiplayer has a P2P
+lobby, intent replication, host-authoritative resync and late join. The
+test suite is 49 headless lanes, and all of them assert. Every lane is
+green in the editor and green inside the exported binary.
 
-Asset tools live in `tools/`: `gog/level_to_json.py` (the original
-20-level campaign from the retail `LEVEL##.MAP` data — format notes in
-`docs/RESEARCH.md` §6), `gog/convert_assets.py` (sfx, music, HUD art), `zod/copy_art.py` (declarative copier for the zod pack),
-`zod/build_hud.py` (the in-game HUD frame's own pieces, and the animated
-head portraits — it recovers the face-piece offsets by brute force and
-bakes whole frames; see `docs/RESEARCH.md` §2e),
-`zod/map_to_json.py` + `zod/tileinfo_to_json.py` (map and terrain
-tables) and `zod/verify_map_planets.py` (audits — and repairs — the
-planet tag on every converted map; run it after any map conversion).
+## The Zod Engine source is the reference
 
-Maps are playable as JSON or as editable Godot scenes — open any
-`project/assets/maps_scenes/*.tscn` in the editor, paint terrain with the
-generated tilesets, move buildings/zones/units, press F6 to play; regenerate
-them from the JSONs with `godot --headless --path project
-res://tools/build_map_resources.tscn`.
+The 1996 Bitmap Brothers code was never released. The
+[Zod Engine](https://github.com/capehill/zodengine) is the open
+reimplementation that this project's asset pack comes from, so it is the
+reference of record. This project reads behaviour from it and cites the
+function in `docs/RESEARCH.md` instead of guessing:
 
-Project code layout — autoloads: **ContentDB** (content registry,
-inspector-editable `.tres` defs under `content/`), **Fx** (presentation),
-**SaveSystem** (per-entity save contract), **NavWorld** (pathing),
-**MatchState** (economy, upgrades, caps), **UnitRegistry** (typed unit
-queries), **GameState** (match flow/win), **SelectionManager**,
-**MusicPlayer**, **Campaign**. Then: `scripts/content` (Resource def
-classes), `scripts/entities` (units, buildings, effects, scenes under
-`scenes/{units,vehicles,cannons,buildings}`), `scripts/game` (orders,
-combat, spawner, map loader/catalog, AI, self-tests), `scripts/ui` (HUD,
-signal-driven). Adding content (units, buildings, pickups, effects,
-maps, team colours) is documented step by step in
-`docs/ASSET_CONVENTIONS.md` — copy a `.tres`, drop an art folder.
+- `ZBuilding::ProcessBuildingsEffects` — how a damaged building burns.
+- `zsettings.cpp SetDefaults` and `ZServer::ProcessMissileDamage` —
+  every explosive radius, and the splash model.
+- `ZBot::GoAllOut_3` — how much of its army the CPU commits, and when.
 
-Headless test suite: 47 flags (`--combat-test`, `--teams-test`,
-`--scenes-test`, ...), run in parallel lanes from `project/`:
-`res://scenes/main.tscn --<flag>-test --quit-after N`. **`--quit-after`
-counts FRAMES, not seconds** (Godot's own option): the real-physics
-lanes (`--placement-test`, `--garrison-test`) need a few thousand, so
-use `--quit-after 6000` for a whole-suite sweep. A run passes with zero
-`SCRIPT ERROR` and zero `CHECK FAILED:` lines — the harness lives in
-`project/scripts/tests/` (TestRig is the assertion helper, per-domain
-modules like path_tests.gd, terrain_tests.gd and garrison_tests.gd split
-out of self_tests.gd). EVERY flag now reports through TestRig, so a
-regression fails the run instead of printing a number nobody reads.
-Screenshot verification: add `--screenshot <seconds>` (warps the mouse
-so edge pan stays put).
+Read it before you call anything underivable. Two items in
+`docs/BUGS.md` said "cannot be derived from the art alone" and only
+needed somebody to open the file.
+
+## Screenshots
+
+The original chrome, and a unit selected. The sidebar shows the animated
+head portrait, the name plate, the equipment art and the health bar.
+
+![The HUD](docs/screenshots/02-hud.png)
+
+The production menu, on the release's own 112x80 window, with the Time
+countdown and the level and progress gauges.
+
+![Production](docs/screenshots/03-production.png)
+
+A fort under fire. A damaged building holds a population of fires and
+smoke plumes that grows as its health falls, and the ruin goes on
+burning after it falls.
+
+![A burning fort](docs/screenshots/04-burning.png)
+
+## Play it
+
+You need Godot **4.7.1** and your own asset copy.
+
+```bash
+python3 tools/gog/convert_assets.py   # sfx, music, HUD art from the GOG release
+python3 tools/zod/copy_art.py         # unit and map sprites from the Zod pack
+flatpak run org.godotengine.Godot     # open project/project.godot, then press F5
+```
+
+**Controls.** The arrow keys, the screen edge, a middle-mouse drag or
+the radar pan the camera. The wheel zooms. Drag to box-select,
+double-click to take every unit of that type on screen, right-click to
+order. `Ctrl`+right-click **queues** the order behind what the unit is
+already doing.
+
+Every hotkey is the letter printed on the HUD plate that it presses, so
+the frame teaches its own keyboard:
+
+| Key | Action | Key | Action |
+|---|---|---|---|
+| `A` | jump to the last alert | `R` | select all robots |
+| `T` | smart idle | `V` | select all hardware |
+| `D` | defend (toggle) | `B` | cycle factories |
+| `Z` | attack-move (toggle) | `G` | cycle control groups |
+| `X` | dismount | `Ctrl`+`A` | select the whole army |
+
+`Ctrl`+digit assigns a control group. The digit alone selects it, and a
+second press moves the camera to that squad. Neither `D` nor `Z` lit
+means a plain move.
+
+Two commands are not on any plate because the original had neither:
+`S` **stops** the selection (cancels the order, the waypoint chain and
+any held post) and `H` **holds** the ground it stands on. The letters
+are commands only — WASD no longer pans, because holding `D` to look
+right also flipped the DEFEND stance on the frame it pressed. Shift on a
+build button fills that production line to its cap in one press.
+
+Two original habits are on by default: an order drops the selection
+(a queued order does not, or a chain would be impossible to build), and
+a click on a unit centers the camera on it. Both are switchable in
+Settings. The release's own 7 tutorial pages are on the title menu under
+**How To Play**.
+
+## Build the desktop releases
+
+All three targets cross-build from Linux. You need the Godot 4.7.1 export
+templates and the icon set.
+
+```bash
+python3 tools/gog/make_icons.py   # cuts the Z logo out of the retail splash
+tools/build_releases.sh           # linux + windows + macos
+tools/build_rpm.sh                # wraps the Linux binary as a Fedora RPM
+```
+
+| Target | Output | Notes |
+|---|---|---|
+| Fedora | `build/rpm/z-remake-*.rpm` | installs `/usr/bin/z-remake`, a desktop entry and the hicolor icon tree. `Release` carries a build stamp, so a rebuild always upgrades in place. |
+| Linux | `build/linux/z-remake.x86_64` | one self-contained binary |
+| Windows | `build/windows/z-remake.exe` | self-contained, with version metadata. The Explorer file icon stays Godot's default, because a custom one needs `rcedit`, which needs wine. The game window icon is correct. |
+| macOS | `build/macos/z-remake.zip` | universal (x86_64 and arm64), unsigned. A cross-build is fine, but you must sign and notarize on a Mac, so the first launch needs right-click → Open. A `.dmg` cannot be produced off a Mac. |
+
+> **Every binary embeds the original art and sound.** Build them for
+> yourself. Do not attach them to a release, and do not redistribute
+> them. `build/` is gitignored for that reason.
 
 ## The CPU opponent
 
-One brain per non-player fort team, running a full loop each think pass:
-produce from every owned facility, defend owned ground, crew the empty
-hardware lying around the map, run maintenance (cranes repair, damaged
-tanks visit the repair shop), hold the frontier **bridges** (the only
-place armour crosses a Z map), then **assign** the rest.
+One brain runs per non-player fort team. Each think pass it produces from
+every owned facility, defends owned ground, crews the empty hardware on
+the map, runs maintenance, holds the frontier bridges, then assigns
+whatever is left.
 
-The assignment is the `ZBot Stage1AI_3` port and it is what stops the
-brain swarming one point:
+The assignment ports `ZBot Stage1AI_3`. It is what stops the brain
+swarming one point:
 
-1. **Posture** (`GoAllOut_3`) — the bot reads its share of the map's
-   zones against a fair share (1/teams) and picks two numbers from it:
-   what fraction of the idle army is re-tasked, and how long until the
-   next cycle. Holding a fair share means a *small* slice on a *slow*
-   cadence with a *wider* target list (`all_out` adds enemy units and
-   robots); falling behind means re-tasking a third of the army every
-   few seconds.
-2. **Targets in the original's priority order** — map items (zone flags,
-   crates), then buildings, then empty hardware, and enemy units only
-   once all out.
-3. **Mutual-nearest matching** (`MatchTargets_3` / `GiveOutOrders_3`) —
-   a pair is ordered only when the unit is that target's nearest
-   candidate *and* that target is the unit's. A unit with no mutual
-   partner is left alone this cycle. Buildings take a squad (focus
-   fire); everything else takes one, so the army fans out.
+1. **Posture** (`GoAllOut_3`). The bot compares its share of the map's
+   zones against a fair share of 1/teams, and reads two numbers off it:
+   what fraction of the idle army to re-task, and how long to wait for
+   the next cycle. A fair share means a small slice on a slow cadence
+   with a wider target list. Falling behind means a third of the army
+   every few seconds.
+2. **Targets in the original's priority order.** Map items first (zone
+   flags and crates), then buildings, then empty hardware. Enemy units
+   come last, and only once the bot is all out.
+3. **Mutual-nearest matching** (`MatchTargets_3`, `GiveOutOrders_3`). A
+   pair gets an order only when the unit is that target's nearest
+   candidate and that target is the unit's. A unit with no mutual
+   partner waits out the cycle. A building takes a squad, which is the
+   focus fire. Everything else takes one unit, so the army fans out.
 
-`--tactics-test` asserts the posture table flips with the map share and
-that the matching spreads units instead of piling them.
+`--tactics-test` asserts that the posture table follows the map share,
+and that the matching spreads units instead of piling them.
 
-## Building the desktop releases
+## Repository layout
 
-All three targets cross-build from Linux. You need the matching Godot
-**4.7.1** export templates and the icon set:
+| Path | Purpose |
+|---|---|
+| `docs/` | research notes, roadmap, bug tracker, asset conventions |
+| `project/` | the Godot project |
+| `packaging/linux/` | RPM spec and desktop entry |
+| `tools/` | asset converters and build scripts |
+| `assets_original/gog/` | the GOG release: sfx, soundtrack, HUD art (gitignored, 383 MB) |
+| `assets_original/zod/` | the Zod Engine set: unit and map sprites (gitignored, 84 MB) |
+| `project/assets/` | the working asset set, built by the tools (gitignored) |
+
+**Asset tools.** `gog/level_to_json.py` converts the original 20 levels
+from the retail `LEVEL##.MAP` data — the format notes are in
+`docs/RESEARCH.md` §6. `gog/convert_assets.py` takes sfx, music and HUD
+art. `zod/copy_art.py` is a declarative copier for the Zod pack.
+`zod/build_hud.py` bakes the HUD pieces and the animated head portraits,
+and recovers the face-piece offsets by brute force (§2e).
+`zod/map_to_json.py` and `zod/tileinfo_to_json.py` convert the map and
+terrain tables. `zod/verify_map_planets.py` audits and repairs the planet
+tag on every converted map — run it after any map conversion.
+
+**Maps** load as JSON or as editable Godot scenes. Open any
+`project/assets/maps_scenes/*.tscn`, paint terrain with the generated
+tilesets, move buildings, zones and units, then press F6 to play.
+Regenerate the scenes from the JSON with `godot --headless --path project
+res://tools/build_map_resources.tscn`.
+
+**Code layout.** The autoloads are **ContentDB** (the content registry,
+with inspector-editable `.tres` defs under `content/`), **Fx**
+(presentation), **SaveSystem** (the per-entity save contract),
+**NavWorld** (pathing), **MatchState** (economy, upgrades, caps),
+**UnitRegistry** (typed unit queries), **GameState** (match flow and
+win), **SelectionManager**, **MusicPlayer** and **Campaign**. Then
+`scripts/content` holds the Resource def classes, `scripts/entities` the
+units, buildings and effects, `scripts/game` orders, combat, the spawner,
+the map loader and the AI, and `scripts/ui` the signal-driven HUD. To add
+content, copy a `.tres` and drop an art folder — the steps are in
+`docs/ASSET_CONVENTIONS.md`.
+
+## Tests
+
+49 headless lanes. Run them in parallel from `project/`:
 
 ```bash
-python3 tools/gog/make_icons.py        # cuts the Z logo out of the retail splash
-tools/build_releases.sh                # linux + windows + macos
-tools/build_rpm.sh                     # wraps the Linux binary as a Fedora RPM
+res://scenes/main.tscn --<flag>-test --quit-after 6000
 ```
 
-| Target  | Output | Notes |
-|---|---|---|
-| Fedora  | `build/rpm/z-remake-*.rpm` (+ raw `build/linux/z-remake.x86_64`) | installs `/usr/bin/z-remake`, a `.desktop` entry and the full hicolor icon tree |
-| Windows | `build/windows/z-remake.exe` | self-contained. The **Explorer file icon** stays Godot's default: embedding one needs `rcedit`, which needs wine, which is deliberately not installed. The in-game window icon is correct. |
-| macOS   | `build/macos/z-remake.zip` | universal (x86_64 + arm64), **unsigned**. Cross-building is fine but signing/notarization need a Mac, so first launch needs right-click → Open, or `xattr -dr com.apple.quarantine "Z Remake (1996).app"`. A `.dmg` cannot be produced off a Mac. |
+`--quit-after` counts **frames**, not seconds. It is Godot's own option.
+The real-physics lanes need a few thousand frames, so use 6000 for a
+whole sweep.
 
-The icon is the release's own riveted metal **Z**, cropped out of
-`PNG/IPSplash.png`. Because that is Bitmap Brothers art it is generated
-locally into the gitignored `project/assets/icon/`, never committed.
+A lane passes with zero `SCRIPT ERROR` lines and zero `CHECK FAILED`
+lines. The harness lives in `project/scripts/tests/`. TestRig is the
+assertion helper.
 
-> **Every built binary embeds the original art and sound.** The builds
-> are for local use. Do not attach them to a release or redistribute
-> them — `build/` is gitignored for that reason.
+**Run the suite inside the exported binary too.** The title screen hands
+over to the match scene when it sees a test flag, so the same lanes run
+against a build:
+
+```bash
+build/linux/z-remake.x86_64 --headless --art-test --quit-after 6000
+```
+
+This matters. An editor-only green run proves nothing about a build: a
+packaged game once loaded no building defs, no unit folders and no effect
+art, with all 47 lanes green in the editor, because Godot packs an
+imported file as a `.import` sidecar and every directory scan filtered on
+the source extension. The export lane is what found it.
+
+For a screenshot, add `--screenshot <seconds>`. It warps the mouse, so
+edge pan stays put.
 
 ## Asset licensing
 
-The original Z graphics/sounds are © The Bitmap Brothers. They are
-extracted via the Zod Engine asset pack, kept **gitignored** in
-`assets_original/` and `project/assets/` — every contributor copies them
-locally. Do not redistribute. The code in this repo is original.
+The original Z graphics and sounds belong to © The Bitmap Brothers. The tools
+extract them from the Zod Engine asset pack and the GOG release into
+`assets_original/` and `project/assets/`, and both paths are
+**gitignored**. Every contributor copies them locally.
+
+Do not redistribute them. The screenshots above are in the repository
+for documentation only.
+
+The code in this repository is original.

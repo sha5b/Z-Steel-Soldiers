@@ -1,10 +1,10 @@
 class_name StanceBar
 extends HBoxContainer
 ## Order-stance selector beside the minimap: what a right-click order
-## DOES (R move without attacking, Q attack-move, E defend-and-hold)
-## plus the smart-idle toggle (grab hand, T — idle robots auto-man
-## nearby hardware and walk to capturable flags). Original zod cursor
-## art; the active state tints, hotkeys Q/E/R/T mirror the buttons.
+## DOES (plain move, Z attack-move, D defend-and-hold) plus the
+## smart-idle toggle (grab hand, T — idle robots auto-man nearby
+## hardware and walk to capturable flags). Original zod cursor art; the
+## active state tints, and the sidebar's own T/D/Z keys mirror it.
 ## Compact panel chrome — the full-size button plates would dwarf a
 ## 24px icon button.
 
@@ -18,9 +18,10 @@ var _toggle: Button = null
 func _ready() -> void:
 	add_theme_constant_override("separation", 4)
 	var defs := [
-		["cursor_red_n00", "Move without attacking (R)", SelectionManager.OrderStance.MOVE],
-		["attack_red_n00", "Attack move (Q)", SelectionManager.OrderStance.ATTACK_MOVE],
-		["place_red_n00", "Defend position (E)", SelectionManager.OrderStance.DEFEND],
+		["cursor_red_n00", "Move without attacking (neither D nor Z)",
+			SelectionManager.OrderStance.MOVE],
+		["attack_red_n00", "Attack move (Z)", SelectionManager.OrderStance.ATTACK_MOVE],
+		["place_red_n00", "Defend position (D)", SelectionManager.OrderStance.DEFEND],
 	]
 	for d in defs:
 		var btn := _make_button(String(d[0]), String(d[1]))

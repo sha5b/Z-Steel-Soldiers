@@ -55,6 +55,31 @@ shipped 2026-08 — see the bottom section.
       digits, announcer plaques, order-confirmation cursors, ambient
       birds, the unlabelled ROB voice bank as idle chatter
 
+## Phase 5 — the quality-of-life sweep (2026-08-21) ✅
+
+The commands the original never had, all additions, all guarded by the
+new `--qol-test` lane (49 lanes now). Details in `docs/HANDOFF.md`.
+
+- [x] **The pan keys were also command keys.** WASD panned AND pressed
+      the HUD plates (holding `D` to look right flipped the DEFEND
+      stance). Pan is arrows / screen edge / **middle-mouse drag** /
+      radar; the letters belong to the frame, and the lane fails if a
+      letter is bound back onto a `cam_*` action.
+- [x] **Stop (`S`)** and **hold position (`H`)** — there was no way to
+      cancel an order at all, only to replace it
+- [x] **Queued orders** (ctrl+right-click): a per-unit chain of 8, the
+      next leg starting where the last one ended, each waypoint marked
+      as it is queued, replicated over the wire, and invisible to the
+      AI's idle scan so nothing gets stolen mid-chain
+- [x] **Double-click** takes every unit of that type on screen;
+      **`Ctrl`+`A`** takes the whole army; **`A`** finally binds the
+      sidebar's own A plate (jump to the last alert)
+- [x] **Radar alert pings** — a factory or a squad under fire off-screen
+      used to produce nothing to point at (no voice line ships for
+      them). `Fx.ping` is the silent alert channel and the radar flashes
+      it
+- [x] **Shift fills a production line** to its cap in one press
+
 ## Not done (known gaps for a future task)
 
 - Multiplayer IN-MATCH sync — INTENT REPLICATION SHIPPED (2026-08-20):

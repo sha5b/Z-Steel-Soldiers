@@ -1,12 +1,30 @@
-# Handoff — 2026-08-20
+# Handoff — 2026-08-21
 
-State of the HUD/gameplay fidelity pass, and what is still open. Written
-at the end of the session that rebuilt the in-game HUD; read this with
+State of the HUD/gameplay fidelity pass and the quality-of-life sweep
+that followed it, and what is still open. Read this with
 `docs/BUGS.md` (verified open bugs) and `docs/ROADMAP.md` (plan).
 
-Test state at handoff: **47/47 headless lanes clean.**
+Test state at handoff: **49/49 headless lanes clean.**
 
-## Landed this session
+## The quality-of-life sweep (2026-08-21)
+
+The game was faithful and missing the commands 30 years of RTS players
+now expect. Everything here is an ADDITION to the original, guarded by
+the new `--qol-test` lane.
+
+| Area | What changed |
+|---|---|
+| **Pan keys were command keys** | The real bug the sweep found. WASD panned the camera AND pressed the HUD's plates, because the camera polls input actions while `match.gd` reads the same key events: holding `D` to look right flipped the DEFEND stance on the frame it went down, and `S`/`A` would have done the same to the new stop and army-select. The four `cam_*` actions are arrows only now; panning is arrows, screen edge, **middle-mouse drag** and the radar. `--qol-test` fails if a letter is ever bound back onto a pan action. |
+| **Stop (`S`)** | There was no cancel. A move could only be replaced, so a squad walking into an ambush had to be sent somewhere else to be called off. `Order.Type.STOP` (appended — the type crosses the wire as an int) goes through the same intake and `Unit2D.halt()` releases the order, the queue, the chase and the DEFEND post. |
+| **Hold position (`H`)** | Takes the ground the unit stands on as a DEFEND post. `_begin_order` arms it in place when the post is within `HOLD_REACH`: pathing to your own feet returns an empty route, which drops the order and arms nothing. |
+| **Queued orders (ctrl+right-click)** | A per-unit FIFO (`order_queue`, cap 8) advanced from the one place an order ends (`_order_done`) and from arrival. A plain click still wipes the chain, so decisive clicking is unchanged; a queued click does NOT drop the selection, or a chain could not be built. Each waypoint drops its confirmation marker when it is queued — a chain you cannot see is a chain you cannot build. `is_idle()` now counts a pending chain as work, so neither the AI nor smart idle steals a unit mid-chain. Replicated: the intent carries `q`. |
+| **Double-click** | Takes every unit of the same kind AND type inside `view_rect()`. |
+| **`A` / `Ctrl`+`A`** | The sidebar's A plate had no key at all, in a frame whose whole convention is that the key is the letter on the plate — `A` now jumps to the last alert. `Ctrl`+`A` selects the whole army (robots + hardware), the one selection R and V together cannot express. |
+| **Radar alert pings** | `Fx.announce` only fires for events that ship a voice line, so a factory or a squad taking fire off-screen produced nothing to point at. `Fx.ping()` is the silent channel: throttled per 96px cell, 4s window, and the radar flashes it. Fed by non-fort building damage, by the distress bark, and by every voiced alert. It is also what the A button jumps to. Eyeball it with `--screenshot 2.4 --burn-building`. |
+| **Shift fills a production line** | The queue held 5 from the start with no way to fill it — five trips through the flyout. Shift-clicking a build button queues to the cap through the same intake, so pop caps, money and the network see five ordinary requests and the first refusal stops the run. |
+| **Stale hotkey text** | The stance bar still offered Q/E/R in its tooltips, from before the keys moved to the HUD's own letters. |
+
+## Landed in the HUD session (2026-08-20)
 
 Verified by test unless noted otherwise.
 

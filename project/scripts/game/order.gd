@@ -16,12 +16,19 @@ enum Type {
 	GARRISON,       # robot garrisons its own fort (missile crew)
 	REPAIR_BUILDING,  # damaged vehicle enters the repair shop
 	CRANE_REPAIR,   # manned crane rebuilds a damaged building/bridge
+	STOP,           # CANCEL: drop whatever is in flight and stand here
+					# (new ids go on the END — a multiplayer intent sends
+					# int(type) over the wire)
 }
 
 var type: Type = Type.MOVE
 var position := Vector2.ZERO  # MOVE / MOVE_ATTACK destination
 var target: Node2D = null     # everything else
 var run := false
+## APPEND instead of replace (ctrl+right-click): the unit finishes what
+## it is doing and runs this next. A non-queued order wipes the queue,
+## which is what every plain click has always done.
+var queued := false
 ## Order-confirmation art shown at the destination (PathIndicator).
 ## "" = derive from the type; Commands overrides it where the CLICK says
 ## more than the type does (walking onto a crate is a plain move).
@@ -43,6 +50,8 @@ func confirm_marker() -> String:
 			return "entered"
 		Type.REPAIR_BUILDING, Type.CRANE_REPAIR:
 			return "repaired"
+		Type.STOP:
+			return ""
 		_:
 			return "placed"
 
@@ -66,6 +75,25 @@ static func attack(node: Node2D, sprint := false) -> Order:
 	order.target = node
 	order.position = node.global_position
 	order.run = sprint
+	return order
+
+
+## STOP: forget the current order and the whole queue, hold this ground.
+## The one basic command the game did not have — until this existed a
+## move could only be replaced, never cancelled, so a squad walking into
+## an ambush had to be sent somewhere else to be called off.
+static func stop() -> Order:
+	var order := Order.new()
+	order.type = Type.STOP
+	return order
+
+
+## HOLD POSITION: a DEFEND post on the ground the unit already stands on.
+## Unit2D arms it in place instead of pathing to its own feet.
+static func hold(world_pos: Vector2) -> Order:
+	var order := Order.new()
+	order.type = Type.DEFEND
+	order.position = world_pos
 	return order
 
 

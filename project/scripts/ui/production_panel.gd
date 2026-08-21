@@ -426,18 +426,32 @@ func _build_roster(factory: Node) -> void:
 		btn.position = Vector2(float(i % ROSTER_COLUMNS) * (ROSTER_SLOT.x + ROSTER_GAP),
 				float(i / ROSTER_COLUMNS) * (ROSTER_SLOT.y + ROSTER_GAP))
 		btn.size = ROSTER_SLOT
-		btn.tooltip_text = "%s — %d s, HP %d, DMG %d" % [
+		btn.tooltip_text = "%s — %d s, HP %d, DMG %d\nshift-click fills the line" % [
 			parts[1].capitalize(), int(stats.build_time), stats.hp, stats.damage]
 		btn.focus_mode = Control.FOCUS_NONE
 		_object_button_chrome(btn)
 		btn.icon = icon_for(parts[0], parts[1], MatchState.current.player_team)
 		btn.expand_icon = btn.icon != null
-		btn.pressed.connect(func():
-			queue_requested.emit(item)
-			_wired.queue_unit(item)
-			Net.relay_queue(_wired, item)
-			_roster_open = false)
+		btn.pressed.connect(func(): _queue(item))
 		_roster.add_child(btn)
+
+
+## One roster press. SHIFT FILLS THE LINE (up to ProductionQueue's cap)
+## instead of asking for one unit and reopening the flyout five times —
+## the queue existed from the start and there was no way to fill it in
+## one action. Each unit is queued through the same intake, so pop caps,
+## money and the network see five separate requests, and the first one
+## that is refused stops the run.
+func _queue(item: String) -> void:
+	if _wired == null or not is_instance_valid(_wired):
+		return
+	var want: int = ProductionQueue.MAX_ITEMS if Input.is_key_pressed(KEY_SHIFT) else 1
+	for i in want:
+		if not _wired.queue_unit(item):
+			break
+		queue_requested.emit(item)
+		Net.relay_queue(_wired, item)
+	_roster_open = false
 
 
 ## zod `object_button` plate behind each roster entry.

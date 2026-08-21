@@ -25,12 +25,25 @@ func _ready() -> void:
 	_sync_view_offset()
 
 
+## MIDDLE-DRAG PAN: grab the ground and pull. Edge pan is the original's
+## way around a 256x256 map and it stays, but it cannot cross a big map
+## in one motion and it fights the HUD chrome at the screen's edges.
+var _grabbing := false
+
+
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_zoom_by(1.0 / ZOOM_STEP)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_zoom_by(ZOOM_STEP)
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_MIDDLE:
+			_grabbing = event.pressed
+			return
+		if event.pressed:
+			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+				_zoom_by(1.0 / ZOOM_STEP)
+			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+				_zoom_by(ZOOM_STEP)
+	elif event is InputEventMouseMotion and _grabbing:
+		# drag the WORLD, so the camera goes the other way
+		_clamp_move(-(event as InputEventMouseMotion).relative / zoom.x)
 
 
 func _zoom_by(factor: float) -> void:

@@ -9,7 +9,8 @@ extends Object
 ##
 ## R and V take the whole army of that kind. B and G CYCLE, so pressing
 ## the same letter walks through your factories or your control groups one
-## at a time and the camera follows.
+## at a time and the camera follows. Ctrl+A ("army") is ours too: every
+## unit of every kind, which is the only selection R and V cannot make.
 
 static var _cycle := {}  # "building" / "group" -> next index
 
@@ -21,6 +22,10 @@ static func activate(what: String) -> void:
 		"vehicle":
 			# hardware in one press: vehicles AND emplaced guns
 			_select_kind("vehicle", "cannon")
+		"army":
+			# CTRL+A: everything that can take an order, which is the one
+			# selection R and V together cannot express in one press
+			_select_kind("robot", "vehicle", "cannon")
 		"building":
 			_cycle_buildings()
 		"group":
@@ -28,13 +33,14 @@ static func activate(what: String) -> void:
 
 
 ## Every living unit of these kinds on the player's team.
-static func _select_kind(kind_a: String, kind_b := "") -> void:
+static func _select_kind(kind_a: String, kind_b := "", kind_c := "") -> void:
 	var team: int = MatchState.current.player_team
 	var picked: Array[Node] = []
 	for u in UnitRegistry.current.world_units():
 		if not is_instance_valid(u) or not u.alive or u.team != team or u.carried:
 			continue
-		if u.kind == kind_a or (kind_b != "" and u.kind == kind_b):
+		if u.kind == kind_a or (kind_b != "" and u.kind == kind_b) \
+				or (kind_c != "" and u.kind == kind_c):
 			picked.append(u)
 	_apply(picked)
 
