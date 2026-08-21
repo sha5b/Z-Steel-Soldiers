@@ -7,6 +7,10 @@
 A fan remake of **Z**, the robot real-time strategy game by The Bitmap
 Brothers, rebuilt in Godot 4.
 
+**[sha5b.github.io/Z-Steel-Soldiers](https://sha5b.github.io/Z-Steel-Soldiers/)**
+&nbsp;·&nbsp; [Releases](https://github.com/sha5b/Z-Steel-Soldiers/releases)
+&nbsp;·&nbsp; [MIT](LICENSE)
+
 </div>
 
 ![Title screen](docs/screenshots/01-title.png)
@@ -133,9 +137,9 @@ tools/build_rpm.sh                # wraps the Linux binary as a Fedora RPM
 | Windows | `build/windows/z-remake.exe` | self-contained, with version metadata. The Explorer file icon stays Godot's default, because a custom one needs `rcedit`, which needs wine. The game window icon is correct. |
 | macOS | `build/macos/z-remake.zip` | universal (x86_64 and arm64), unsigned. A cross-build is fine, but you must sign and notarize on a Mac, so the first launch needs right-click → Open. A `.dmg` cannot be produced off a Mac. |
 
-> **Every binary embeds the original art and sound.** Build them for
-> yourself. Do not attach them to a release, and do not redistribute
-> them. `build/` is gitignored for that reason.
+> **Every binary embeds the original art and sound**, so a build is not
+> MIT — only the code is. `build/` is gitignored, and the release
+> binaries are a convenience for people who already own the game.
 
 ## The CPU opponent
 
@@ -173,9 +177,7 @@ and that the matching spreads units instead of piling them.
 | `project/` | the Godot project |
 | `packaging/linux/` | RPM spec and desktop entry |
 | `tools/` | asset converters and build scripts |
-| `assets_original/gog/` | the GOG release: sfx, soundtrack, HUD art (gitignored, 383 MB) |
-| `assets_original/zod/` | the Zod Engine set: unit and map sprites (gitignored, 84 MB) |
-| `project/assets/` | the working asset set, built by the tools (gitignored) |
+| `assets_original/`, `project/assets/` | your own asset copy and the working set built from it (both gitignored) |
 
 **Asset tools.** `gog/level_to_json.py` converts the original 20 levels
 from the retail `LEVEL##.MAP` data — the format notes are in
@@ -238,14 +240,28 @@ the source extension. The export lane is what found it.
 For a screenshot, add `--screenshot <seconds>`. It warps the mouse, so
 edge pan stays put.
 
-## Asset licensing
+## Why this exists
 
-The original Z graphics and sounds belong to © The Bitmap Brothers. The tools
-extract them from the Zod Engine asset pack and the GOG release into
-`assets_original/` and `project/assets/`, and both paths are
-**gitignored**. Every contributor copies them locally.
+For the sport of it, and to see what it takes to translate a 1996 game's
+logic into Godot. That is the whole point, so the interesting part is not
+the binary — it is the reading. Where a behaviour came from is written
+down next to it: `docs/RESEARCH.md` cites the function, and
+`docs/BUGS.md` keeps the open questions with their evidence.
 
-Do not redistribute them. The screenshots above are in the repository
-for documentation only.
+## License
 
-The code in this repository is original.
+The code is **MIT** — see [LICENSE](LICENSE). That covers the GDScript,
+the Godot project, the converters and build scripts under `tools/`, the
+packaging, and the docs. Take it, read it, port it, reuse it.
+
+It does not cover the original game's graphics, sound, music, voice lines
+or map data. Those belong to © The Bitmap Brothers, and nobody here can
+license them to you. They are not in this repository: `assets_original/`
+and `project/assets/` are gitignored, and the converters read from your
+own copy of the retail release. The screenshots are here to document the
+work.
+
+A build embeds those assets, so a binary is not MIT either. Build one
+from your own copy of the game.
+
+This project is unaffiliated with The Bitmap Brothers and with GOG.
