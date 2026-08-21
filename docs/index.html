@@ -3,125 +3,118 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Z (1996) — Godot Remake</title>
-<meta name="description" content="A fan remake of Z, the robot real-time strategy game by The Bitmap Brothers, rebuilt in Godot 4.">
+<title>Z — Steel Soldiers</title>
+<meta name="description" content="No harvesters. No economy. Take ground and your factories build faster. Twenty missions, five planets. Free for Windows, Mac and Linux.">
 <link rel="icon" href="screenshots/logo.png">
+<meta property="og:title" content="Z — Steel Soldiers">
+<meta property="og:description" content="No harvesters. No economy. Take ground and your factories build faster.">
+<meta property="og:image" content="screenshots/02-arctic.png">
 <style>
-/* A 1996 game page: riveted metal plate, beveled panels, amber terminal
-   text. No web fonts, no frameworks, no script. The palette is lifted
-   off the game's own HUD chrome and the Z logo. */
 :root{
-  --steel:#6e6e6e; --steel-hi:#9a9a9a; --steel-lo:#3a3a3a;
-  --plate:#4c4c4c; --ink:#d8d4c8; --amber:#f0a828; --amber-hi:#ffd070;
-  --rust:#a8371f; --sand:#c9b98a; --black:#151515;
+  --steel-hi:#9a9a9a; --steel-lo:#3a3a3a;
+  --ink:#d8d4c8; --amber:#f0a828; --amber-hi:#ffd070;
+  --rust:#a8371f; --sand:#c9b98a;
 }
 *{box-sizing:border-box}
-html{background:var(--black)}
+html{background:#151515}
 body{
-  margin:0; padding:0 12px 64px;
-  font:15px/1.65 "Lucida Console","DejaVu Sans Mono",Consolas,monospace;
+  margin:0; padding:0 12px 56px;
+  font:15px/1.6 "Lucida Console","DejaVu Sans Mono",Consolas,monospace;
   color:var(--ink);
-  /* brushed steel, done with gradients so the page carries no extra art */
   background:
-    repeating-linear-gradient(90deg,
-      rgba(255,255,255,.030) 0 1px, rgba(0,0,0,.030) 1px 3px),
-    repeating-linear-gradient(0deg,
-      rgba(255,255,255,.014) 0 2px, rgba(0,0,0,.028) 2px 5px),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.030) 0 1px, rgba(0,0,0,.030) 1px 3px),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.014) 0 2px, rgba(0,0,0,.028) 2px 5px),
     radial-gradient(120% 70% at 50% 0%, #5a5a5a 0%, #333 55%, #1c1c1c 100%);
   background-attachment:fixed;
 }
-.wrap{max-width:980px;margin:0 auto}
+.wrap{max-width:960px;margin:0 auto}
 
-/* ---- the beveled panel, the page's one repeated shape ---- */
 .panel{
+  position:relative;
   background:linear-gradient(180deg,#555 0%,#464646 40%,#3c3c3c 100%);
   border:2px solid;
   border-color:var(--steel-hi) var(--steel-lo) var(--steel-lo) var(--steel-hi);
   box-shadow:inset 0 0 0 2px #4a4a4a, 0 3px 10px rgba(0,0,0,.6);
-  padding:20px 24px; margin:22px 0;
+  padding:22px 26px; margin:20px 0;
 }
-/* corner rivets */
-.panel{position:relative}
 .panel::before,.panel::after{
   content:""; position:absolute; width:7px; height:7px; border-radius:50%;
   background:radial-gradient(circle at 35% 30%, #cfcfcf, #6d6d6d 55%, #2f2f2f);
-  box-shadow:0 1px 1px rgba(0,0,0,.7);
+  box-shadow:0 1px 1px rgba(0,0,0,.7); top:7px;
 }
-.panel::before{top:7px;left:7px}
-.panel::after{top:7px;right:7px}
+.panel::before{left:7px} .panel::after{right:7px}
 
-header{text-align:center;padding:34px 0 6px}
+header{text-align:center;padding:40px 0 4px}
 header img{
-  width:112px;height:112px;image-rendering:pixelated;
+  width:104px;height:104px;image-rendering:pixelated;
   border:2px solid; border-color:var(--steel-hi) var(--steel-lo) var(--steel-lo) var(--steel-hi);
 }
 h1{
-  margin:14px 0 2px; font-size:40px; letter-spacing:.16em; color:var(--sand);
-  text-shadow:0 2px 0 #000, 0 0 18px rgba(240,168,40,.20);
+  margin:16px 0 0;font-size:14px;letter-spacing:.38em;color:var(--sand);
+  text-transform:uppercase;font-weight:normal;
 }
-.tagline{margin:0;color:var(--amber);letter-spacing:.06em}
-.byline{margin:6px 0 0;color:#9b968a;font-size:13px}
+.hook{
+  margin:18px auto 0;max-width:660px;font-size:27px;line-height:1.32;
+  color:var(--amber-hi);text-shadow:0 2px 0 #000;
+}
+.sub{margin:16px auto 0;max-width:600px;color:#cfc9bb}
+
+.dl{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:2px 0 14px}
+.btn{
+  display:block;text-align:center;padding:17px 10px 14px;
+  background:linear-gradient(180deg,#e8a83a,#c07d16);color:#241a06;
+  border:3px solid;border-color:#ffd070 #6d4404 #6d4404 #ffd070;
+  text-decoration:none;letter-spacing:.12em;font-weight:bold;
+}
+.btn:hover{background:linear-gradient(180deg,#ffc357,#d68f1c)}
+.btn small{display:block;font-weight:normal;font-size:11px;letter-spacing:0;
+  margin-top:5px;color:#4a3608}
+.dl-note{font-size:12.5px;color:#a8a29a;margin:0}
 
 h2{
-  margin:0 0 14px; font-size:17px; letter-spacing:.14em; color:var(--amber-hi);
-  text-transform:uppercase; border-bottom:1px solid #5d5d5d; padding-bottom:8px;
+  margin:0 0 16px;font-size:16px;letter-spacing:.20em;color:var(--amber-hi);
+  text-transform:uppercase;border-bottom:1px solid #5d5d5d;padding-bottom:9px;
 }
 h2::before{content:"\25B8  ";color:var(--rust)}
-h3{margin:20px 0 6px;font-size:14px;letter-spacing:.08em;color:var(--sand)}
 p{margin:0 0 12px}
-a{color:var(--amber);text-decoration:none;border-bottom:1px dotted #8a7440}
-a:hover{color:var(--amber-hi);background:rgba(240,168,40,.10)}
+a{color:var(--amber)}
 
-/* ---- the amber readout, for the status strip ---- */
-.readout{
-  background:#181510; color:var(--amber);
-  border:2px solid; border-color:var(--steel-lo) var(--steel-hi) var(--steel-hi) var(--steel-lo);
-  padding:12px 16px; margin:0 0 4px; font-size:13.5px; line-height:1.8;
-}
-.readout b{color:var(--amber-hi)}
-.ok{color:#7fdc6a}
+.feat{list-style:none;margin:0;padding:0}
+.feat li{margin:0 0 13px;padding-left:20px;position:relative}
+.feat li::before{content:"\25AA";position:absolute;left:0;color:var(--rust)}
+.feat b{color:var(--sand)}
 
-/* ---- shots ---- */
-figure{margin:0 0 22px}
-figure img{
+.shot{margin:20px 0}
+.shot img{
   display:block;width:100%;height:auto;image-rendering:pixelated;
   border:2px solid; border-color:var(--steel-lo) var(--steel-hi) var(--steel-hi) var(--steel-lo);
 }
-figcaption{
-  margin-top:8px;padding:7px 10px;font-size:13px;color:#c3bdaf;background:rgba(0,0,0,.30);border-left:3px solid var(--rust);
+.shot span{
+  display:block;margin-top:6px;font-size:12px;letter-spacing:.26em;
+  color:var(--amber);text-transform:uppercase;
 }
 
-/* ---- tables, keys, code ---- */
-table{border-collapse:collapse;width:100%;margin:0 0 14px;font-size:13.5px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
 th,td{border:1px solid #5d5d5d;padding:7px 10px;text-align:left;vertical-align:top}
-th{background:#3a3a3a;color:var(--sand);letter-spacing:.06em;text-transform:uppercase;font-size:12px}
-td code,p code,li code{color:var(--amber-hi)}
+th{background:#3a3a3a;color:var(--sand);letter-spacing:.06em;
+  text-transform:uppercase;font-size:11.5px;white-space:nowrap}
 kbd{
-  display:inline-block;min-width:20px;text-align:center;
+  display:inline-block;min-width:19px;text-align:center;
   background:linear-gradient(180deg,#e8a83a,#c07d16);color:#241a06;
   border:2px solid;border-color:#ffd070 #7a4d05 #7a4d05 #ffd070;
-  padding:1px 6px;font:12px/1.5 inherit;font-weight:bold;
+  padding:0 5px;font:12px/1.5 inherit;font-weight:bold;
 }
-pre{
-  background:#181510;color:#cfc7b4;border:2px solid;
-  border-color:var(--steel-lo) var(--steel-hi) var(--steel-hi) var(--steel-lo);
-  padding:14px 16px;overflow-x:auto;font-size:13px;margin:0 0 14px;
-}
-pre .c{color:#7f7a6c}
-ul,ol{margin:0 0 12px;padding-left:22px}
-li{margin:0 0 6px}
+code{color:var(--amber-hi)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .note{
   border-left:3px solid var(--rust);background:rgba(168,55,31,.12);
-  padding:12px 14px;margin:0 0 14px;font-size:13.5px;
+  padding:11px 14px;margin:14px 0 0;font-size:13px;
 }
-footer{
-  text-align:center;color:#8c877c;font-size:12.5px;margin-top:26px;line-height:1.9;
-}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+footer{text-align:center;color:#8c877c;font-size:12.5px;margin-top:24px;line-height:1.95}
+footer a{color:#b39258}
 @media (max-width:720px){
-  .grid{grid-template-columns:1fr}
-  h1{font-size:28px}
-  body{font-size:14px}
+  .dl,.grid2{grid-template-columns:1fr}
+  .hook{font-size:21px}
 }
 </style>
 </head>
@@ -130,210 +123,115 @@ footer{
 
 <header>
   <img src="screenshots/logo.png" alt="Z">
-  <h1>Z</h1>
-  <p class="tagline">The 1996 robot RTS, rebuilt in Godot 4</p>
-  <p class="byline">Original game &copy; The Bitmap Brothers &middot; this is an unaffiliated fan remake</p>
+  <h1>Steel Soldiers</h1>
+  <p class="hook">No harvesters. No economy.<br>Take ground and your factories build faster.</p>
+  <p class="sub">The Bitmap Brothers' 1996 robot RTS, rebuilt in Godot 4.
+  Twenty missions, five planets, and a crew who will drive anything you leave
+  lying around.</p>
 </header>
 
 <div class="panel">
-  <div class="readout">
-    <b>CAMPAIGN</b> &nbsp;the original 20 levels, out of the retail data, in the game's own order<br>
-    <b>MAPS</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;20 campaign + 57 Zod + 5 skirmish<br>
-    <b>ROSTER</b> &nbsp;&nbsp;&nbsp;6 robots, 5 vehicles, 4 cannons, APC transport, cranes, veterancy<br>
-    <b>ENGINE</b> &nbsp;&nbsp;&nbsp;Godot 4.7.1 &middot; Linux, Windows, macOS<br>
-    <b>TESTS</b> &nbsp;&nbsp;&nbsp;&nbsp;47 headless lanes &mdash; <span class="ok">green in the editor and inside the exported binary</span>
+  <h2>Download &mdash; free</h2>
+  <div class="dl">
+    <a class="btn" href="https://github.com/sha5b/Z-Steel-Soldiers/releases/download/v0.2.0/z-remake-0.2.0-windows-x86_64.exe">WINDOWS<small>189 MB</small></a>
+    <a class="btn" href="https://github.com/sha5b/Z-Steel-Soldiers/releases/download/v0.2.0/z-remake-0.2.0-macos-universal.zip">MAC OS<small>107 MB</small></a>
+    <a class="btn" href="https://github.com/sha5b/Z-Steel-Soldiers/releases/download/v0.2.0/z-remake-0.2.0-linux-x86_64">LINUX<small>154 MB</small></a>
   </div>
+  <p class="dl-note">One file. No installer.
+  Fedora: <a href="https://github.com/sha5b/Z-Steel-Soldiers/releases/download/v0.2.0/z-remake-0.2.0-1.202608210751.fc44.x86_64.rpm">RPM here</a>.
+  Checksums on the <a href="https://github.com/sha5b/Z-Steel-Soldiers/releases/tag/v0.2.0">release page</a>.
+  The Mac build is unsigned, so the first launch needs right-click &rarr; Open.</p>
 </div>
 
-<figure>
-  <img src="screenshots/01-title.png" alt="The title screen, with the splash art and the menu">
-  <figcaption>The title screen. The splash art and the menu plates are the release's own.</figcaption>
-</figure>
-
-<div class="panel">
-  <h2>What it is</h2>
-  <p>A fan remake of <b>Z</b>, the robot real-time strategy game by The Bitmap
-  Brothers. You take territory instead of gathering resources. Every sector you
-  hold builds your units faster.</p>
-  <p>The remake plays the original 20 campaign levels in the game's own order.
-  A converter reads them out of the retail <code>LEVEL##.MAP</code> data. It runs
-  inside the original HUD frame and uses the original sprites, sounds and voice
-  lines.</p>
-  <p>The code is original. The graphics and sound belong to The Bitmap Brothers
-  and stay out of the repository, so you supply your own copy of the GOG release
-  and the Zod Engine asset pack.</p>
-  <p><a href="https://github.com/sha5b/Z-Steel-Soldiers">Source on GitHub &rarr;</a></p>
+<div class="shot">
+  <img src="screenshots/02-arctic.png" alt="A squad on the arctic ice">
+  <span>Arctic</span>
 </div>
 
 <div class="panel">
-  <h2>Why this exists</h2>
-  <p>For the sport of it, and to see what it takes to translate a 1996 game's
-  logic into Godot. That is the whole point, so the interesting part is not the
-  binary &mdash; it is the reading. Where a behaviour came from is written down
-  next to it.</p>
-  <p>The code is <a href="https://github.com/sha5b/Z-Steel-Soldiers/blob/main/LICENSE">MIT</a>.</p>
+  <h2>The war</h2>
+  <ul class="feat">
+    <li><b>Territory is the economy.</b> Nothing to mine, nothing to collect.
+    Every sector you hold cuts the time your factories need.</li>
+    <li><b>Nothing goes to waste.</b> Tanks, jeeps, guns and cranes sit abandoned
+    all over the map. Walk a robot up to one and he climbs in. Shoot the driver out
+    of an enemy tank and the tank is yours.</li>
+    <li><b>Six robot classes.</b> Grunts, psychos, snipers, toughs, pyros, lasers.
+    They swear, they get bored, they call for help, and they scramble when a shell
+    lands close.</li>
+    <li><b>Blow the bridge.</b> Infantry fords a river. Armour does not.</li>
+    <li><b>Twenty missions, five planets</b>, plus 62 skirmish maps. Desert,
+    volcanic, arctic, jungle, city.</li>
+    <li><b>Take his fort or lose yours.</b> That is the whole of it.</li>
+  </ul>
 </div>
 
-<div class="panel">
-  <h2>The Zod Engine source is the reference</h2>
-  <p>The 1996 Bitmap Brothers code was never released. The
-  <a href="https://github.com/capehill/zodengine">Zod Engine</a> is the open
-  reimplementation that this project's asset pack comes from, so it is the
-  reference of record. This project reads behaviour from it and cites the
-  function instead of guessing.</p>
-  <table>
-    <tr><th>Function</th><th>What it settled</th></tr>
-    <tr><td><code>ZBuilding::ProcessBuildingsEffects</code></td>
-        <td>How a damaged building burns. It holds a <i>population</i> of effects,
-            <code>max_effects &times; (1 &minus; hp/max_hp)</code>, topped up when short.</td></tr>
-    <tr><td><code>zsettings.cpp SetDefaults</code></td>
-        <td>Every explosive radius. All nine match: tough 40, light 40, medium 45,
-            heavy 50, missile launcher 80, gun 40, howitzer 40, missile cannon 50,
-            grenade 30.</td></tr>
-    <tr><td><code>ZServer::ProcessMissileDamage</code></td>
-        <td>The splash model. One roll per object, linear falloff, friendly fire
-            off, a circle and not a box.</td></tr>
-    <tr><td><code>ZBot::GoAllOut_3</code></td>
-        <td>How much of its army the CPU commits, and how often.</td></tr>
-  </table>
-  <p>Read it before you call anything underivable. Two items in the bug tracker
-  said "cannot be derived from the art alone" and only needed somebody to open
-  the file.</p>
-</div>
-
-<figure>
-  <img src="screenshots/02-arctic.png" alt="A unit selected on the arctic planet, inside the original HUD frame">
-  <figcaption><b>Arctic.</b> The original chrome: a 100px sidebar and a 36px bottom
-  bar, with the world inset into the rest. A Psycho is selected, so the sidebar
-  shows its head portrait, name plate, weapon plate and health bar. The radar
-  window carries the planet's own minimap colors.</figcaption>
-</figure>
-
-<figure>
+<div class="shot">
   <img src="screenshots/03-city.png" alt="A robot factory building on the city planet">
-  <figcaption><b>City.</b> A robot factory on the streets, with production open on
-  the release's own 112&times;80 window: the Time countdown, the building health
-  readout, and the level and progress gauges.</figcaption>
-</figure>
+  <span>City</span>
+</div>
 
-<figure>
+<div class="shot">
   <img src="screenshots/04-volcanic.png" alt="A fort burning on the volcanic planet">
-  <figcaption><b>Volcanic.</b> A fort under fire. The count of fires and smoke
-  plumes grows as its health falls, each one placed inside the structure's own
-  <code>effects_box</code>, and the ruin goes on burning after it falls &mdash;
-  which is what the original does, because its loop never checks whether the
-  building is already destroyed.</figcaption>
-</figure>
+  <span>Volcanic</span>
+</div>
 
-<figure>
-  <img src="screenshots/05-jungle.png" alt="Armour on the jungle planet in front of a manned fort">
-  <figcaption><b>Jungle.</b> Armour on the grass, in front of a fort with guns
-  mounted on its towers. All five planets ship their own tileset, scenery, rubble
-  and minimap palette.</figcaption>
-</figure>
+<div class="shot">
+  <img src="screenshots/05-jungle.png" alt="Armour massing on the jungle planet">
+  <span>Jungle</span>
+</div>
 
 <div class="panel">
-  <h2>The keyboard teaches itself</h2>
-  <p>Every hotkey is the letter printed on the HUD plate that it presses.</p>
-  <div class="grid">
+  <h2>Orders</h2>
+  <p>Drag to select. Right-click to send. <kbd>Ctrl</kbd>+right-click queues.</p>
+  <div class="grid2">
     <table>
-      <tr><th colspan="2">Sidebar</th></tr>
-      <tr><td><kbd>T</kbd></td><td>smart idle</td></tr>
-      <tr><td><kbd>D</kbd></td><td>defend (toggle)</td></tr>
-      <tr><td><kbd>Z</kbd></td><td>attack-move (toggle)</td></tr>
-      <tr><td><kbd>X</kbd></td><td>dismount</td></tr>
+      <tr><th colspan="2">Stance</th></tr>
+      <tr><td><kbd>D</kbd></td><td>defend the spot</td></tr>
+      <tr><td><kbd>Z</kbd></td><td>shoot anything on the way</td></tr>
+      <tr><td><kbd>H</kbd></td><td>hold this ground</td></tr>
+      <tr><td><kbd>S</kbd></td><td>stop</td></tr>
     </table>
     <table>
-      <tr><th colspan="2">Bottom bar</th></tr>
-      <tr><td><kbd>R</kbd></td><td>select all robots</td></tr>
-      <tr><td><kbd>V</kbd></td><td>select all hardware</td></tr>
-      <tr><td><kbd>B</kbd></td><td>cycle factories</td></tr>
-      <tr><td><kbd>G</kbd></td><td>cycle control groups</td></tr>
+      <tr><th colspan="2">Selection</th></tr>
+      <tr><td><kbd>R</kbd></td><td>every robot</td></tr>
+      <tr><td><kbd>V</kbd></td><td>every vehicle and gun</td></tr>
+      <tr><td><kbd>B</kbd></td><td>cycle the factories</td></tr>
+      <tr><td><kbd>X</kbd></td><td>get out</td></tr>
     </table>
   </div>
-  <p><kbd>Ctrl</kbd>+digit assigns a control group. The digit alone selects it,
-  and a second press moves the camera to that squad. Neither <kbd>D</kbd> nor
-  <kbd>Z</kbd> lit means a plain move.</p>
-  <p>Two original habits are on by default: an order drops the selection, and a
-  click on a unit centers the camera on it. Both are switchable.</p>
+  <p style="margin-top:14px">Every key is the letter printed on the plate it
+  presses. The original instructions are on the title menu under
+  <b>How To Play</b>.</p>
 </div>
 
 <div class="panel">
-  <h2>The CPU opponent</h2>
-  <p>One brain runs per non-player fort team. Each pass it produces from every
-  owned facility, defends owned ground, crews the empty hardware on the map, runs
-  maintenance, holds the frontier bridges, then assigns whatever is left.</p>
-  <p>The assignment ports <code>ZBot Stage1AI_3</code>. It is what stops the brain
-  swarming one point.</p>
-  <ol>
-    <li><b>Posture.</b> The bot compares its share of the map's zones against a
-    fair share of 1/teams, and reads two numbers off it: what fraction of the idle
-    army to re-task, and how long to wait for the next cycle. A fair share means a
-    small slice on a slow cadence with a wider target list. Falling behind means a
-    third of the army every few seconds.</li>
-    <li><b>Targets in the original's priority order.</b> Map items first (zone
-    flags and crates), then buildings, then empty hardware. Enemy units come last,
-    and only once the bot is all out.</li>
-    <li><b>Mutual-nearest matching.</b> A pair gets an order only when the unit is
-    that target's nearest candidate and that target is the unit's. A unit with no
-    mutual partner waits out the cycle. A building takes a squad, which is the
-    focus fire. Everything else takes one unit, so the army fans out.</li>
-  </ol>
-</div>
-
-<div class="panel">
-  <h2>Build it</h2>
-  <p>All three desktop targets cross-build from Linux. You need Godot 4.7.1, its
-  export templates, and your own asset copy.</p>
-<pre><span class="c"># convert the assets you supplied</span>
-python3 tools/gog/convert_assets.py
-python3 tools/zod/copy_art.py
-python3 tools/gog/make_icons.py
-
-<span class="c"># build</span>
-tools/build_releases.sh     <span class="c"># linux + windows + macos</span>
-tools/build_rpm.sh          <span class="c"># Fedora RPM</span>
-</pre>
+  <h2>Requirements</h2>
   <table>
-    <tr><th>Target</th><th>Output</th></tr>
-    <tr><td>Fedora</td><td>an RPM that installs <code>/usr/bin/z-remake</code>, a
-      desktop entry and the icon tree</td></tr>
-    <tr><td>Linux</td><td>one self-contained <code>x86_64</code> binary</td></tr>
-    <tr><td>Windows</td><td>one self-contained <code>.exe</code>, with version metadata</td></tr>
-    <tr><td>macOS</td><td>a universal <code>.app</code> in a zip, unsigned</td></tr>
+    <tr><th>Runs on</th><td>Windows 10+ &middot; macOS 11+ (Intel or Apple
+      silicon) &middot; any 64-bit Linux</td></tr>
+    <tr><th>Needs</th><td>OpenGL 3.3</td></tr>
+    <tr><th>Install</th><td>None. On Linux, <code>chmod +x</code> and run.</td></tr>
   </table>
-  <div class="note"><b>A build embeds the original art and sound</b>, so a binary
-  is not MIT &mdash; only the code is. The
-  <a href="https://github.com/sha5b/Z-Steel-Soldiers/releases">release page</a>
-  carries builds for people who already own the game. Otherwise, build one
-  yourself from your own copy.</div>
+  <div class="note"><b>You need to own Z.</b> Its graphics, sound and missions are
+  &copy; The Bitmap Brothers. This is a rebuild for people who already have the
+  game, and the artwork is not in the source repository.</div>
 </div>
 
 <div class="panel">
-  <h2>Test it, including the build</h2>
-  <p>47 headless lanes. A lane passes with zero <code>SCRIPT ERROR</code> lines
-  and zero <code>CHECK FAILED</code> lines.</p>
-<pre><span class="c"># in the editor</span>
-res://scenes/main.tscn --art-test --quit-after 6000
-
-<span class="c"># and inside the exported binary</span>
-build/linux/z-remake.x86_64 --headless --art-test --quit-after 6000
-</pre>
-  <p>The second one matters. An editor-only green run proves nothing about a
-  build: a packaged game once loaded no building defs, no unit folders and no
-  effect art, with all 47 lanes green in the editor. Godot packs an imported file
-  as a <code>.import</code> sidecar, and every directory scan in the project
-  filtered on the source extension. The export lane is what found it.</p>
+  <h2>For anyone who builds things</h2>
+  <p>This was done for the sport of it: take a 1996 game apart, and find out what
+  it costs to say the same thing in Godot. The code is
+  <a href="https://github.com/sha5b/Z-Steel-Soldiers/blob/main/LICENSE">MIT</a>.
+  The notes, the open questions and 47 test lanes are in the repository.</p>
+  <p><a href="https://github.com/sha5b/Z-Steel-Soldiers">Read the source &rarr;</a></p>
 </div>
 
 <footer>
-  The code is <a href="https://github.com/sha5b/Z-Steel-Soldiers/blob/main/LICENSE">MIT</a>.
-  Take it, read it, port it, reuse it.<br>
-  Z and all original graphics and sound are &copy; The Bitmap Brothers, are not
-  covered by that license, and are not in the repository.<br>
-  An unaffiliated fan project &middot;
-  <a href="https://github.com/sha5b/Z-Steel-Soldiers">github.com/sha5b/Z-Steel-Soldiers</a>
-  &middot;
+  Z, and all of its graphics, sound and music, are &copy; The Bitmap Brothers.<br>
+  Unaffiliated fan project. Not for sale.<br>
+  Sprites and formats by way of the <a href="https://github.com/capehill/zodengine">Zod Engine</a> &middot;
+  <a href="https://github.com/sha5b/Z-Steel-Soldiers">source</a> &middot;
   <a href="https://github.com/sha5b/Z-Steel-Soldiers/releases">releases</a>
 </footer>
 
