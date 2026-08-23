@@ -49,7 +49,7 @@ func _build_visuals() -> void:
 	queue_redraw()
 
 
-## An alive fort of the CURRENT owner inside the zone: its garrison
+## An alive fort of the CURRENT owner inside the zone: the fort itself
 ## holds the territory — the zone flips only when the fort falls (same
 ## intersection test as the flag placement).
 func _held_by_fort() -> bool:

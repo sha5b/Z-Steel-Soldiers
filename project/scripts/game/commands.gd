@@ -20,7 +20,6 @@ static func dispatch(world_position: Vector2, queued := false) -> void:
 	var empty_vehicle := _find_empty_vehicle(world_position)
 	var apc := _find_apc(world_position)
 	var target_building := _find_interactable_building(world_position)
-	var own_fort := _find_own_fort(world_position)
 	var crate := _find_pickup(world_position)
 	var movers: Array[Node] = []
 	for u in SelectionManager.current.selected:
@@ -38,11 +37,6 @@ static func dispatch(world_position: Vector2, queued := false) -> void:
 	movers.sort_custom(func(a, b): return a.get_instance_id() < b.get_instance_id())
 	for i in movers.size():
 		var u: Node2D = movers[i]
-		if u.kind == "robot" and own_fort and is_instance_valid(own_fort) \
-				and own_fort.team == u.team and own_fort.alive:
-			# garrison: man the fort missiles
-			_order(u, Order.for_target(own_fort, sprint), queued)
-			continue
 		if u.kind == "robot":
 			if empty_vehicle and is_instance_valid(empty_vehicle):
 				_order(u, Order.for_target(empty_vehicle, sprint), queued)
@@ -91,11 +85,11 @@ static func dispatch(world_position: Vector2, queued := false) -> void:
 		_order(u, move_order, queued)
 
 
-## THE dismount action (X, or the panel's EXIT button): hand back
-## whatever the current selection is holding. Until this existed a unit
-## that entered anything was gone for the match — a garrisoned robot went
-## invisible and degrouped with no way out, a crewed vehicle could never
-## be un-crewed, and an APC squad only came out by arriving somewhere.
+## THE dismount action (X): hand back whatever the current selection is
+## holding. Until this existed a unit that entered anything was gone for
+## the match — a crewed vehicle could never be un-crewed and an APC squad
+## only came out by arriving somewhere. BUILDINGS are not in scope: units
+## do not enter them, so there is nothing to hand back.
 ## Returns how many bodies stepped out, so callers can beep on a no-op.
 static func eject() -> int:
 	var out := 0
@@ -103,9 +97,7 @@ static func eject() -> int:
 		if not is_instance_valid(node):
 			continue
 		var gave := 0
-		if node is FortBuilding and node.team == MatchState.current.player_team:
-			gave = (node as FortBuilding).release_garrison()
-		elif node is Vehicle2D and node.team == MatchState.current.player_team:
+		if node is Vehicle2D and node.team == MatchState.current.player_team:
 			var v := node as Vehicle2D
 			if v.is_apc() and not v.cargo.is_empty():
 				gave = v.cargo.size()
@@ -219,15 +211,6 @@ static func _find_enemy(world_position: Vector2) -> Node2D:
 	if hit is Building2D:
 		return hit if (hit as Building2D).alive and not (hit as Building2D).is_bridge() else null
 	return hit if hit is Unit2D and (hit as Unit2D).alive else null
-
-
-## A fort under the click point belonging to the selected robots' team.
-static func _find_own_fort(world_position: Vector2) -> FortBuilding:
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.BUILDINGS):
-		if b is FortBuilding and b.alive and b.team != 0 \
-				and b.art_world_rect().has_point(world_position):
-			return b
-	return null
 
 
 static func _wants_building_order(u: Node2D, b: Building2D) -> bool:

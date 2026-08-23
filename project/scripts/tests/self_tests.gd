@@ -38,7 +38,7 @@ static func should_run() -> bool:
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
 			"mp", "rally", "placement", "fortkill", "parity", "art", "mpmatch",
-			"garrison", "terrain", "group", "veteran", "retail", "qol"]:
+			"towercrew", "terrain", "group", "veteran", "retail", "qol"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -707,7 +707,7 @@ static func run(ctx: Node) -> void:
 			"captured territory paid nothing (%d -> %d)"
 			% [money_at_start, MatchState.current.player_money()])
 		# a zone with a LIVE enemy fort never flips — the fort is the
-		# win objective, its garrison holds the ground
+		# win objective, the fort itself holds the ground
 		var enemy_fort: Building2D = null
 		for b in tree.get_nodes_in_group(Groups.BUILDINGS):
 			if b is FortBuilding and b.alive \
@@ -1194,8 +1194,8 @@ static func run(ctx: Node) -> void:
 		pr.finish()
 	if "--placement-test" in args:
 		await PlacementTests.run(ctx, TestRig.start("PLACEMENT"))
-	if "--garrison-test" in args:
-		await GarrisonTests.run(ctx, TestRig.start("GARRISON"))
+	if "--towercrew-test" in args:
+		await TowerCrewTests.run(ctx, TestRig.start("TOWERCREW"))
 	if "--rally-test" in args:
 		# unmanned hardware must not take rally orders — the AI rallies
 		# every facility at an enemy fort, and empty vehicles used to
@@ -1404,33 +1404,33 @@ static func run(ctx: Node) -> void:
 		if pfort:
 			var got_fort: String = gcur._determine(xform * pfort.visual_center())
 			if got_fort != "place":
-				cproblems.append("garrison got %s" % got_fort)
+				cproblems.append("own fort got %s (nothing enters a "
+					% got_fort + "building — it is a plain friendly target)")
 		SelectionManager.current.clear_selection()
 		var got_plain: String = gcur._determine(foe.global_position)
 		if got_plain != "cursor":
 			cproblems.append("plain got %s" % got_plain)
-		# EXIT: a selected fort holding a garrison, hovered. The exit_*
+		# EXIT: a selected HULL that is holding bodies, hovered. The exit_*
 		# art shipped with no code path able to return it, and there was
-		# no dismount action at all to attach it to.
-		if pfort:
-			var stowaway: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
-				pfort.team, pfort.world_footprint().get_center()) as Unit2D
-			if stowaway and pfort.garrison_robot(stowaway):
-				SelectionManager.current.select_single(pfort)
-				SelectionManager.current.selected = [pfort]
+		# no dismount action at all to attach it to. Buildings are NOT in
+		# scope — nothing enters one, so a fort never shows this cursor
+		# (asserted just above: it reads "place").
+		if is_instance_valid(free_jeep):
+			var driver: Unit2D = Spawner.spawn(ctx, "robot", "grunt",
+				MatchState.current.player_team,
+				free_jeep.global_position) as Unit2D
+			free_jeep.enter(driver)
+			driver.queue_free()  # enter() takes the crew INTO the hull
+			if free_jeep.manned:
+				SelectionManager.current.selected = [free_jeep]
 				var got_exit: String = gcur._determine(
-					xform * pfort.visual_center())
+					xform * free_jeep.global_position)
 				if got_exit != "exit":
 					cproblems.append("exit got %s" % got_exit)
-				# and the action must actually hand the robot back
 				var released := Commands.eject()
 				if released < 1:
 					cproblems.append("eject released %d" % released)
-				elif stowaway.carried or not stowaway.visible:
-					cproblems.append("released robot still carried/hidden")
 			SelectionManager.current.clear_selection()
-			if is_instance_valid(stowaway):
-				stowaway.queue_free()
 		for fam in ["cursor", "place", "attack", "grab", "enter", "repair",
 				"nono", "cannon", "exit"]:
 			var team := AnimLibrary.team_name(MatchState.current.player_team)
@@ -1478,9 +1478,13 @@ static func run(ctx: Node) -> void:
 			fort2.setup(0, 1, "desert")
 			fort2.position = Vector2(650, 700)
 			ctx.add_child(fort2)
+			# NOTHING ENTERS A BUILDING. A robot pointed at its own fort
+			# used to resolve as a GARRISON order; that type is gone, so
+			# this now resolves like any other building order and must
+			# leave the robot idle and retaskable when it arrives.
 			bot.issue_order(Order.for_target(fort2))
-			if bot.order.type != Order.Type.GARRISON:
-				oproblems.append("garrison resolve")
+			if bot.order != null and bot.order.type == Order.Type.MAN_VEHICLE:
+				oproblems.append("a fort resolved as a hull-boarding order")
 			bot._order_done()
 			if not bot.is_idle() or bot.state != Unit2D.State.IDLE:
 				oproblems.append("order_done")
@@ -1523,9 +1527,9 @@ static func run(ctx: Node) -> void:
 					runner.queue_free()
 			if bot.attack_move:
 				oproblems.append("order_done kept attack_move")
-			# a robot ordered onto a NON-garrisonable building walks up
-			# first, then must land IDLE (used to stick in ENTERING
-			# forever — invisible to the AI's idle scan)
+			# a robot ordered onto ANY building walks up first, then must
+			# land IDLE (used to stick in ENTERING forever — invisible to
+			# the AI's idle scan)
 			var radar: Building2D = ContentDB.building_def(2).behaviour.new()
 			radar.setup(2, 1, "desert")
 			radar.position = Vector2(660, 620)
@@ -2709,7 +2713,7 @@ static func run(ctx: Node) -> void:
 		repair_rig.finish()
 	if "--combat2-test" in args:
 		# sniping ejects drivers, grenade crates arm throwers, splash
-		# crumbles rocks and cracks bridges, garrisoned forts fire
+		# crumbles rocks and cracks bridges, tower guns fire
 		var cproblems: Array[String] = []
 		# --- sniping: a sniper vs a freshly-fired tank ---
 		var tank3: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()

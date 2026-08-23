@@ -65,11 +65,9 @@ func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
 	var hover := _hover_object(world)
 	if hover == null:
 		return "place" if can_move else "cannon"
-	# EXIT: hovering something in the selection that is HOLDING bodies
-	# (a garrisoned fort, a crewed hull, a loaded APC) — X or the panel's
-	# EXIT button hands them back. This is what the shipped exit_* cursor
-	# art is for; nothing referenced it before, and there was no dismount
-	# action at all, so a unit that entered anything was gone for good.
+	# EXIT: hovering something in the selection that is HOLDING bodies (a
+	# crewed hull or a loaded APC) — X hands them back. This is what the
+	# shipped exit_* cursor art is for. BUILDINGS never hold anybody.
 	if _can_eject(hover):
 		return "exit"
 	# repair work: crane over damaged hardware, damaged vehicle over a
@@ -88,7 +86,7 @@ func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
 		if hover is Vehicle2D and hover.team == 0:
 			return "enter"
 		return "attack" if can_attack else "nono"
-	return "place"  # friendly target: move/follow/garrison order
+	return "place"  # friendly target: move/follow order
 
 
 ## Is `hover` a selected thing that Commands.eject() would empty? Same
@@ -97,8 +95,6 @@ func _determine(mouse: Vector2 = get_viewport().get_mouse_position()) -> String:
 func _can_eject(hover: Node2D) -> bool:
 	if not SelectionManager.current.selected.has(hover):
 		return false
-	if hover is FortBuilding and hover.team == MatchState.current.player_team:
-		return (hover as FortBuilding).crew_count() > 0
 	if hover is Vehicle2D and hover.team == MatchState.current.player_team:
 		return (hover as Vehicle2D).manned or not (hover as Vehicle2D).cargo.is_empty()
 	return false

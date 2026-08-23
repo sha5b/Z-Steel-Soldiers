@@ -102,7 +102,7 @@ func of_team(team: int) -> Array[Unit2D]:
 
 
 ## Alive units of a team INCLUDING carried ones — the no-units rule
-## counts defenders garrisoned in a fort or riding an APC as existing.
+## counts units riding an APC or crewing a hull as existing.
 func alive_of_team(team: int) -> Array[Unit2D]:
 	var out: Array[Unit2D] = []
 	for u in _all:

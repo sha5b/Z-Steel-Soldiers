@@ -52,15 +52,6 @@ const STATUS_PLATE := Rect2(66, 17, 47, 12)
 const TIME_SLOT := Rect2(87, 32, 21, 12)
 const CANCEL_BUTTON := Rect2(68, 46, 40, 14)
 const OK_BUTTON := Rect2(68, 62, 40, 15)
-## GARRISON EXIT strip, hung under the window art (the original has no
-## garrison, so there is no slot for it inside the chrome). Its height is
-## a CONSTANT because _place_over has to keep it on screen: the button
-## lives outside the Control's own 112x80 rect, so a clamp that only
-## knew about `size` put it under the bottom HUD strip for any fort in
-## the lower part of the map — the one button that says "your robots are
-## in here" was invisible exactly when the fort was on screen.
-const EXIT_GAP := 2.0
-const EXIT_HEIGHT := 14.0
 ## Roster flyout: object_button plates, four to a row, above the window.
 const ROSTER_SLOT := Vector2(45, 51)
 const ROSTER_COLUMNS := 4
@@ -77,7 +68,6 @@ var _health_pct: Label
 var _level_fill: ColorRect
 var _progress_fill: ColorRect
 var _queue_count: Label
-var _exit: Button
 var _roster: Control
 var _roster_open := false
 var _built_for := ""
@@ -137,25 +127,6 @@ func _ready() -> void:
 			"Close").pressed.connect(func():
 		Fx.ui_click()
 		SelectionManager.current.clear_selection())
-
-	# GARRISON EXIT. Robots ordered onto their own fort walk inside and
-	# vanish; the only way back out was the X hotkey, and nothing on
-	# screen said either that they were in there or how to get them out.
-	# The original has no garrison at all, so this button cannot live in
-	# its window art — it sits just under it.
-	_exit = Button.new()
-	_exit.position = Vector2(0.0, WINDOW.y * SCALE + EXIT_GAP)
-	_exit.size = Vector2(56.0, EXIT_HEIGHT)
-	_exit.focus_mode = Control.FOCUS_NONE
-	_exit.visible = false
-	_object_button_chrome(_exit, 2.0)
-	if UiTheme.font() != null:
-		_exit.add_theme_font_override("font", UiTheme.font())
-		_exit.add_theme_font_size_override("font_size", READOUT_FONT)
-	_exit.pressed.connect(func():
-		Fx.ui_click()
-		Commands.eject())
-	add_child(_exit)
 
 	_roster = Control.new()
 	_roster.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -272,11 +243,9 @@ func _place_over(factory: Node) -> void:
 	var screen: Vector2 = canvas * (factory as Node2D).global_position
 	var view := HudFrame.view_rect()
 	var want := screen + Vector2(-size.x * 0.5, -size.y - 24.0)
-	# the EXIT strip hangs below the window art and must stay on screen
-	var tall: float = size.y + EXIT_GAP + EXIT_HEIGHT
 	position = Vector2(
 		clampf(want.x, view.position.x + 4.0, view.end.x - size.x - 4.0),
-		clampf(want.y, view.position.y + 4.0, view.end.y - tall - 4.0))
+		clampf(want.y, view.position.y + 4.0, view.end.y - size.y - 4.0))
 
 
 func _on_line_changed() -> void:
@@ -338,7 +307,6 @@ func _sync_readouts() -> void:
 	_status.texture = _tex("building_label" if head != "" else "buildingless_label")
 	_time.text = _time_left(head)
 	_sync_gauges(head)
-	_sync_exit()
 	# NOTHING TO TALLY. This was "+N more queued"; a line has no queue, so
 	# the slot now says what the line actually is — this type, on repeat,
 	# until you change it. A stalled line says so instead of looking idle.
@@ -348,17 +316,6 @@ func _sync_readouts() -> void:
 		_queue_count.text = "LOOP"
 	else:
 		_queue_count.text = "WAIT"
-
-
-## The garrison has no signal of its own (robots walk in by themselves),
-## so the window's own tick follows it.
-func _sync_exit() -> void:
-	var held: int = (_wired as FortBuilding).crew_count() \
-			if _wired is FortBuilding else 0
-	_exit.visible = held > 0
-	if held > 0:
-		_exit.text = "EXIT %d" % held
-		_exit.tooltip_text = "Send the %d robot(s) inside back out (X)" % held
 
 
 ## Level out of 5 and the current item's progress, both bottom-filling.

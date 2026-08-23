@@ -13,7 +13,11 @@ enum Type {
 	DEFEND,         # move there, then HOLD the post (returns when pushed off)
 	MAN_VEHICLE,    # robot walks up and mans empty hardware
 	BOARD_APC,      # robot loads as a passenger
-	GARRISON,       # robot garrisons its own fort (missile crew)
+	# (a GARRISON type sat here: robots entered their own fort and crewed
+	# a missile battery from inside. Units no longer enter BUILDINGS at
+	# all — a fort defends itself with its tower guns — so the type is
+	# gone. Every id after it shifted down by one; all peers run the same
+	# build, and new ids still go on the END.)
 	REPAIR_BUILDING,  # damaged vehicle enters the repair shop
 	CRANE_REPAIR,   # manned crane rebuilds a damaged building/bridge
 	STOP,           # CANCEL: drop whatever is in flight and stand here
@@ -46,7 +50,7 @@ func confirm_marker() -> String:
 		Type.MAN_VEHICLE:
 			return "cannoned" if target != null and target.get("kind") == "cannon" \
 					else "entered"
-		Type.BOARD_APC, Type.GARRISON:
+		Type.BOARD_APC:
 			return "entered"
 		Type.REPAIR_BUILDING, Type.CRANE_REPAIR:
 			return "repaired"
@@ -114,15 +118,14 @@ static func move_defend(world_pos: Vector2, sprint := false) -> Order:
 
 
 ## Resolve an enter-type order from whatever was clicked: the intent
-## follows the target's type (fort -> garrison, APC -> board, empty
-## hardware -> man, repair shop -> repair, other building -> crane work).
+## follows the target's type (APC -> board, empty hardware -> man, repair
+## shop -> repair, other building -> crane work). A FORT is not in that
+## list — nothing enters a building.
 static func for_target(node: Node2D, sprint := false) -> Order:
 	var order := Order.new()
 	order.target = node
 	order.run = sprint
-	if node is FortBuilding:
-		order.type = Type.GARRISON
-	elif node is Vehicle2D and (node as Vehicle2D).is_apc():
+	if node is Vehicle2D and (node as Vehicle2D).is_apc():
 		order.type = Type.BOARD_APC
 	elif node is Vehicle2D:
 		order.type = Type.MAN_VEHICLE

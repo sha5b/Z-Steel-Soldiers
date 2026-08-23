@@ -1020,8 +1020,8 @@ func _order_done() -> void:
 
 ## Man/load the assigned vehicle once actually adjacent to it.
 ## Ordered onto a BUILDING: vehicles act on it (repair shop / crane
-## work); robots garrison their OWN fort, and any other building order
-## resolves on ARRIVAL — the robot walks up first, then goes idle.
+## work); NOTHING ENTERS A BUILDING, so every other building order
+## resolves on ARRIVAL — the unit walks up first, then goes idle.
 func _try_enter() -> void:
 	# GODOT TRAP: a FREED instance compares == null. An enter target that
 	# DIED mid-walk cancels the whole errand — the bot stops and becomes
@@ -1225,21 +1225,14 @@ func _return_to_post() -> void:
 		issue_order(Order.move_defend(defend_post))
 
 
-## Robots ordered onto their OWN fort walk in and garrison it
-## (original: ENTER_FORT_WP); any other building order resolves as a
-## walk-up-and-stop — through _order_done so the robot is idle again.
-func _building_order(b: Building2D) -> void:
-	if b is FortBuilding and b.team == team and b.alive \
-			and global_position.distance_to(b.world_footprint().get_center()) < 56.0:
-		if b.garrison_robot(self):
-			# ALIVE but carried: the fort holds the real node. It used to
-			# queue_free() here, which left the garrison array full of
-			# freed entries — the missile battery then fired forever with
-			# no crew, kill_garrison() became a no-op, garrison_cap
-			# counted ghosts, and the defenders vanished from the
-			# no-units rule that is supposed to count them.
-			_order_done()
-			return
+## A BUILDING ORDER RESOLVES AS A WALK-UP-AND-STOP. Robots used to walk
+## into their own fort and garrison it (original: ENTER_FORT_WP); that is
+## gone, because a unit inside a building cannot be seen, selected or
+## counted, and the fort has its tower guns for defence. Vehicles still
+## act on buildings (repair shop, crane work) — those resolve in
+## Vehicle2D, not here. Goes through _order_done so the unit is idle and
+## retaskable the moment it arrives.
+func _building_order(_b: Building2D) -> void:
 	_order_done()
 
 

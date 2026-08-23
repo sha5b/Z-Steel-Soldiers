@@ -701,7 +701,7 @@ func produces_anything() -> bool:
 var _fp_cache := Rect2()  # buildings never move — compute once
 
 func world_footprint() -> Rect2:
-	# HOT PATH (targeting, splash, AI, garrison): buildings never move,
+	# HOT PATH (targeting, splash, AI): buildings never move,
 	# so the solid-cell union is computed exactly once
 	if _fp_cache != Rect2():
 		return _fp_cache
@@ -845,7 +845,7 @@ func _follow_zone_owner() -> void:
 
 
 ## Per-type ticking after zone-follow — subclasses override instead of
-## re-listing the loop (base: producers + repair shop; fort: garrison).
+## re-listing the loop (base: producers + repair shop).
 func _tick_behaviours(delta: float) -> void:
 	if produces_anything():
 		tick_production(delta)
@@ -900,7 +900,7 @@ func try_start_repair(unit: Node2D) -> bool:
 	unit.waypoints = PackedVector2Array()
 	unit.remove_from_group(Groups.SELECTABLE)
 	unit.remove_from_group(Groups.UNITS)
-	# out of the world while inside (same contract as APC/garrison
+	# out of the world while inside (same contract as APC
 	# cargo): not targetable through the shop walls, holds no territory
 	unit.carried = true
 	SelectionManager.current.drop_from_selection(unit)
@@ -1078,8 +1078,6 @@ func _death_visuals() -> void:
 	remove_from_group(Groups.BUILDINGS)
 	remove_from_group(Groups.FACILITIES)
 	SelectionManager.current.drop_from_selection(self)
-	if has_method("kill_garrison"):
-		call("kill_garrison")
 	Fx.destroyed(visual_center())
 	# the structure throws pieces of ITSELF (the pack's death_effects
 	# art, which nothing referenced): the fort's five pieces, two

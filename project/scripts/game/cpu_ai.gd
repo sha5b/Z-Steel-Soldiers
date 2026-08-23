@@ -334,6 +334,19 @@ func _frontier_facility() -> Node:
 ## not make cannons) or when RELINE_MS has passed since the last change
 ## AND the stance has moved on.
 const RELINE_MS := 25000
+## HARDWARE ROLLS OFF THE LINE UNMANNED. A vehicle or a cannon is a hull
+## until a robot walks over and gets in (Producer.spawn_produced spawns
+## them team 0), so infantry is not one option among several — it is the
+## thing that makes every other option work. A brain that fills its
+## factories with tanks while it owns no robots builds a car park.
+##
+## So production keeps a CREW RESERVE: this many spare robots on top of
+## one for every empty hull already standing near home. Below that, every
+## facility that can make robots makes robots, and the stickiness above
+## does not get to hold a hardware line in place.
+const CREW_RESERVE := 3
+## How far from home an empty hull counts as ours to crew.
+const CREW_LOOK := 700.0
 
 var _line_stamp: Dictionary = {}   # facility -> msec of its last re-aim
 var _line_stance: Dictionary = {}  # facility -> stance it was aimed under
@@ -344,6 +357,7 @@ func _produce() -> void:
 	var army_pop := MatchState.current.unit_pop(team)
 	var frontier := _frontier_facility()
 	var now := Time.get_ticks_msec()
+	var short_of_crew := crew_shortfall()
 	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if not f.alive or f.team == 0 or f.team != team:
 			continue
@@ -356,8 +370,20 @@ func _produce() -> void:
 		# at something that can walk to the fight
 		var current: String = f.selected_product()
 		var cannon_ok: bool = f == frontier
+		var makes_robots: bool = false
+		for o in options:
+			if String(o).begins_with("robot:"):
+				makes_robots = true
+				break
+		# NO CREW, NO HARDWARE. A hardware line while we are short of
+		# infantry is wrong however recently it was chosen, so this
+		# preempts the stickiness below — that is the difference between
+		# "the brain prefers robots" and "the brain understands that a
+		# tank without a driver is scrap".
+		var crew_short: bool = short_of_crew > 0
 		var wrong: bool = current == "" or not options.has(current) \
-			or (current.begins_with("cannon:") and not cannon_ok)
+			or (current.begins_with("cannon:") and not cannon_ok) \
+			or (crew_short and makes_robots and not current.begins_with("robot:"))
 		var stale: bool = now - int(_line_stamp.get(f, -RELINE_MS)) >= RELINE_MS \
 			and String(_line_stance.get(f, "")) != _stance
 		if not wrong and not stale:
@@ -373,7 +399,7 @@ func _produce() -> void:
 		# for the rest of the match. So utility hulls are off the ordinary
 		# choice entirely, and built only when something actually needs
 		# one — see _utility_need below.
-		var need := _utility_need(f, choices)
+		var need := "" if crew_short else _utility_need(f, choices)
 		if need != "":
 			if need != current and _select(f, need):
 				_line_stamp[f] = now
@@ -382,6 +408,11 @@ func _produce() -> void:
 		choices = choices.filter(func(i):
 			var p: PackedStringArray = String(i).split(":")
 			return p.size() == 2 and ContentDB.def_for(p[0], p[1]).damage > 0)
+		if crew_short and makes_robots:
+			var infantry: Array = choices.filter(
+				func(i): return String(i).begins_with("robot:"))
+			if not infantry.is_empty():
+				choices = infantry
 		# THE BANK STILL MEANS SOMETHING, it just means something else.
 		# Money used to be spent when an item was queued, so the profile's
 		# reserve gated the enqueue. A line pays per unit as it starts, so
@@ -399,6 +430,28 @@ func _produce() -> void:
 		if pick != current and _select(f, pick):
 			_line_stamp[f] = now
 			_line_stance[f] = _stance
+
+
+## HOW MANY ROBOTS ARE WE SHORT OF? Positive means every hull we could
+## build would sit empty — one crew per empty hull already standing near
+## home, plus CREW_RESERVE spare so the next tank has a driver waiting.
+## Empty hulls are counted near HOME only: the derelicts scattered across
+## the far side of a Z map are not ours to crew and must not talk the
+## brain out of ever building hardware.
+func crew_shortfall() -> int:
+	var robots := 0
+	var empty_near := 0
+	var home: Vector2 = _map.home if _map != null else Vector2.INF
+	for u in UnitRegistry.current.world_units():
+		if not u.alive or u.carried:
+			continue
+		if u is Vehicle2D:
+			if not u.manned and u.team == 0 and home != Vector2.INF \
+					and u.global_position.distance_to(home) < CREW_LOOK:
+				empty_near += 1
+		elif u.team == team and u.kind == "robot":
+			robots += 1
+	return (empty_near + CREW_RESERVE) - robots
 
 
 ## DOES THE WAR NEED A TOOL RIGHT NOW? The two unarmed hulls earn their
@@ -769,7 +822,7 @@ func _command_squads(robots: Array[Node], vehicles: Array[Node]) -> void:
 
 
 ## Which of OUR sectors need holding, worst first. Only sectors under
-## real pressure or on the seam get a squad — garrisoning quiet interior
+## real pressure or on the seam get a squad — parking on quiet interior
 ## ground is how a brain talks itself out of ever attacking.
 func _defence_jobs(plan: Dictionary) -> Array:
 	var out: Array = []

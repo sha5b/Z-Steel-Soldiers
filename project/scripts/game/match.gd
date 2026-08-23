@@ -346,7 +346,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				SelectionFilters.activate("group")
 				return
 			KEY_X:
-				Commands.eject()  # get garrisoned/crewed units back out
+				Commands.eject()  # get crewed/carried units back out
 				return
 			KEY_S:
 				Commands.stop()  # CANCEL: call the selection off

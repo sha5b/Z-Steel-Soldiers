@@ -64,7 +64,7 @@ var _last_res_path := ""  # basename keying for AI profiles and projectiles
 var _projectiles := {}  # basename -> ProjectileDef
 
 
-## Projectile def by file basename ("grenade", "garrison_missile").
+## Projectile def by file basename ("grenade").
 func projectile_def(name: String) -> ProjectileDef:
 	return _projectiles.get(name, null)
 

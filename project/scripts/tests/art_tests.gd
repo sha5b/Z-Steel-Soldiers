@@ -122,7 +122,7 @@ static func _audit_wired_art(ctx: Node, rig: TestRig) -> void:
 				"res://assets/z/ui/cursor/%s_n00.png" % marker),
 			"confirmation marker '%s' not converted" % marker)
 	for spec in [[Order.Type.MOVE, "placed"], [Order.Type.ATTACK, "attacked"],
-			[Order.Type.BOARD_APC, "entered"], [Order.Type.GARRISON, "entered"],
+			[Order.Type.BOARD_APC, "entered"],
 			[Order.Type.REPAIR_BUILDING, "repaired"],
 			[Order.Type.CRANE_REPAIR, "repaired"]]:
 		var o := Order.new()

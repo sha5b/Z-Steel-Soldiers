@@ -4,7 +4,7 @@ extends Object
 ## facts; they used to ride inside the visual Projectile (Fx.shell
 ## carried the damage callback in the sprite — presentation owned
 ## gameplay timing, so shots died with their sprites). Combat, grenades
-## and fort garrison missiles all deliver through here; Fx.shell is now
+## and thrown grenades all deliver through here; Fx.shell is now
 ## pure presentation flying the same arc over the same duration.
 
 

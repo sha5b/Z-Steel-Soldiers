@@ -104,7 +104,7 @@ func check_no_units(team: int) -> void:
 	if over or team == 0 or team in _eliminated:
 		return
 	var has_fort := BuildingRegistry.has_alive_fort(team)
-	# carried units (garrisoned / riding an APC) exist too — a fort with
+	# carried units (riding an APC, crewing a hull) exist too — a fort with
 	# defenders inside must not self-destruct out from under them
 	if has_fort and UnitRegistry.current.alive_of_team(team).is_empty():
 		report_fort_destroyed(team)
