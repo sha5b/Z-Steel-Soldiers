@@ -42,6 +42,13 @@ var _cycle := -1.0      # seconds into the active cycle, <0 = resting
 var _cycling: Array[Texture2D] = []
 var _cycle_fps := BLINK_FPS
 var _damaged_wire: Callable = Callable()
+## PHRASE-driven talking: the decoded PHRASES.BIN timelines (16-frame
+## face alphabet) replace the uniform mouth cycle while a bark plays —
+## the frame is sampled by PROGRESS through the phrase, so any bark
+## length plays the authored open/close pattern.
+var _phrase: Array = []  # active phrase timeline, [] = uniform cycle
+static var _phrases: Array = []       # loaded once: speech phrases only
+static var _phrases_loaded := false
 
 
 func _ready() -> void:
@@ -164,8 +171,33 @@ func _on_barked(seconds: float) -> void:
 	_cycling = _talk
 	_cycle_fps = TALK_FPS
 	_cycle = 0.0
-	# a long line loops the mouth cycle; a short one plays part of it
+	_phrase = _random_speech_phrase()
+	# a long line plays the whole phrase; a short one its opening
 	set_meta("cycle_until", maxf(seconds, 0.3))
+
+
+## Speech phrases = timelines that use the mouth frames (1..8); idle
+## expressions (blink/wink/surprise) are excluded from barks.
+static func _random_speech_phrase() -> Array:
+	if not _phrases_loaded:
+		_phrases_loaded = true
+		var path := "res://assets/z/phrases.json"
+		if ResourceLoader.exists(path):
+			var parsed = JSON.parse_string(FileAccess.open(
+				path, FileAccess.READ).get_as_text())
+			if parsed is Dictionary:
+				for p in parsed.get("phrases", []):
+					var frames: Array = p.get("frames", [])
+					var mouth := false
+					for f in frames:
+						if f >= 1 and f <= 8:
+							mouth = true
+							break
+					if mouth:
+						_phrases.append(frames)
+	if _phrases.is_empty():
+		return []
+	return _phrases[randi() % _phrases.size()]
 
 
 func _process(delta: float) -> void:
@@ -175,7 +207,16 @@ func _process(delta: float) -> void:
 		_cycle += delta
 		if _cycle >= float(get_meta("cycle_until", 0.6)):
 			_cycle = -1.0
+			_phrase = []
 			_art.texture = _resting()
+		elif not _phrase.is_empty():
+			# authored mouth pattern, sampled by progress through the bark
+			var progress := _cycle / maxf(
+				float(get_meta("cycle_until", 0.6)), 0.05)
+			var fi: int = clampi(int(progress * _phrase.size()), 0,
+				_phrase.size() - 1)
+			_art.texture = _cycling[clampi(int(_phrase[fi]),
+				0, _cycling.size() - 1)]
 		else:
 			var i := int(_cycle * _cycle_fps) % _cycling.size()
 			_art.texture = _cycling[i]
@@ -188,6 +229,7 @@ func _process(delta: float) -> void:
 		_cycling = _blink
 		_cycle_fps = BLINK_FPS
 		_cycle = 0.0
+		_phrase = []
 		set_meta("cycle_until", float(_blink.size()) / BLINK_FPS)
 
 

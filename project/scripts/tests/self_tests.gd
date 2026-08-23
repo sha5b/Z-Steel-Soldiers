@@ -223,6 +223,31 @@ static func run(ctx: Node) -> void:
 							% seen.size())
 					if portrait.force_cycle(true) < 2:
 						fails.append("robot has no talk frames")
+					# PHRASE-driven mouths: the decoded PHRASES.BIN table
+					# exists, stays inside the 16-frame alphabet, and a
+					# bark plays an authored timeline (not the uniform
+					# cycle)
+					var phrase_path := "res://assets/z/phrases.json"
+					if not ResourceLoader.exists(phrase_path):
+						fails.append("phrases.json missing (run tools/gog/convert_phrases.py)")
+					else:
+						var table = JSON.parse_string(FileAccess.open(
+							phrase_path, FileAccess.READ).get_as_text())
+						var entries: Array = table.get("phrases", []) 							if table is Dictionary else []
+						if entries.size() < 60:
+							fails.append("phrase table has %d entries" % entries.size())
+						for e in entries:
+							for f in e.get("frames", []):
+								if int(f) < 0 or int(f) > 15:
+									fails.append("phrase frame %d outside 0-15" % f)
+									break
+							if fails.size() > 0 and String(fails[-1]).begins_with("phrase frame"):
+								break
+						var timeline: Array = portrait._random_speech_phrase()
+						if timeline.is_empty():
+							fails.append("no speech phrases classified")
+						elif not (timeline.any(func(f): return int(f) >= 1 and int(f) <= 8)):
+							fails.append("speech phrase has no mouth frames")
 					# and hardware: a plate, no head, and no stacked layers
 					if a_vehicle != null:
 						SelectionManager.current.select_single(a_vehicle)
