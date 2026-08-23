@@ -9,6 +9,18 @@ commit that fixed them — do not delete history.
 Each of these was confirmed by reading the code or counting the data.
 They are listed in the order I would tackle them.
 
+0. **The pyro robot razes a fort in 14 seconds** — faithful to the
+   reference table and still absurd beside a heavy tank's 18s at three
+   times the cost. The small-arms `building_frac` values are transcribed
+   from the source table and ignore FIRE RATE, so the 0.1s-cooldown pyro
+   comes out 35x a 4.86s howitzer per second. The explosive fracs added
+   2026-08-23 are derived from `cooldown / seconds-to-raze`, which does
+   account for it; bringing small arms onto the same rule means departing
+   from a transcribed number, so it is left as a decision rather than
+   silently changed. Also open in the same area: every explosive weapon
+   carries `hit_chance = 1.00` and literally cannot miss, which is what
+   makes tank shells feel absolute against infantry.
+
 1. **The retail campaign's STARTING ARMIES are not in the release.**
    Every `levels.dat` record names `preset1.wal` / `preset2.wal` and
    NEITHER FILE SHIPS (Z.exe holds only the strings). Searched for a

@@ -1753,9 +1753,12 @@ static func run(ctx: Node) -> void:
 		GameSettings.auto_idle = false  # kill or retask the probes
 		# WIRE IDS: a multiplayer order intent travels as int(type), so a
 		# new order kind must be APPENDED. If STOP ever moves, every peer
-		# misreads every order after it.
+		# misreads every order after it. (STOP went 9 -> 8 when the
+		# GARRISON type was removed — units no longer enter buildings —
+		# which is a deliberate renumber, not drift: peers all run the
+		# same build. New kinds still go on the END.)
 		q.check(int(Order.Type.MOVE) == 0 and int(Order.Type.ATTACK) == 1
-				and int(Order.Type.STOP) == 9,
+				and int(Order.Type.STOP) == 8,
 			"Order.Type wire ids moved (MOVE=%d ATTACK=%d STOP=%d)" % [
 				int(Order.Type.MOVE), int(Order.Type.ATTACK), int(Order.Type.STOP)])
 		# THE TREE'S PAUSE FLAG MUST NOT OUTLIVE THE MATCH IT PAUSED.
@@ -2802,32 +2805,53 @@ static func run(ctx: Node) -> void:
 				(not NavWorld.current.nav_grid or not NavWorld.current.nav_grid.is_point_solid(cell))
 			if not rock_cleared:
 				cproblems.append("rock not destroyed/cleared by blast")
-		# --- garrison: robots inside make the fort shoot missiles ---
+		# --- the fort's TOWER GUNS are its defence ---
+		# The garrison used to be here: robots walked inside and crewed a
+		# missile battery. Nothing enters a building any more, so what has
+		# to hold is that a mounted tower gun is a REAL cannon standing on
+		# the fort — it fires at an enemy in reach, and it can be shot off
+		# the fort again (which frees its mount for the next one).
 		var fort_g: FortBuilding = null
 		for c6 in ctx.get_children():
 			if c6 is FortBuilding and c6.team == MatchState.current.player_team:
 				fort_g = c6
 				break
 		if fort_g:
-			var rb: Unit2D = load("res://scenes/unit.tscn").instantiate()
-			rb.unit_name = "grunt"
-			rb.team = MatchState.current.player_team
-			rb.position = fort_g.visual_center()
-			ctx.add_child(rb)
-			if not fort_g.garrison_robot(rb):
-				cproblems.append("garrison refused a robot")
-			var enemy_g: Unit2D = load("res://scenes/unit.tscn").instantiate()
-			enemy_g.unit_name = "grunt"
-			enemy_g.team = 2
-			enemy_g.position = fort_g.visual_center() + Vector2(90, 0)
-			ctx.add_child(enemy_g)
-			var ehp := enemy_g.hp
-			for i in 240:
-				fort_g._process(0.1)
-				await Engine.get_main_loop().process_frame  # let the missile fly
-			# freed/dead means the missile killed it — that IS the fort firing
-			if is_instance_valid(enemy_g) and enemy_g.alive and enemy_g.hp >= ehp:
-				cproblems.append("garrisoned fort never fired")
+			var free_before: int = fort_g.free_cannon_slots()
+			if not fort_g.mount_product("cannon", "gatling"):
+				cproblems.append("fort refused to mount a tower gun")
+			var tower: Vehicle2D = null
+			for c in fort_g.slot_cannons:
+				if c is Vehicle2D and is_instance_valid(c):
+					tower = c
+					break
+			if tower == null:
+				cproblems.append("mounted tower gun never landed in a slot")
+			else:
+				if fort_g.free_cannon_slots() != free_before - 1:
+					cproblems.append("mounting a gun did not take a slot")
+				var enemy_g: Unit2D = load("res://scenes/unit.tscn").instantiate()
+				enemy_g.unit_name = "grunt"
+				enemy_g.team = 2
+				enemy_g.position = tower.global_position + Vector2(60, 0)
+				ctx.add_child(enemy_g)
+				var ehp := enemy_g.hp
+				for i in 240:
+					tower._process(0.1)
+					tower._physics_process(0.1)
+					await Engine.get_main_loop().process_frame
+				if is_instance_valid(enemy_g) and enemy_g.alive and enemy_g.hp >= ehp:
+					cproblems.append("a mounted tower gun never fired")
+				if is_instance_valid(enemy_g):
+					enemy_g.queue_free()
+				# SHOOT IT OFF THE FORT: the mount has to come free again,
+				# which is what lets a cannon line replace a lost turret
+				tower.take_damage(tower.max_hp * 10)
+				await Engine.get_main_loop().process_frame
+				if fort_g.free_cannon_slots() != free_before:
+					cproblems.append("a destroyed tower gun did not free "
+						+ "its mount (%d free, want %d)"
+						% [fort_g.free_cannon_slots(), free_before])
 		else:
 			cproblems.append("no player fort")
 		if not rock_found:

@@ -202,6 +202,13 @@ every owned facility, defends owned ground, crews the empty hardware on
 the map, runs maintenance, holds the frontier bridges, then assigns
 whatever is left.
 
+Production is a **line**, not a queue: Z has no build queue, so each
+facility is pointed at one unit type and turns it out indefinitely. The
+brain keeps its lines sticky (re-aiming every pass would emit a random
+unit stream), never parks a factory on an unarmed hull, and puts every
+facility that can make robots onto robots when it is short of crew —
+vehicles and cannons roll out unmanned and are scrap without a driver.
+
 The assignment ports `ZBot Stage1AI_3`. It is what stops the brain
 swarming one point:
 
@@ -220,8 +227,18 @@ swarming one point:
    partner waits out the cycle. A building takes a squad, which is the
    focus fire. Everything else takes one unit, so the army fans out.
 
+Above all that sits a strategic read (`AiMap`: a zone graph with
+adjacency, depth from its own fort, and per-sector strength and value)
+and an operational layer (`AiSquad`: bodies of troops that muster behind
+the line, advance together, and break off when beaten). A unit is spoken
+for by exactly one layer — squad, crossing guard, or the per-unit
+assignment — because three layers drafting from "the idle units" is what
+used to dissolve every attack.
+
 `--tactics-test` asserts that the posture table follows the map share,
-and that the matching spreads units instead of piling them.
+that the matching spreads units instead of piling them, that the stance
+follows the map read, that a squad musters before it commits, and that no
+unit is commanded by two layers at once.
 
 ## Repository layout
 

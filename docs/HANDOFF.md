@@ -1,183 +1,230 @@
-# Handoff — 2026-08-21
+# Handoff — 2026-08-23
 
-State of the HUD/gameplay fidelity pass and the quality-of-life sweep
-that followed it, and what is still open. Read this with
-`docs/BUGS.md` (verified open bugs) and `docs/ROADMAP.md` (plan).
+Two days of player-reported fixes, and one model we had wrong from the
+first commit. Read this with `docs/BUGS.md` (verified open bugs) and
+`docs/ROADMAP.md` (plan).
 
-Test state at handoff: **49/49 headless lanes clean.**
+Test state at handoff: **49/49 headless lanes clean.** Lane list changed:
+`--garrison-test` is now `--towercrew-test` (see *No units inside
+buildings*). The count is unchanged.
 
-## The quality-of-life sweep (2026-08-21)
+> **Running the suite.** There is no `godot` on PATH here — it is the
+> Flatpak. Every lane:
+> `flatpak run org.godotengine.Godot --headless --path project res://scenes/main.tscn --<flag>-test --quit-after 30000`
+> **After adding or renaming any `class_name`, run
+> `flatpak run org.godotengine.Godot --headless --path project --import`
+> first**, or every lane dies on `Could not find type "X"` — the global
+> class cache is gitignored and only the editor writes it.
 
-The game was faithful and missing the commands 30 years of RTS players
-now expect. Everything here is an ADDITION to the original, guarded by
-the new `--qol-test` lane.
+---
 
-| Area | What changed |
+## 1. Production: Z has no build queue (the big one)
+
+**We had a five-slot FIFO. That was invented, and wrong from the start.**
+`docs/RESEARCH.md` listed "queues" under *what we already match*, which
+was an assumption nobody had checked against the original.
+
+In Z you point a factory at **one** unit type and it turns that out
+**indefinitely** until you point it somewhere else. That is not cosmetic:
+a queue makes production a burst you pay for once and forget, a line
+makes it a standing commitment you keep re-deciding.
+
+| Was | Now |
 |---|---|
-| **Pan keys were command keys** | The real bug the sweep found. WASD panned the camera AND pressed the HUD's plates, because the camera polls input actions while `match.gd` reads the same key events: holding `D` to look right flipped the DEFEND stance on the frame it went down, and `S`/`A` would have done the same to the new stop and army-select. The four `cam_*` actions are arrows only now; panning is arrows, screen edge, **middle-mouse drag** and the radar. `--qol-test` fails if a letter is ever bound back onto a pan action. |
-| **Stop (`S`)** | There was no cancel. A move could only be replaced, so a squad walking into an ambush had to be sent somewhere else to be called off. `Order.Type.STOP` (appended — the type crosses the wire as an int) goes through the same intake and `Unit2D.halt()` releases the order, the queue, the chase and the DEFEND post. |
-| **Hold position (`H`)** | Takes the ground the unit stands on as a DEFEND post. `_begin_order` arms it in place when the post is within `HOLD_REACH`: pathing to your own feet returns an empty route, which drops the order and arms nothing. |
-| **Queued orders (ctrl+right-click)** | A per-unit FIFO (`order_queue`, cap 8) advanced from the one place an order ends (`_order_done`) and from arrival. A plain click still wipes the chain, so decisive clicking is unchanged; a queued click does NOT drop the selection, or a chain could not be built. Each waypoint drops its confirmation marker when it is queued — a chain you cannot see is a chain you cannot build. `is_idle()` now counts a pending chain as work, so neither the AI nor smart idle steals a unit mid-chain. Replicated: the intent carries `q`. |
-| **Double-click** | Takes every unit of the same kind AND type inside `view_rect()`. |
-| **`A` / `Ctrl`+`A`** | The sidebar's A plate had no key at all, in a frame whose whole convention is that the key is the letter on the plate — `A` now jumps to the last alert. `Ctrl`+`A` selects the whole army (robots + hardware), the one selection R and V together cannot express. |
-| **Radar alert pings** | `Fx.announce` only fires for events that ship a voice line, so a factory or a squad taking fire off-screen produced nothing to point at. `Fx.ping()` is the silent channel: throttled per 96px cell, 4s window, and the radar flashes it. Fed by non-fort building damage, by the distress bark, and by every voiced alert. It is also what the A button jumps to. Eyeball it with `--screenshot 2.4 --burn-building`. |
-| **Shift fills a production line** | The queue held 5 from the start with no way to fill it — five trips through the flyout. Shift-clicking a build button queues to the cap through the same intake, so pop caps, money and the network see five ordinary requests and the first refusal stops the run. |
-| **Stale hotkey text** | The stance bar still offered Q/E/R in its tooltips, from before the keys moved to the HUD's own letters. |
+| `ProductionQueue`, `items: Array[String]`, cap 5 | `ProductionLine` (`entities/production_line.gd`): `selected`, `elapsed`, `paid` |
+| Charged at enqueue | Charged as each unit **starts**. A stalled line costs nothing and banks no time. |
+| Shift-click filled the queue | Gone with the queue it filled. One press points the line. |
+| Cancel dropped the next item | **Cancel stops the line** and refunds the part-built unit. The factory goes idle and **stays** idle — `_defaulted` exists so the default cannot paper over the button. |
+| Idle until you clicked | **Every producer defaults to the first entry of its own build list** on first activation, so a captured factory earns its keep immediately. |
+| — | **Switching keeps the clock** (`ProductionLine.select`) and refunds the abandoned unit, so money stays straight either way. |
 
-### Player-reported, fixed the same day
+**Stalls, not refusals.** Three things pause a line without dropping the
+selection, so it resumes by itself: no money, the population cap, and a
+fort with all four cannon mounts full. `Producer._may_start` is the one
+gate; `Building2D.accepts_product` is the capability query behind it
+(only `FortBuilding` ever answers no).
 
-| Report | Root cause |
-|---|---|
-| "I can't cycle through the production buildings with B." | TWO bugs, either one fatal on its own. (1) `SelectionFilters._cycle_buildings` scanned `Groups.BUILDINGS`, which is **forts only** — its own comment in `groups.gd` says so — so a factory was never even a candidate; the scan is `Groups.FACILITIES` + `produces_anything()` now. (2) `SelectionManager.select_single` appended only `unit is Unit2D`, so it silently dropped every building: the camera flew to the producer and the selection came back EMPTY, which is why the build menu never opened. It takes any living selectable now. `--qol-test` presses B once per producer, spawns a factory so the assert holds on maps whose player owns only a fort, and checks each press selects exactly one of the player's producers and that a full cycle visits them all. |
-| Found while auditing the same trap: `CpuAi._refresh_attack_focus` also scanned `Groups.BUILDINGS`. | Its sibling `_attack_destination` picks enemy **factories** as targets (and carries a comment about the forts-only group), but the focus check one function up could never confirm a factory was still alive — so the brain re-picked its target every think pass instead of committing to it. Now `ALL_BUILDINGS`, like its sibling. Left alone and reported instead of changed: `minimap.gd` blips `Groups.BUILDINGS` too, so **only forts appear on the radar** — factories, radar stations and repair shops are invisible on it. Widening that changes what intel a player has (the radar-station gate covers units only), so it is a design call, not a bug fix. |
-| "After finishing a match some buttons don't work any more — win a skirmish, then Back does nothing." | `game_over.gd` set `get_tree().paused = true` and **never lifted it**. `paused` belongs to the SceneTree, not to a scene, so it survived `change_scene_to_file`: the next screen came up with every button dead, because nothing but a `PROCESS_MODE_ALWAYS` node processes while it is set. The overlay's own buttons worked (it is ALWAYS), which is why the symptom only appeared one screen later. Fixed at the seam: `GameState.leave_match()` is now the ONE way out of a match to a menu (unpause + `Engine.time_scale = 1.0` + `reset_for_new_map` + change scene), used by the overlay and the pause menu; the overlay also lifts the pause from `_exit_tree`, and `match.gd _ready` refuses to start a paused match. The time-scale half was a second leak on the same seam — only `title.gd` reset it, so leaving a 200% match for the SKIRMISH screen ran that menu at 200%. |
+Save contract changed: `"queue": [...]` → `"line"`, `"line_elapsed"`,
+`"line_paid"`. `apply_dict` still reads a pre-line save — it takes the
+head of the old list and drops the rest.
 
-## Landed in the HUD session (2026-08-20)
+Wire: `Net.relay_line` / `relay_stop_line`. The intent kind is still
+`"queue"` on the wire (identical payload); an **empty item means stop**.
 
-Verified by test unless noted otherwise.
+**The AI drives the line too** (`CpuAi._produce`, fully rewritten):
+- **Sticky.** Re-rolling the pick every pass would re-aim every factory
+  every second, and because switching keeps the clock that emits a random
+  unit whenever the timer lands. A line is only re-aimed when it is
+  *wrong* (idle / off-roster / a cannon somewhere that must not build
+  them) or `RELINE_MS` (25 s) has passed **and** the stance changed.
+- **No unarmed lines.** APC and crane have `damage 0` — unarmed by
+  design. A *permanent* line on one is a factory that never contributes
+  another gun. They are off the ordinary choice entirely and built only
+  against a concrete need (`_utility_need`: a crane when something of
+  ours is broken and we own none; one APC once we hold ≥3 sectors).
+- **Hardware needs a crew** (`crew_shortfall`). Vehicles and cannons
+  spawn **team 0, unmanned** — a robot has to walk over and get in. Below
+  `CREW_RESERVE` (3) spare robots plus one per empty hull near home,
+  every facility that can make robots makes robots, and this *preempts*
+  the stickiness. This was a real failure, not a theory: `--tactics-test`
+  caught a run where the brain was down to one facility, its line was on
+  `cannon:gun`, and it finished with **zero infantry to crew anything**.
 
-| Area | What changed |
-|---|---|
-| HUD frame | The original chrome replaces the floating panels: 100px sidebar + 36px bottom bar, world inset into the rest. Clock, animated portrait, name plate, equipment art, grenade tally, 74px health bar, weapon plate, A/T/D/Z + R/V/B/G/Menu, radar in its own window, `unit_amount_bar` army gauges. `--ui-test` asserts every art file and that `view_rect()` excludes the chrome. |
-| Portraits | `tools/zod/build_hud.py` recovers the SHEADBI face-piece offsets by brute force and bakes 696 whole frames per pack. Blink + talk flipbooks, battered second head below 45% HP. `--ui-test` steps the flipbook and asserts the frame changes. |
-| Build menu | Rebuilt on the original's own 112x80 `base_image` window at NATIVE scale, with the Time countdown, building health %, level/progress gauges, Cancel/Ok and the garrison EXIT. |
-| Hotkeys | Every key is now the letter on the plate it presses: T/D/Z (sidebar modes), R/V/B/G (bottom-bar actions), X dismount, Ctrl+digit/digit groups. |
-| Selection habits | Auto-deselect on order and centre-on-select, both from the original, both switchable (`GameSettings`). |
-| Capture | Taking a sector now inherits the unit on its production line with its elapsed time, instead of scrapping the queue. `--capture-test`. |
-| Smart idle | Rewritten so it can never touch a unit that is doing something, and never repeats an attempt. `--orders-test` asserts both. |
-| Path smoothing | `NavWorld.string_pull` removes the A* staircase. `--path-test` asserts it shrinks the path and that every kept leg is clear. |
-| Fort/ground layering | Forts render entirely on the ground layer (what `BFort::DoRender` does); other buildings take their ground cut from `solid_tiles` instead of a flat 50% of art height. |
-| Rock cliffs | The sheet's rows 2-4 are all cliff FACE; the autotile now draws the face top-to-base instead of always the middle row. |
-| Flags | Were drawn at 2x. One `AnimLibrary.FLAG_SCALE` for all three flag sprites. |
-| Turret facing | A manned gun's passive look is the `empty` set; for types named `empty_<team>_r<deg>` that resolved to one non-directional frame, so the gun snapped to its aim only while firing. |
-| AI | Holds ground: posts DEFEND guards on frontier bridges (the only place armour crosses a Z map), capped at ~1/3 of the army, and guards are excluded from the push. Cannons — immobile once built — are only produced at the facility nearest the frontier. `--tactics-test`. |
-| Research | `RESEARCH.md` 2e (PHRASES.BIN), 2e.1 (portrait offsets), 2f (HUD slot derivation). Corrected the stale claim that our stats were unported. |
+Guarded by: `--prod-test`, `--fortprod-test`, `--cancel-test`,
+`--factory-test`, `--cap-test`, `--capture-test`, `--qol-test`, and
+`StrategyTests.builds_and_commits` (asserts every AI facility is aimed at
+something on its own roster, and that six back-to-back think passes with
+nothing changed re-aim **nothing**).
 
-### Landed after the handoff was written
+---
 
-| Area | What changed |
-|---|---|
-| **An EXPORTED BUILD loaded no content** | The worst bug found this session, and it was invisible: Godot packs an imported file as a `.import` SIDECAR (the texture itself is renamed under `.godot/imported/`), and converts text resources to binary. Every directory scan in the project filtered on the SOURCE extension — `entry.ends_with(".tres")`, `f.get_extension() == "png"` — so a packaged game registered **no building defs, no unit folders, no effect art and no map scenes** while all 47 lanes passed in the editor. `PackFiles` (`scripts/core/pack_files.gd`) folds packed names back to project names; `ContentDB._scan_dir`/`_dir_has_art`/`_discover_unit_folders`/`_discover_effects`, `MapCatalog`, `AnimLibrary.asset_dir_for` and the art audits all go through it. Folder-existence probes that could not be answered in a pack now probe the FIRST FRAME instead (`Fx._debris_pick`, the rock/bridge debris audit). |
-| **An exported build could not be tested** | A release binary refuses a scene override (`compiled without support for path overrides`) and `main_scene` is the title screen, so every test flag was unreachable once packaged — the suite only ever ran the editor's copy. `title.gd` now hands over to `main.tscn` (deferred — doing it inside `_ready` leaves the tree mid-add and `--ui-test` caught it) when `SelfTests.should_run()`. The suite runs **inside the shipped binary**, which is how the bug above was found. Keep it that way: an editor-only green run proves nothing about a build. |
-| Desktop releases | `tools/build_releases.sh` (linux/windows/macos, all cross-built from Linux), `tools/build_rpm.sh` + `packaging/linux/` (Fedora RPM with desktop entry and hicolor icons), `project/export_presets.cfg`, and `tools/gog/make_icons.py` which cuts the icon set out of the retail splash's Z logo into the gitignored `project/assets/icon/`. Windows version metadata embeds without rcedit; only the .exe FILE icon needs it (wine, not installed). macOS is universal but unsigned. `build/` is gitignored — the binaries embed the original art. |
-| AI: adaptive posture + mutual-nearest | `ZBot Stage1AI_3` ported. The old `_attack` walked every idle unit to one ring, which is what "it just swarms" looked like. Now `posture()` reads the map share against a fair share and returns the original's own commit/delay table (`GoAllOut_3`: 0.15/12s all-out, 0.25/5s holding, 0.35/4s losing), `_collect_targets` gathers in the original's priority order (map items, buildings, empty hardware, enemy units only when all out) and `_match_and_order` issues only MUTUAL-NEAREST pairs. `--tactics-test` asserts the table flips with the share and that the matching spreads units instead of piling them. `_capture_zones` is gone; its zone scoring survives as a distance bias and `max_claims` now caps flag targets per cycle. |
-| Structures burn | Player-reported open item 2. Buildings had NO damage VFX: a fort one shot from collapse looked untouched, and the ruin it left sat clean for the rest of the match. Ported from the Zod Engine source rather than invented (`ZBuilding::ProcessBuildingsEffects`, see `RESEARCH.md` 2c): a damaged building holds a POPULATION of `max_effects * (1 - hp/max_hp)` looping effects, topped up when short, each at a uniform random point in a per-type `effects_box`; the mix is the original's one-roll 10/10/30/50 big_smoke / small_fire_smoke / fire / little_fire, so a burning structure is mostly FIRE. The loop has no destroyed check in zod either — that is exactly why a ruin goes on burning. Boxes and caps are verbatim from `bfort`/`brobot`/`bvehicle`/`brepair`/`bradar`. `--art-test` asserts the cap range, that the population grows with damage and maxes at death, that every fire lands inside the box, and that repair puts them out. |
-| Debris follows the footprint | Every piece left the exact visual centre, and a one-tile hut threw the same 4 pieces as a 128px fort. `Fx.building_debris` now takes the footprint rect: origins scatter across the structure's upper two thirds and the count scales with area (1 piece per ~2x2 tiles, 4-12). |
+## 2. No units inside buildings
 
-## Open
+Robots used to walk into their own fort and crew a missile battery from
+inside. Removed at the player's request, and it was the right call: a
+unit inside a building cannot be seen, selected or counted, and no amount
+of badge art on the roof fixes that.
 
-### Reported by the player, not resolved
+Gone: `garrison`, `garrison_robot`, `release_garrison`, `kill_garrison`,
+`crew_count`, the crew-pip badge, the garrison missile battery, the
+`garrison_missile_*`/`garrison_cap` building-def exports (and their
+values in `fort_front.tres`/`fort_back.tres`), the panel's EXIT strip,
+`Commands._find_own_fort`, and **`Order.Type.GARRISON`**.
 
-1. **Turrets "don't reach all around the building."** One cause of the
-   *spasm* is fixed (above). The reach half is unverified — it could not
-   be reproduced headlessly. **Needs a repro: which map, which gun, and
-   whether the gun is a fort tower mount or a free-standing cannon.**
-2. **Building smoke and debris effects** — CLOSED. The root cause was
-   not tuning: **structures never burned at all.** Now ported verbatim
-   from the Zod Engine source, not guessed (`Fx.burn_effect`,
-   `Building2D._burn_fx`, `--art-test`; model and constants in
-   `RESEARCH.md` 2c). Eyeball with `--screenshot 3 --burn-building`.
-3. **Cliff faces** — improved but not confirmed against the original.
-   Still unused in the autotile: the shadow column (col 4) and the
-   rubble column (col 5) of `rocks_<planet>.png`, and row 5 (the ground
-   at the foot of the drop). If cliffs still read flat, those three are
-   where the remaining depth cues live.
-4. **The non-fort ground cut is a visible change.** Radar, repair and
-   both factories now have NO ground band at all (their `solid_tiles`
-   covers their whole art), so they Y-sort as one sprite. That is
-   correct by the data but it is the first time it has been seen —
-   worth a look at a unit walking past a factory's south edge.
+> `Order.Type` renumbered: **`STOP` is 8, was 9.** Deliberate — all peers
+> run the same build. New kinds still go on the END. `--qol-test` pins it.
 
-### Known divergences from the original (decisions, not bugs)
+A fort now defends itself with its **tower guns**, which are real cannons
+on real cells: they fire, they can be shot off the fort, and a destroyed
+one frees its mount (`_slot_taken`) so a cannon line replaces it without
+the player re-ordering. `--combat2-test` asserts that whole cycle.
+`X`/`Commands.eject()` still works for **hulls** (crewed vehicles, loaded
+APCs) — that was never the complaint.
 
-5. **Z has no resource; we have money.** The original's only currency is
-   TIME — build seconds, scaled by how many sectors you hold
-   (`BuildTimeModified`, implemented). Our `cost`/`spend` layer on top is
-   an addition: every unit def carries a cost, the AI banks before
-   committing to vehicles, and `--balance-test` asserts "no free
-   producers". Removing it would touch the defs, the AI's banking, the
-   save format and several tests. **Nobody has decided whether to.**
-6. **HUD button semantics are ours.** Nothing the release ships records
-   what A / T / D / Z / R / V / B / G mean. The bindings are documented
-   as ours in `hud_frame.gd` and `selection_filters.gd`. The one thing
-   the art *does* tell us is which are modes and which are actions (the
-   frame draws the sidebar four inactive and the bottom five active).
-7. **Build-picker UX.** The roster flyout is ours; the pack ships
-   `factory_gui` art for a scrolling list (`main_entry`, `scrollbar_*`,
-   `fup`/`fdown`) which is probably what the original used. The player
-   said "forget it" for now — the art is copied and waiting.
+---
 
-### THE ZOD ENGINE SOURCE IS READABLE (2026-08-20)
+## 3. Damage: every explosive weapon was harmless to buildings
 
-The whole C++ source is public and fetchable file by file
-(`github.com/capehill/zodengine`, mirrors on `erezsh/zodengine` and
-SourceForge). Several items below and in `docs/BUGS.md` were written as
-"cannot be derived" when they only needed this. Already used it to port
-the building burn model and to verify every area-of-effect number.
-**Read it before calling anything underivable.** The 1996 Bitmap
-Brothers code itself was never released — Zod is the reimplementation
-the whole asset pack comes from, and is the reference of record.
+`building_frac` (the anti-structure scale — a share of the target
+building's max HP) existed only on small arms. Every tank, cannon,
+missile and grenade had `0.0`, so it fell through to its flat *unit*
+damage against a 33 333 HP fort. Measured, one unit alone:
 
-Known next candidates:
-- `orock.cpp` — the rock autotile table. `docs/BUGS.md` open item 9
-  says closing it "needs the original `orock.cpp` table; it cannot be
-  derived from the art alone". It can just be read.
-- `zbuilding.cpp` `level_img[MAX_BUILDING_LEVELS]` — loaded, but
-  `BFort::DoRender`/`DoAfterEffects` draw only the base surface, the
-  production `show_time_img` and the team flag. **No level digit is
-  drawn in the world**, so our `Building2D._build_level_plate` map digit
-  is ours (and its art comes out of `ui/hud/`). The production panel
-  already shows level as a gauge.
-- `zpath_finding*.cpp`, `zbot*.cpp` — formation movement (item 12) and
-  the AI's real behaviour list (item 13) instead of our approximations.
+| | before | after |
+|---|---|---|
+| heavy tank (cost 220) | **341 s** | 18 s |
+| howitzer (110) | **486 s** | 35 s |
+| medium tank (150) | **292 s** | 25 s |
+| pyro robot (70) | 14 s | 14 s |
 
-### Reverse-engineering still open
+Two bugs kept it company:
 
-8. **`PHRASES.BIN` per-frame stream** (`RESEARCH.md` 2e). The record
-   layout is known — 64 records of 552 bytes, 31-char name plus a
-   per-frame animation stream — and the names give the whole expression
-   set. The stream itself is not decoded, so the portraits blink and
-   talk but do not lip-sync.
-9. **Portrait gesture pieces.** The 64x64 and 48x64 cut-outs (5+2 per
-   folder) are the salute and thumbs-up hands named in the phrase table.
-   They are LARGER than the base head, so the offset search has nothing
-   to lock onto and their placement is unknown.
-10. **`ROB23-75` bark mapping.** The phrase table names 46 voiced lines
-    and the group boundary matches (`ROB01-22` really are the 22
-    selection/order lines), but the order-preserving hypothesis fails on
-    clip length, so the remaining 53 files stay an unlabelled pool.
-    `Fx.chatter()`/`Fx.distress()` draw from it without claiming which
-    line is which.
-11. **`LEVEL.MAP` leftovers** (`RESEARCH.md` 6.12): byte 0, the rock
-    record's bytes +4/+5/+6, the four 138-byte records at 9417, plane 2
-    bits 0-6, most of each region record, `robots.dat`.
+- **`Vehicle2D._combat` is a separate copy of the firing logic** and its
+  range gate still measured to `visual_center()` after `Unit2D` moved to
+  the footprint edge. A fort's middle sits ~80 px inside its wall —
+  further than a medium tank's whole 128 px reach — so **no crewed
+  vehicle or cannon could fire on a fort at all.** It drove up, tracked
+  the fort with its turret, and never pulled the trigger. *This was the
+  bug the player actually saw.*
+- That same pass asked `_find_target()` instead of
+  `_ordered_or_nearest()`, so an explicit attack order never reached a
+  tank's gun. And `Commands` excluded cannons from attack orders
+  outright, so the howitzer — longest reach on the map at 200 px — was
+  the one unit whose fire could not be directed.
 
-### Engineering follow-ups
+`Combat.amount_against` is now the single conversion point and converts
+**per victim**: a fort-aimed shell charges the fort on the building scale
+and the units in its blast on the flat scale. Landing the fracs without
+this would have made one heavy shell delete every unit within 50 px for
+7 570.
 
-12. **No formation movement.** Orders scatter units on a ring offset;
-    the original clones a leader's waypoints to its minions
-    (`RESEARCH.md` 2d, "unit GROUPS with leader/minion waypoint
-    cloning").
-13. **AI has no chokepoint concept beyond bridges.** A map with no
-    bridges gets no guards. A grid-derived corridor pass (open cells
-    with few open neighbours) would cover those maps. Also absent:
-    retreat/regroup, focus fire, and using the APC to move infantry.
-14. **Path smoothing is bounded at `SMOOTH_WINDOW = 24` points** to keep
-    it linear. Long cross-map routes still keep corners every ~24 cells
-    that a full string-pull would remove.
-15. **Three screenshot aids in `match.gd`:** `--select-first`,
-    `--select-factory` and `--burn-building` (drops the player's first
-    structure to 12% HP and pans to it, so the burn VFX can be judged),
-    in the same spirit as the existing `--dump-visible`. They exist so
-    visual changes can be eyeballed from one run; delete them if that
-    stops being useful.
+Small-arms fracs are the transcribed reference and were left alone; the
+explosive ones are derived as `cooldown / seconds-to-raze-a-fort-alone`.
+The **pyro at 14 s is a known outlier** — the reference fractions ignore
+fire rate, and its cooldown is 0.1 s. See `docs/RESEARCH.md` "Stat
+fidelity".
 
-## Not mine
+**Not changed:** tanks one-shot infantry. A medium's 267 vs a grunt's 86
+is 3.1× overkill; the original is 80 vs 8, i.e. 10×. Our port is already
+~3.2× *less* lethal relative to HP than Z was, and `--balance-test`
+asserts those flat numbers against `zsettings.cpp`. If it should change,
+the lever is `hit_chance` — every explosive is at **1.00** and literally
+cannot miss.
 
-These files were already modified in the working tree before this
-session and are unrelated to it: `scripts/core/campaign.gd`,
-`scripts/game/map_catalog.gd`, `scripts/game/map_loader.gd` (the retail
-campaign work), `content/match/default.tres`,
-`scripts/content/defs/match_rules_def.gd`, `scripts/tests/terrain_tests.gd`,
-`tools/build_map_resources.gd`, `tools/gog/level_to_json.py`,
-`docs/BUGS.md`.
+### Effects
+- **`MOBIMIS` does not ship.** The pack has `MOBIMISS.wav` and
+  `MOBIMIS2.wav`. The missile cannon and the fort battery were firing in
+  total silence. → `MOBIMISS`.
+- Medium/heavy tanks fired the **missile launcher's finned missile
+  sprite**; the `gun` cannon fired a grenade sprite despite its `LTGUN`
+  report. All three now use `vehicles_light/bullet.png` (7×4, the tank
+  shell). The howitzer keeps the grenade art — consistent with `GRENLOBX`.
+- `--vfx-test` now checks **every** def's sound resolves to a real wav
+  and every projectile's impact effect has real art (not the particle
+  fallback). That is what would have caught `MOBIMIS`.
+
+---
+
+## 4. Pathing and the AI's shape
+
+**Units got stuck on building edges** because A* had no reason to prefer
+open ground: an open cell touching a wall is 8 px off the wall face and a
+vehicle's physics box is 16 px, so a wall-hugging route means permanent
+contact for the whole leg — and it is usually the *shorter* route.
+`NavWorld.paint_wall_margins()` costs the ring around every wall
+(`WALL_MARGIN_WEIGHT`, passable but expensive), and `string_pull` will
+not collapse the detour back onto the wall unless the anchor is already
+inside the margin (the corridor case — a fort gate). Called once per
+loader after every building has stamped its solids.
+
+Also: `_repaths` resets per order (three brief jams *minutes apart* used
+to cancel a move), a leashed sidestep detour replaces re-requesting the
+identical failing route, and `_separation` has right-of-way so a doorway
+stops deadlocking.
+
+**The AI had no layer between the unit and the map.** Added:
+- `game/ai_map.gd` — zone graph, adjacency, depth from our own fort,
+  per-sector strength/value, all read once per think pass.
+- `game/ai_squad.gd` — assemble → advance as a body (laggards close up)
+  → engage → withdraw below 40 % of peak.
+- `cpu_ai.gd` as commander: a four-way stance (turtle / consolidate /
+  expand / press) with a defence budget and strike count.
+
+Crucially **squad members are excluded** from the reactive defence, the
+push and the ZBot assignment. Three layers all drafting from "the idle
+units" is what dissolved every attack; `StrategyTests.single_owner` pins
+it.
+
+Two bugs fell out of writing those tests:
+- The zone graph came out as **four disconnected islands** — a flat 40 px
+  adjacency tolerance against the shipped map's 160 px seam. Tolerance is
+  now a fraction of sector size.
+- `power_ratio` compared us against **every other team summed**, so on a
+  multi-team map the brain thought it was losing from minute one and
+  turtled permanently. Now it compares against the strongest single
+  rival.
+
+**Pixel shadow.** The unit shadow was a `draw_circle` under a scale
+transform — an antialiased vector ellipse under 16 px nearest-neighbour
+sprites. Now rasterised as whole-pixel rows with hard edges.
+
+---
+
+## Open / next
+
+1. **`--tactics-test` is noisy.** Zone count over a 3-minute sim ranges
+   ~3–12 across seeds. It asserts *floors*, not values, deliberately —
+   but a genuine regression inside that band would not be caught. Worth a
+   longer, seeded AI lane.
+2. **The pyro's 14 s fort razing.** Faithful to the reference table and
+   still absurd next to a heavy tank's 18 s at 3× the cost. Fixing it
+   means departing from a transcribed number; the player's call.
+3. **Explosives cannot miss** (`hit_chance = 1.00`). See §3.
+4. **`_utility_need` only fires when a line is already being re-aimed**,
+   so a crane for a freshly-broken bridge can wait up to `RELINE_MS`.
+   Acceptable; noted so it is not mistaken for a bug.
+5. **`content/projectiles/garrison_missile.tres`** is now unreferenced.
+   Left in place (harmless, `--defs-test` is clean); delete if you want
+   the tree tidy.
+6. Everything still open in `docs/BUGS.md` — the retail starting armies,
+   the unconverted HUD frame and production chrome, MP determinism.
