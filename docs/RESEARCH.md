@@ -307,11 +307,35 @@ LoadDefaults`, so drift fails the run. Our HP sits on a 0..800 scale
 rather than the original's /74 (a constant x10.8: grunt 86, psycho 141,
 tough 270, medium 541, crane 800), which keeps the original's
 proportions while giving the selection-ring health bars whole pixels to
-work with. Small-arms damage against BUILDINGS uses the original's
-fraction-of-max-HP model (`building_frac`); unit-vs-unit uses the flat
-integer at the same x0.08 scale. The older note here claimed our numbers
-were invented and "far more lethal" — that was true when it was written
-and is no longer.
+work with.
+
+**THE ANTI-STRUCTURE SCALE (`building_frac`) — every armed unit has one.**
+Unit HP runs 86..800 and a fort has 33333, so no single damage number can
+serve both: a weapon carries a flat integer for units and `building_frac`
+(a share of the target building's max HP) for structures.
+`Combat.amount_against` is the one conversion point, and it converts PER
+VICTIM — a shell aimed at a fort charges the fort on the building scale
+and the units in its blast on the flat scale.
+
+The small-arms fractions are the transcribed reference (the table above).
+The EXPLOSIVE ones did not exist at all until 2026-08-23: every tank,
+cannon, missile and grenade in the game had `building_frac = 0.0` and so
+fell through to its flat unit damage against a 33333 HP fort. Measured:
+a heavy tank needed **341 s** to raze one fort alone, a howitzer 486 s,
+while a pyro robot did it in **14 s**. Two bugs kept company with it —
+`Vehicle2D._combat` is a separate copy of the firing logic and its range
+gate still measured to `visual_center()`, so a fort's middle sat ~80 px
+inside its wall and NO crewed vehicle or cannon could fire on a fort at
+all (it would track the fort with its turret and never shoot); and that
+same pass asked `_find_target()` rather than `_ordered_or_nearest()`, so
+an explicit attack order never reached a tank's gun.
+
+The explosive fractions are derived, not transcribed — `cooldown /
+seconds-to-raze-a-fort-alone`, so fire rate is part of the answer (the
+small-arms values ignore it, which is why the 0.1 s pyro is the outlier
+above). `--balance-test` pins the whole table and `--fortkill-test`
+asserts the chain end to end per unit type: acquire the building, close
+to reach, fire, let the shell fly, and land the building's own number.
 
 ### Unwired effects (art exists in the original)
 

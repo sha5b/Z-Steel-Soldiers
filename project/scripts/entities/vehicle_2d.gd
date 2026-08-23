@@ -411,7 +411,15 @@ func _combat() -> void:
 	if speed > 0.0 and velocity.length_squared() > 4.0:
 		_last_dir = _angle_to_dir(velocity.angle())
 		return
-	_target = _find_target()
+	# _ordered_or_nearest, NOT _find_target: a crewed hull under an
+	# explicit ATTACK order has to shoot what it was told to shoot. This
+	# pass only ever asked its own opportunistic scan, so ordering a tank
+	# onto a specific building did nothing at all for its gun — it drove
+	# into range, tracked the target with its turret, and then fired only
+	# if that same target happened to be what the scan picked anyway.
+	# _find_target stays overridden below for the APC, and
+	# _ordered_or_nearest routes through it.
+	_target = _ordered_or_nearest()
 	# APC: the squad inside fires through the ports — the first cargo
 	# robot's weapon stands in for the squad (original behaviour: every
 	# passenger shoots with his own gun). Full weapon rules apply: the
@@ -423,8 +431,7 @@ func _combat() -> void:
 		if gunner is Unit2D:
 			gname = gunner.unit_name
 		var gdef := ContentDB.def_for("robot", gname)
-		var to_squad_target: Vector2 = (_target.visual_center()
-				if _target is Building2D else _target.global_position) - global_position
+		var to_squad_target: Vector2 = reach_point(_target) - global_position
 		if to_squad_target.length() <= gdef.range_px * sprite_scale:
 			_last_dir = _angle_to_dir(to_squad_target.angle())
 			_fire_timer = gdef.cooldown
@@ -446,8 +453,15 @@ func _combat() -> void:
 			if diff >= 0.35:
 				_last_dir = want
 	if _target and _fire_timer <= 0.0:
-		var to_target: Vector2 = (_target.visual_center()
-				if _target is Building2D else _target.global_position) - global_position
+		# REACH IS MEASURED TO THE FOOTPRINT, not the building's middle.
+		# Vehicle2D carries its own copy of the firing logic, and this
+		# gate kept measuring to visual_center() after Unit2D moved to the
+		# footprint edge — so a fort's centre sits ~80px inside its wall,
+		# further than a medium tank's whole 128px reach, and NO crewed
+		# vehicle or cannon on the map could fire on a fort at all. It
+		# would drive up, track the fort with its turret, and never pull
+		# the trigger. See Building2D.edge_point_from.
+		var to_target: Vector2 = reach_point(_target) - global_position
 		if to_target.length() <= range_px * sprite_scale:
 			_last_dir = _angle_to_dir(to_target.angle())
 			_fire_timer = cooldown
