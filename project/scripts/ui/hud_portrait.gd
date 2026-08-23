@@ -176,6 +176,26 @@ func _on_barked(seconds: float) -> void:
 	set_meta("cycle_until", maxf(seconds, 0.3))
 
 
+const GESTURE_CHANCE := 0.18
+
+## A random idle-gesture timeline (wink / surprise), played through the
+## mouth-expression frames.
+static func _gesture_phrase() -> Array:
+	var path := "res://assets/z/phrases.json"
+	if not ResourceLoader.exists(path):
+		return []
+	if not _phrases_loaded:
+		_random_speech_phrase()  # loads the table once
+	var pick: String = ["wink", "surprise"].pick_random()
+	var parsed = JSON.parse_string(FileAccess.open(
+		path, FileAccess.READ).get_as_text())
+	if parsed is Dictionary:
+		for p in parsed.get("phrases", []):
+			if String(p.get("name", "")) == pick:
+				return p.get("frames", [])
+	return []
+
+
 ## Speech phrases = timelines that use the mouth frames (1..8); idle
 ## expressions (blink/wink/surprise) are excluded from barks.
 static func _random_speech_phrase() -> Array:
@@ -226,6 +246,16 @@ func _process(delta: float) -> void:
 	_blink_in -= delta
 	if _blink_in <= 0.0:
 		_blink_in = randf_range(BLINK_GAP_MIN, BLINK_GAP_MAX)
+		# rare idle GESTURES: the phrase table carries wink/surprise as
+		# timelines over the mouth-expression frames (4/5) — the talk
+		# set can play them; otherwise the eye cycle
+		if not _talk.is_empty() and randf() < GESTURE_CHANCE:
+			_cycling = _talk
+			_cycle_fps = BLINK_FPS
+			_cycle = 0.0
+			_phrase = _gesture_phrase()
+			set_meta("cycle_until", 1.2)
+			return
 		_cycling = _blink
 		_cycle_fps = BLINK_FPS
 		_cycle = 0.0

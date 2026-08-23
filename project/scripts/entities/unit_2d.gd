@@ -333,6 +333,19 @@ func _arrive() -> void:
 	_on_arrived_extras()
 
 
+func _draw() -> void:
+	if carried:
+		return
+	# the original's unit shadow: a soft dark blob under the feet. No
+	# unit shadow art ships in either asset set (only the buildings'
+	# cast strips) — derived here, like the factories' strips were.
+	var w := 14.0 if kind == "robot" else 18.0
+	var y := 5.0 if kind == "robot" else 6.0
+	draw_set_transform(Vector2(0, y), 0.0, Vector2(w / 6.0, 5.0 / 3.0))
+	draw_circle(Vector2.ZERO, 3.0, Color(0, 0, 0, 0.3))
+	draw_set_transform(Vector2.ZERO)
+
+
 func offset_to_next_waypoint() -> float:
 	if waypoints.is_empty():
 		return INF
