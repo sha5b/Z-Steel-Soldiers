@@ -1,7 +1,10 @@
 extends Node
 ## Autoload: original GOG soundtrack. Menu loop on the title, one of the
 ## battle loops in a match, win/lose jingles on game over. Tracks come
-## from tools/gog/convert_assets.py (assets_original/gog/*.ogg).
+## from tools/gog/convert_assets.py (assets_original/gog/*.ogg); when a
+## GOG track is absent, the PURE-GODOT zod MIDI renders (tools/
+## render_midi.tscn, assets/z/music/zod_*.wav) stand in — no external
+## synth dependency anywhere.
 
 const MENU_TRACK := "res://assets/z/music/ipOPTIONS16.ogg"
 ## One battle theme PER PLANET, like the original. The GOG release ships
@@ -19,6 +22,19 @@ const PLANET_TRACKS := {
 const BATTLE_FALLBACK := "res://assets/z/music/ipBATTLE16.ogg"
 const WIN_STINGER := "res://assets/z/music/ipWIN.ogg"
 const LOSE_STINGER := "res://assets/z/music/ipLOSE.ogg"
+
+## GOG track -> its pure-Godot zod render counterpart.
+const ZOD_FALLBACK := {
+	"res://assets/z/music/AA16.ogg": "res://assets/z/music/zod_aa1.wav",
+	"res://assets/z/music/aC16.ogg": "res://assets/z/music/zod_ac1.wav",
+	"res://assets/z/music/aJ16.ogg": "res://assets/z/music/zod_aj1.wav",
+	"res://assets/z/music/music_desert.ogg": "res://assets/z/music/zod_ad1.wav",
+	"res://assets/z/music/music_volcanic.ogg": "res://assets/z/music/zod_av1.wav",
+	"res://assets/z/music/ipBATTLE16.ogg": "res://assets/z/music/zod_abattle.wav",
+	"res://assets/z/music/ipOPTIONS16.ogg": "res://assets/z/music/zod_aoptions.wav",
+	"res://assets/z/music/ipWIN.ogg": "res://assets/z/music/zod_awin.wav",
+	"res://assets/z/music/ipLOSE.ogg": "res://assets/z/music/zod_alose.wav",
+}
 
 var _player: AudioStreamPlayer
 var _mode := ""
@@ -64,9 +80,15 @@ func stop() -> void:
 func _play(path: String, loop: bool) -> void:
 	if _mode == path:
 		return
-	_mode = path
+	# missing GOG track -> the pure-Godot zod render of the same theme
 	if not ResourceLoader.exists(path):
-		return
+		path = ZOD_FALLBACK.get(path, "")
+		_mode = path
+		if path == "" or not ResourceLoader.exists(path):
+			_mode = ""
+			return
+	else:
+		_mode = path
 	var stream = load(path)
 	if stream == null:
 		return
@@ -76,5 +98,11 @@ func _play(path: String, loop: bool) -> void:
 		var own: AudioStream = stream.duplicate()
 		own.loop = loop
 		stream = own
+	elif stream is AudioStreamWAV:
+		var own_wav: AudioStreamWAV = stream.duplicate()
+		own_wav.loop_mode = AudioStreamWAV.LOOP_FORWARD if loop \
+				else AudioStreamWAV.LOOP_DISABLED
+		own_wav.loop_end = own_wav.data.size() / 2  # 16-bit mono frames
+		stream = own_wav
 	_player.stream = stream
 	_player.play()

@@ -25,7 +25,11 @@ you (it uses innoextract when available, otherwise 7z).
 
 WHAT IT DOES NOT DO
 
-It never downloads game art. You point it at files you already own.
+The Zod Engine is open source and its release bundles the engine-side
+asset pack this project reads (units/, buildings/, planets/, ...). When
+assets_original/zod is missing, this script downloads the engine's
+current installer from its SourceForge project and unpacks the assets.
+The RETAIL set is never downloaded: you bought that one.
 """
 
 from __future__ import annotations
@@ -57,10 +61,9 @@ WHERE = """
 
   assets_original/zod/   The ZOD ENGINE asset pack, which carries the
                          unit and map sprites the retail release keeps
-                         engine-packed. Get it from the Zod Engine
-                         project (zod.sourceforge.net, or the
-                         capehill/zodengine mirror) and copy its data
-                         directory here.
+                         engine-packed. Auto-downloaded from the Zod
+                         Engine's SourceForge release when missing (or
+                         drop a copy here yourself).
                          Expected inside: units/, buildings/, planets/,
                          teams/, sounds/, fonts/
 """
@@ -93,7 +96,16 @@ STEPS = [
      "project/assets_map.json", None),
     ("window and desktop icons", "tools/gog/make_icons.py", [],
      "assets/icon/", "gog"),
+    ("portrait phrase table", "tools/gog/convert_phrases.py", [],
+     "assets/z/phrases.json", "gog"),
 ]
+
+# The pure-Godot MIDI fallback soundtrack: a Godot tool scene like the
+# map rebuild, run in the same headless pass (only when GOG's recorded
+# tracks are absent). Slow (pure-GDScript synthesis) but the whole
+# pipeline stays free of external synth tools.
+GODOT_STEP_MIDI = ("fallback soundtrack", "res://tools/render_midi.tscn",
+                   "assets/z/music/zod_*.wav")
 
 # Godot rebuilds the editable map scenes from the JSON. Last, because it
 # reads everything the steps above wrote.
@@ -134,6 +146,86 @@ def run(cmd: list[str], label: str, cwd: Path = ROOT) -> bool:
     return True
 
 
+def innoextract() -> str | None:
+    """innoextract from PATH, or the ~/.local/opt tarball install this
+    machine uses (innoextract-1.9-linux/innoextract)."""
+    exe = shutil.which("innoextract")
+    if exe:
+        return exe
+    for c in (Path.home() / ".local" / "opt").glob("innoextract*/innoextract"):
+        if c.is_file():
+            return str(c)
+    return None
+
+
+# The Zod Engine's SourceForge release throttles scripted downloads
+# (HTML interstitials, then 403s). The GitHub snapshot mirror carries
+# the same asset pack plus the .map sources the installer omits.
+ZOD_MIRROR = "https://codeload.github.com/a-sf-mirror/zod_engine/tar.gz/refs/heads/master"
+
+
+def fetch_zod() -> bool:
+    """Download the Zod Engine source snapshot from the GitHub mirror
+    and lift the asset pack (and its .map files) into
+    assets_original/zod."""
+    import tarfile
+    import tempfile
+    import urllib.request
+
+    print("\nFetching the Zod Engine pack (GitHub mirror, open source)")
+    with tempfile.TemporaryDirectory() as tmp:
+        tgz = Path(tmp) / "zod_engine.tar.gz"
+        try:
+            req = urllib.request.Request(ZOD_MIRROR, headers={
+                "User-Agent": "Mozilla/5.0 (setup_assets)"})
+            with urllib.request.urlopen(req, timeout=600) as r, open(tgz, "wb") as f:
+                total = int(r.headers.get("content-length") or 0)
+                done = 0
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    done += len(chunk)
+                    print(f"\r  download {done/1e6:.1f}"
+                          + (f"/{total/1e6:.1f}" if total else "") + " MB",
+                          end="", flush=True)
+            print()
+        except Exception as e:
+            print(f"  download failed: {e}")
+            return False
+
+        unpacked = Path(tmp) / "unpacked"
+        unpacked.mkdir()
+        try:
+            with tarfile.open(tgz, "r:gz") as tar:
+                tar.extractall(unpacked, filter="data")
+        except Exception as e:
+            print(f"  unpack failed: {e}")
+            return False
+
+        # assets/ carries the marker dirs; the snapshot root has .map files
+        for candidate in unpacked.rglob("units"):
+            srcdir = candidate.parent
+            if have(srcdir, ZOD_MARKERS):
+                ZOD.mkdir(parents=True, exist_ok=True)
+                for item in srcdir.iterdir():
+                    target = ZOD / item.name
+                    if not target.exists():
+                        shutil.move(str(item), str(target))
+                maps_root = srcdir.parent
+                maps = sorted(maps_root.glob("*.map"))
+                for m in maps:
+                    target = ZOD / m.name
+                    if not target.exists():
+                        shutil.copy2(m, target)
+                print(f"  assets lifted from {srcdir.relative_to(unpacked)}"
+                      + (f" (+{len(maps)} maps)" if maps else ""))
+                return have(ZOD, ZOD_MARKERS)
+        print("  no asset subtree in the snapshot")
+        return False
+
+
 def unpack_installer() -> bool:
     """Unpack a GOG installer sitting in the repository root."""
     found = sorted(ROOT.glob("setup_z*.exe")) + sorted(ROOT.glob("setup_Z*.exe"))
@@ -142,8 +234,9 @@ def unpack_installer() -> bool:
     installer = found[0]
     GOG.mkdir(parents=True, exist_ok=True)
     print(f"\nUnpacking {installer.name}")
-    if shutil.which("innoextract"):
-        cmd = ["innoextract", "-e", "-s", "-d", str(GOG), str(installer)]
+    tool = innoextract()
+    if tool:
+        cmd = [tool, "-e", "-s", "-d", str(GOG), str(installer)]
     elif shutil.which("7z"):
         cmd = ["7z", "x", "-y", f"-o{GOG}", str(installer)]
     else:
@@ -194,6 +287,8 @@ def main() -> int:
 
     if not have(GOG, GOG_MARKERS):
         unpack_installer()
+    if not have(ZOD, ZOD_MARKERS):
+        fetch_zod()
 
     got_gog = have(GOG, GOG_MARKERS)
     got_zod = have(ZOD, ZOD_MARKERS)
@@ -236,12 +331,17 @@ def main() -> int:
                 failed.append(f"zod map {src.name}")
 
     if not args.skip_scenes and not failed:
-        label, scene, _produces = GODOT_STEP
         godot = godot_binary()
+        passes = [GODOT_STEP]
+        # zod_*.wav only needed when the GOG recording set is incomplete
+        have_gog_music = any(GOG.glob("*.ogg"))
+        if not have_gog_music:
+            passes.append(GODOT_STEP_MIDI)
         if godot is None:
-            print(f"  {label} ... skipped (no Godot on PATH and no flatpak)")
+            print("  map scenes ... skipped (no Godot on PATH and no flatpak)")
         else:
-            run([*godot, "--headless", "--path", "project", scene], label)
+            for label, scene, _produces in passes:
+                run([*godot, "--headless", "--path", "project", scene], label)
 
     print()
     if failed:
