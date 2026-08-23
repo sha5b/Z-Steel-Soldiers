@@ -142,12 +142,13 @@ a note in each saying what belongs there:
 | Put it here | What it is |
 |---|---|
 | `assets_original/gog/` | The **retail game data**. Install Z from GOG and copy the game directory's contents in. Expected inside: `LEVEL01.MAP`, `BUILD01.DAT`, `ARCTIC.PAL`, `audio/`, `PNG/`, `Maps/`. |
-| `assets_original/zod/` | The **Zod Engine asset pack**, which carries the unit and map sprites the retail release keeps engine-packed. Get it from [zod.sourceforge.net](https://zod.sourceforge.net) and copy its data directory in. Expected inside: `units/`, `buildings/`, `planets/`, `teams/`, `sounds/`, `fonts/`. |
+| `assets_original/zod/` | The **Zod Engine asset pack**, which carries the unit and map sprites the retail release keeps engine-packed. You do not need to fetch it: when this directory is empty the script downloads the engine's source snapshot from the [GitHub mirror](https://github.com/a-sf-mirror/zod_engine) itself — and that snapshot carries the 57 original `.map` files the installer build never had. Expected inside: `units/`, `buildings/`, `planets/`, `teams/`, `sounds/`, `fonts/`. |
 
 Still packed? Drop the GOG installer in the repository root as
 `setup_z*.exe` and run the script — it unpacks the installer for you with
-`innoextract`, or `7z` if that is what you have, and lifts the game data
-up out of whatever subdirectory the installer buried it in.
+`innoextract` (including a `~/.local/opt` install), or `7z` if that is
+what you have, and lifts the game data up out of whatever subdirectory
+the installer buried it in.
 
 ```bash
 python3 tools/setup_assets.py --where          # what is missing, and where it comes from
@@ -155,8 +156,12 @@ python3 tools/setup_assets.py --only campaign  # re-run one step
 python3 tools/setup_assets.py --skip-scenes    # skip the Godot pass at the end
 ```
 
-The script never downloads game art. It only reads files you already
-own. What it writes lands in `project/assets/`, which is gitignored.
+The only thing the script downloads is the **open-source Zod Engine
+pack** (GPL engine, bundled assets) — never the retail data, which you
+bought. If the GOG `.ogg` soundtrack set is incomplete, the same command
+also renders a fallback soundtrack from the engine's MIDI files with a
+pure-Godot synthesizer — no fluidsynth, no soundfont, nothing external.
+What it writes lands in `project/assets/`, which is gitignored.
 
 Then check it converted cleanly:
 
