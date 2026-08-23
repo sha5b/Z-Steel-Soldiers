@@ -49,7 +49,7 @@ shipped 2026-08 — see the bottom section.
       TerrainAnimator walks the tileinfo effect rings per cell
 - [x] Building impassables for the repair shop and both factories
 - [x] Control-group hotkeys, veterancy, MP full-entity resync + late join
-- [x] Every test flag asserts through TestRig (46 flags)
+- [x] Every test flag asserts through TestRig (49 flags)
 - [x] Unreferenced pack art wired: selected-object panel, escape_tank /
       tank_fire / jump-*, per-planet rock + bridge debris, building level
       digits, announcer plaques, order-confirmation cursors, ambient
