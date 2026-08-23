@@ -13,9 +13,15 @@ static func apply(intent: Dictionary) -> void:
 				return
 			u.issue_order(_order(intent))
 		"queue":
+			# the production LINE intent: an item points the line, an
+			# EMPTY item stops it (see Net.relay_line/relay_stop_line)
 			var f := _building(int(intent.get("fac", 0)))
 			if f != null and f.alive and f.owner_team == int(intent.get("team", 0)):
-				f.queue_unit(String(intent.get("item", "")), false)
+				var item := String(intent.get("item", ""))
+				if item == "":
+					f.stop_line()
+				else:
+					f.select_product(item, false)
 		"rally":
 			var f := _building(int(intent.get("fac", 0)))
 			if f != null and f.alive and f.owner_team == int(intent.get("team", 0)):

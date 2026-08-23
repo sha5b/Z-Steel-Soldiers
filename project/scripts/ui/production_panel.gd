@@ -24,7 +24,7 @@ extends Control
 ## a flyout shows a level-5 fort's whole roster at once instead of
 ## paging it.
 
-signal queue_requested(type_name: String)
+signal product_selected(type_name: String)
 
 const PROD_DIR := "res://assets/z/ui/production"
 ## NATIVE scale, like the rest of the HUD. At 2x this window covered a
@@ -132,7 +132,7 @@ func _ready() -> void:
 	add_child(pick)
 
 	_art_button(CANCEL_BUTTON, "cancel_button",
-			"Cancel the unit on the line").pressed.connect(_on_cancel)
+			"Stop production (the factory goes idle)").pressed.connect(_on_cancel)
 	_art_button(OK_BUTTON, "ok_button",
 			"Close").pressed.connect(func():
 		Fx.ui_click()
@@ -251,12 +251,12 @@ func _on_selection_changed(_units: Array) -> void:
 	visible = factory != null
 	if factory != _wired:
 		if _wired and is_instance_valid(_wired) \
-				and _wired.queue.changed.is_connected(_on_queue_changed):
-			_wired.queue.changed.disconnect(_on_queue_changed)
+				and _wired.line.changed.is_connected(_on_line_changed):
+			_wired.line.changed.disconnect(_on_line_changed)
 		_wired = factory
 		_roster_open = false
 		if factory:
-			factory.queue.changed.connect(_on_queue_changed)
+			factory.line.changed.connect(_on_line_changed)
 			_check_roster()
 	if factory:
 		_place_over(factory)
@@ -279,7 +279,7 @@ func _place_over(factory: Node) -> void:
 		clampf(want.y, view.position.y + 4.0, view.end.y - tall - 4.0))
 
 
-func _on_queue_changed() -> void:
+func _on_line_changed() -> void:
 	_check_roster()
 	_sync_readouts()
 
@@ -339,7 +339,15 @@ func _sync_readouts() -> void:
 	_time.text = _time_left(head)
 	_sync_gauges(head)
 	_sync_exit()
-	_queue_count.text = "" if q.size() < 2 else "+%d" % (q.size() - 1)
+	# NOTHING TO TALLY. This was "+N more queued"; a line has no queue, so
+	# the slot now says what the line actually is — this type, on repeat,
+	# until you change it. A stalled line says so instead of looking idle.
+	if head == "":
+		_queue_count.text = ""
+	elif _wired.line.paid:
+		_queue_count.text = "LOOP"
+	else:
+		_queue_count.text = "WAIT"
 
 
 ## The garrison has no signal of its own (robots walk in by themselves),
@@ -388,10 +396,15 @@ func _sync_health() -> void:
 	_health_pct.text = "%d%%" % roundi(frac * 100.0)
 
 
+## CANCEL STOPS THE LINE. With no queue there is no "next item" to drop:
+## the button halts production outright, refunds the part-built unit and
+## leaves the factory idle until you pick a type again. A factory that is
+## already stopped beeps rather than doing nothing.
 func _on_cancel() -> void:
 	Fx.ui_click()
-	if _wired and is_instance_valid(_wired) and not _wired.queue_items().is_empty():
-		_wired.cancel_at(0)
+	if _wired and is_instance_valid(_wired) and _wired.selected_product() != "":
+		_wired.stop_line()
+		Net.relay_stop_line(_wired)
 	else:
 		Fx.cap_denied()
 
@@ -440,25 +453,20 @@ func _build_roster(factory: Node) -> void:
 		_object_button_chrome(btn)
 		btn.icon = icon_for(parts[0], parts[1], MatchState.current.player_team)
 		btn.expand_icon = btn.icon != null
-		btn.pressed.connect(func(): _queue(item))
+		btn.pressed.connect(func(): _select(item))
 		_roster.add_child(btn)
 
 
-## One roster press. SHIFT FILLS THE LINE (up to ProductionQueue's cap)
-## instead of asking for one unit and reopening the flyout five times —
-## the queue existed from the start and there was no way to fill it in
-## one action. Each unit is queued through the same intake, so pop caps,
-## money and the network see five separate requests, and the first one
-## that is refused stops the run.
-func _queue(item: String) -> void:
+## ONE ROSTER PRESS POINTS THE LINE. Not "add one to the queue" — this
+## building now turns out this type, over and over, until you pick
+## something else. The shift-to-fill-the-queue shortcut is gone with the
+## queue it filled.
+func _select(item: String) -> void:
 	if _wired == null or not is_instance_valid(_wired):
 		return
-	var want: int = ProductionQueue.MAX_ITEMS if Input.is_key_pressed(KEY_SHIFT) else 1
-	for i in want:
-		if not _wired.queue_unit(item):
-			break
-		queue_requested.emit(item)
-		Net.relay_queue(_wired, item)
+	if _wired.select_product(item):
+		product_selected.emit(item)
+		Net.relay_line(_wired, item)
 	_roster_open = false
 
 

@@ -247,11 +247,23 @@ func relay_order(u: Unit2D, o: Order) -> void:
 	})
 
 
-func relay_queue(facility: Building2D, item: String) -> void:
+## Point a facility's production LINE at a type. (The intent kind is
+## still "queue" on the wire — the payload is identical and renaming it
+## would only break a peer running an older build.)
+func relay_line(facility: Building2D, item: String) -> void:
 	if not in_match or replaying_intents or facility == null:
 		return
 	_send_intent({"kind": "queue", "team": match_team,
 		"fac": facility.net_id, "item": item})
+
+
+## Stop a facility's line (the panel's Cancel). Sends the same intent
+## with an EMPTY item, which is exactly what "stopped" means to the line.
+func relay_stop_line(facility: Building2D) -> void:
+	if not in_match or replaying_intents or facility == null:
+		return
+	_send_intent({"kind": "queue", "team": match_team,
+		"fac": facility.net_id, "item": ""})
 
 
 func relay_rally(facility: Building2D, world_position: Vector2) -> void:
@@ -266,7 +278,7 @@ func relay_rally(facility: Building2D, world_position: Vector2) -> void:
 ## same seats, each with an unseeded RNG, so the peers' rosters diverged
 ## as soon as the AI produced anything and unit net ids stopped lining
 ## up. The host's brain now relays its intents like a player's
-## (CpuAi._order/_queue/_rally).
+## (CpuAi._order/_select/_rally).
 func owns_ai() -> bool:
 	return not in_match or role == Role.HOST
 

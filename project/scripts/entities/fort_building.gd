@@ -76,26 +76,38 @@ func _slot_taken(i: int, slots: Array) -> bool:
 	return false
 
 
-## Free mount slots, counting cannons already mounted and cannons still
-## in the production queue.
+## Free mount slots — how many of the four towers have no live gun on
+## them. There is no queue to discount any more: with a production LINE
+## at most one cannon is ever in flight, and it takes its mount at the
+## moment it is built (mount_product).
 func free_cannon_slots() -> int:
 	var slots := cannon_slots()
 	var free := slots.size()
 	for i in slots.size():
 		if _slot_taken(i, slots):
 			free -= 1
-	for item in queue.items:
-		if String(item).begins_with("cannon:"):
-			free -= 1
 	return maxi(free, 0)
 
 
+## THE FORT'S FOUR TOWER MOUNTS ARE THE CANNON CAP. A fort turning out
+## cannons stops when all four are occupied and starts again the moment
+## one is destroyed — the mounts free themselves in _slot_taken, so this
+## needs no bookkeeping. Unlike the old refusal, the SELECTION survives
+## the stall: the fort remembers it was building turrets and resumes by
+## itself when a gun dies, instead of quietly dropping the order.
+func accepts_product(kind: String, _type_name: String) -> bool:
+	return kind != "cannon" or free_cannon_slots() > 0
+
+
+## Selecting cannons with every mount already full is allowed — the line
+## simply waits — but say so once, or a fort that appears to be building
+## nothing looks broken.
 func queue_unit(item: String, silent := false) -> bool:
-	if item.begins_with("cannon:") and free_cannon_slots() == 0:
-		if not silent:
-			Fx.cap_denied()  # every tower mount is taken or queued
-		return false
-	return super(item, silent)
+	var ok := super(item, silent)
+	if ok and not silent and item.begins_with("cannon:") \
+			and free_cannon_slots() == 0:
+		Fx.cap_denied()  # every tower mount is taken: it will wait
+	return ok
 
 
 ## Fort products try the tower mounts first: a cannon takes a free slot

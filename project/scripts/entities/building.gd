@@ -64,11 +64,13 @@ var producer: Producer:
 			_producer.b = self  # lazy: fixtures call production pre-tree
 		return _producer
 
-## External contract (production panel, AI, fort garrison, tests) reads
-## `building.queue` — pass-through to the component's queue.
-var queue: ProductionQueue:
+## External contract (production panel, AI, tests) reads `building.line`
+## — pass-through to the component's production line. There is no queue:
+## a producer is pointed at ONE type and turns it out indefinitely (see
+## ProductionLine).
+var line: ProductionLine:
 	get:
-		return producer.queue
+		return producer.line
 
 
 func producer_key() -> String:
@@ -95,12 +97,37 @@ func progress() -> float:
 	return producer.progress()
 
 
+## Point this building's line at a type (players, AI and tests all come
+## through here). `queue_unit` is the old name, kept because every caller
+## says it; there is nothing to queue.
+func select_product(item: String, silent := false) -> bool:
+	return producer.select(item, silent)
+
+
 func queue_unit(item: String, silent := false) -> bool:
-	return producer.queue_unit(item, silent)
+	return producer.select(item, silent)
+
+
+## What this building is making ("" = stopped).
+func selected_product() -> String:
+	return producer.selected()
+
+
+## Stop producing entirely — the panel's Cancel. Stays stopped.
+func stop_line() -> void:
+	producer.stop_line()
 
 
 func cancel_at(index: int) -> void:
 	producer.cancel_at(index)
+
+
+## CAN THIS BUILDING TAKE ONE MORE OF THIS PRODUCT RIGHT NOW? The
+## capability query behind a stalled line. Only the fort answers no: its
+## cannons go on four tower mounts, so it cannot turn out a fifth until
+## one of the four is destroyed (FortBuilding.accepts_product).
+func accepts_product(_kind: String, _type_name: String) -> bool:
+	return true
 
 
 func tick_production(delta: float) -> void:
@@ -631,7 +658,12 @@ func to_dict() -> Dictionary:
 		"rally_x": rally_point.x if rally_point != Vector2.INF else 0.0,
 		"rally_y": rally_point.y if rally_point != Vector2.INF else 0.0,
 		"has_rally": rally_point != Vector2.INF,
-		"queue": queue.items.duplicate(),
+		# the production LINE: what it is making and how far along. The
+		# old "queue" key held a list; a save from that era restores as
+		# "point the line at whatever was at the head of it" (apply_dict).
+		"line": line.selected,
+		"line_elapsed": line.elapsed,
+		"line_paid": line.paid,
 	}
 
 
@@ -640,8 +672,21 @@ func apply_dict(d: Dictionary) -> void:
 		set_level(maxi(int(d.level), level))  # keeps the level plate honest
 	if bool(d.get("has_rally", false)):
 		set_rally(Vector2(float(d.get("rally_x", 0.0)), float(d.get("rally_y", 0.0))))
-	for item in d.get("queue", []):
-		queue_unit(String(item), true)  # silent: no cap beeps on restore
+	# a pre-line save carries a list under "queue": its head is the unit
+	# that was on the line, and the rest never existed as anything but
+	# intent, so it is dropped
+	var want: String = String(d.get("line", ""))
+	if want == "":
+		var old_queue: Array = d.get("queue", [])
+		want = String(old_queue[0]) if not old_queue.is_empty() else ""
+	if want != "":
+		if queue_unit(want, true):  # silent: no cap beeps on restore
+			line.elapsed = float(d.get("line_elapsed", 0.0))
+			line.paid = bool(d.get("line_paid", false))
+	else:
+		# an explicitly STOPPED factory must come back stopped, not on
+		# its default (which is what _ensure_default would hand it)
+		stop_line()
 
 
 func produces_anything() -> bool:

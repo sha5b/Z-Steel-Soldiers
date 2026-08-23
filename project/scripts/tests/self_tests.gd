@@ -597,8 +597,8 @@ static func run(ctx: Node) -> void:
 					# QUEUE round trip (funded)
 					if fort != null:
 						MatchState.current.set_money(client.match_team, 500)
-						fort.queue.cancel_at(0)  # drop anything queued earlier
-						client.relay_queue(fort, "robot:grunt")
+						fort.stop_line()  # clear whatever it was making
+						client.relay_line(fort, "robot:grunt")
 						var queued := false
 						for i in 40:
 							client_api.poll()
@@ -608,7 +608,16 @@ static func run(ctx: Node) -> void:
 								break
 						mm.check(queued, "queue intent never applied")
 				# STATE snapshot: host pushes economy; zone ownership
-				# converges through the save-contract shape
+				# converges through the save-contract shape.
+				# QUIESCE PRODUCTION FIRST. A production line is charged
+				# per unit as each one starts, so a factory left running
+				# spends money for as long as this block waits — and the
+				# snapshot assertion below would be measuring production,
+				# not replication. (Under the old queue nothing was spent
+				# after the enqueue, so it never mattered.)
+				for b in tree.get_nodes_in_group(Groups.FACILITIES):
+					if b is Building2D and b.alive:
+						b.stop_line()
 				MatchState.current.set_money(client.match_team, 777)
 				var zone: Zone = MatchState.current.zones[0]
 				var snap := MatchState.current.economy_snapshot()
@@ -733,20 +742,27 @@ static func run(ctx: Node) -> void:
 		if prod == null:
 			cap_rig.check(true, "")  # no producer on this map to test with
 		else:
+			# CAPTURING A FACTORY HANDS YOU THE UNIT ON ITS LINE, clock
+			# and all — the original's "time the assault to steal what it
+			# was building" hook. With a production line there is nothing
+			# to scrap: the selection and the elapsed seconds both survive
+			# the change of owner, and the part-built unit was already
+			# paid for by the team that just lost it.
 			var loser: int = prod.owner_team
-			prod.queue.clear()
+			prod.line.clear()
 			prod.queue_unit("robot:grunt", true)
-			prod.queue_unit("robot:grunt", true)
-			prod.queue.elapsed = 12.0
-			var queued_before: int = prod.queue_items().size()
+			prod.line.elapsed = 12.0
+			prod.line.paid = true
 			prod.producer.scrap_queue()
-			cap_rig.check(prod.queue_items().size() == 1,
-				"capture left %d queued, want just the item on the line"
-				% prod.queue_items().size())
-			cap_rig.check(absf(prod.queue.elapsed - 12.0) < 0.01,
+			cap_rig.check(prod.selected_product() == "robot:grunt",
+				"capture lost the line (making '%s', want robot:grunt)"
+				% prod.selected_product())
+			cap_rig.check(absf(prod.line.elapsed - 12.0) < 0.01,
 				"capture reset the build clock to %.1f, want the 12.0s already served"
-				% prod.queue.elapsed)
-			cap_rig.check(queued_before == 2 and loser != 0, "")
+				% prod.line.elapsed)
+			cap_rig.check(prod.line.paid,
+				"the captor has to re-pay for a unit the loser already bought")
+			cap_rig.check(loser != 0, "")
 		cap_rig.finish()
 	if "--combat-test" in args:
 		var a: Unit2D = load("res://scenes/unit.tscn").instantiate()
@@ -786,8 +802,9 @@ static func run(ctx: Node) -> void:
 		var before := tree.get_nodes_in_group(Groups.UNITS).size()
 		var money_before := MatchState.current.player_money()
 		MatchState.current.set_money(MatchState.current.player_team, 500)
-		for i in 3:
-			f.queue_unit("robot:grunt")
+		# ONE selection, not three queued: the line turns grunts out
+		# indefinitely from here
+		f.queue_unit("robot:grunt")
 		for i in 30:
 			f._process(0.5)
 		# a destroyed factory is a RUIN: nothing crawls out of the
@@ -801,8 +818,15 @@ static func run(ctx: Node) -> void:
 		var after := tree.get_nodes_in_group(Groups.UNITS).size()
 		fac_rig.check(after > before,
 			"factory produced nothing (units %d -> %d)" % [before, after])
-		fac_rig.check(f.queue.items.is_empty(),
-			"queue never drained (%d left)" % f.queue.items.size())
+		# THE LINE DOES NOT DRAIN — that is the whole point. One selection
+		# has to yield MORE THAN ONE unit over 15 simulated seconds, and
+		# the factory has to still be pointed at grunts afterwards.
+		fac_rig.check(after - before >= 2,
+			"one selection produced %d unit(s) in 15s — a line repeats, it "
+			% (after - before) + "does not build once and stop")
+		fac_rig.check(f.selected_product() == "robot:grunt",
+			"the line lost its selection after building (now '%s')"
+			% f.selected_product())
 		fac_rig.check(MatchState.current.player_money() < 500,
 			"production was free (money still %d)" % MatchState.current.player_money())
 		fac_rig.check(ruin_spawned == 0,
@@ -862,8 +886,9 @@ static func run(ctx: Node) -> void:
 				for b2 in tree.get_nodes_in_group(Groups.FACILITIES):
 					if b2 is Building2D and b2.alive and b2.team == 2:
 						f2 += 1
-						q2 += b2.queue.items.size()
-				print("AI SIM t+%ds: robots=%d vehicles=%d unmanned=%d zones=%d money=%d facilities=%d queued=%d attacking=%s" % [
+						if b2.selected_product() != "":
+							q2 += 1  # facilities with a line running
+				print("AI SIM t+%ds: robots=%d vehicles=%d unmanned=%d zones=%d money=%d facilities=%d producing=%d attacking=%s" % [
 					(step + 1) * 20, r2, v2, unmanned2,
 					MatchState.current.zones.filter(func(z): return z.owner_team == 2).size(),
 					int(MatchState.current.money.get(2, 0)), f2, q2, ai._attack_mode])
@@ -1992,10 +2017,12 @@ static func run(ctx: Node) -> void:
 			"%d pings recorded, want 2" % Fx.alert_pings.size())
 		q.check(HudFrame.current == null or HudFrame.current.has_method("jump_to_alert"),
 			"the A plate lost its jump-to-alert action")
-		# ---- SHIFT-FILL a production line: every unit goes through the
-		# same intake, and the first refusal stops the run
+		# ---- THE PRODUCTION LINE: one selection, charged per unit, and
+		# it keeps going. There is no queue to fill (Z has none), so what
+		# has to hold is: selecting costs NOTHING up front, the first unit
+		# is charged as it starts, and the selection survives delivery.
 		var line: Building2D = null
-		var line_filled := -1
+		var line_made := -1
 		for b in tree.get_nodes_in_group(Groups.FACILITIES):
 			if b is Building2D and b.alive and b.produces_anything() \
 					and b.owner_team == MatchState.current.player_team:
@@ -2009,30 +2036,59 @@ static func run(ctx: Node) -> void:
 				var item := String(options[0])
 				var parts: PackedStringArray = item.split(":")
 				var cost: int = ContentDB.def_for(parts[0], parts[1]).cost
-				while not line.queue_items().is_empty():
-					line.cancel_at(0)
+				# real build times are 72-373s; this block simulates 20s
+				var fast_was: bool = TestLevers.fast_build
+				TestLevers.fast_build = true
+				line.stop_line()
 				MatchState.current.set_money(line.owner_team, cost * 40)
 				var purse: int = MatchState.current.money[line.owner_team]
-				var filled := 0
-				for i in ProductionQueue.MAX_ITEMS:
-					if not line.queue_unit(item):
-						break
-					filled += 1
-				line_filled = filled
-				q.check(filled == line.queue_items().size(),
-					"the fill loop queued %d but the line holds %d" % [
-						filled, line.queue_items().size()])
-				var left: int = MatchState.current.money[line.owner_team]
-				q.check(left == purse - cost * filled,
-					"filling the line charged %d, want %d" % [
-						purse - left, cost * filled])
-				q.check(line.queue_items().size() <= ProductionQueue.MAX_ITEMS,
-					"the line took more than its cap")
-				while not line.queue_items().is_empty():
-					line.cancel_at(0)
-		q.check(line_filled != 0, "the shift-fill loop queued nothing at all")
-		q.finish("chain_cap=%d ping_window=%.0fs line_filled=%d producers=%d" % [
-			Unit2D.MAX_QUEUED_ORDERS, Fx.PING_SECONDS, line_filled,
+				q.check(line.select_product(item),
+					"the producer refused the first entry of its own roster")
+				q.check(MatchState.current.money[line.owner_team] == purse,
+					"POINTING the line charged %d — a unit is paid for when "
+					% (purse - int(MatchState.current.money[line.owner_team]))
+					+ "it starts, not when it is chosen")
+				# run it: units come out, one charge each, selection intact
+				var made_before := tree.get_nodes_in_group(Groups.UNITS).size()
+				for i in 40:
+					line._process(0.5)
+				line_made = tree.get_nodes_in_group(Groups.UNITS).size() - made_before
+				q.check(line_made >= 2,
+					"one selection made %d unit(s) in 20s — a line repeats"
+					% line_made)
+				q.check(line.selected_product() == item,
+					"the line lost its selection after delivering (now '%s')"
+					% line.selected_product())
+				var spent: int = purse - int(MatchState.current.money[line.owner_team])
+				q.check(spent >= cost * line_made,
+					"%d units cost %d, want at least %d (one charge each)"
+					% [line_made, spent, cost * line_made])
+				# SWITCHING KEEPS THE CLOCK and refunds the part-built unit
+				if options.size() > 1:
+					var other := String(options[1])
+					line.line.elapsed = 3.0
+					var before_switch: int = int(
+						MatchState.current.money[line.owner_team])
+					q.check(line.select_product(other), "the roster refused %s" % other)
+					q.check(absf(line.line.elapsed - 3.0) < 0.01,
+						"switching reset the clock to %.1f, want the 3.0s served"
+						% line.line.elapsed)
+					q.check(int(MatchState.current.money[line.owner_team])
+							>= before_switch,
+						"switching away kept the money for a unit it abandoned")
+				# CANCEL STOPS IT, and it stays stopped
+				line.stop_line()
+				q.check(line.selected_product() == "",
+					"Cancel left the line on '%s'" % line.selected_product())
+				for i in 10:
+					line._process(0.5)
+				q.check(line.selected_product() == "",
+					"a stopped factory re-defaulted itself to '%s' — then "
+					% line.selected_product() + "Cancel does nothing")
+				TestLevers.fast_build = fast_was
+		q.check(line_made != 0, "the production line made nothing at all")
+		q.finish("chain_cap=%d ping_window=%.0fs line_made=%d producers=%d" % [
+			Unit2D.MAX_QUEUED_ORDERS, Fx.PING_SECONDS, line_made,
 			seen_ids.size()])
 	if "--scenes-test" in args:
 		# every per-type scene instantiates with the right identity and
@@ -2967,6 +3023,7 @@ static func run(ctx: Node) -> void:
 			StrategyTests.map_read(ctx, strat_rig, t)
 			StrategyTests.stance_table(ctx, strat_rig, ai2)
 			StrategyTests.single_owner(ctx, strat_rig, ai2)
+			StrategyTests.builds_and_commits(ctx, strat_rig, ai2)
 			strat_rig.finish("stance=%s squads=%d" % [
 				String(ai2.strategy().name), ai2._squads.size()])
 			var squad_rig := TestRig.start("SQUAD")
@@ -3194,8 +3251,14 @@ static func run(ctx: Node) -> void:
 				prod_rig.check(psychos > 0, "no psycho rolled out of the factory")
 				prod_rig.check(tree.get_nodes_in_group(Groups.UNITS).size() > count_before,
 					"unit count did not grow (%d)" % count_before)
-				prod_rig.check(f2.queue.items.is_empty(),
-					"queue still holds %d item(s)" % f2.queue.items.size())
+				# a LINE keeps its selection and keeps delivering — the
+				# old assertion here was that the queue had drained
+				prod_rig.check(f2.selected_product() == "robot:psycho",
+					"the line lost its selection (now '%s')"
+					% f2.selected_product())
+				prod_rig.check(psychos >= 2,
+					"one selection made %d psycho(s) in 20s — a line repeats"
+					% psychos)
 				prod_rig.finish("psychos=%d" % psychos)
 	if "--fortprod-test" in args:
 		TestLevers.fast_build = true  # real build times are 72-373s
@@ -3205,15 +3268,21 @@ static func run(ctx: Node) -> void:
 				fort2 = c
 				break
 		if fort2:
-			MatchState.current.set_money(1, 500)
+			MatchState.current.set_money(1, 5000)
+			var fp_rig := TestRig.start("FORTPROD")
+			# RE-POINTING REPLACES, it does not stack. Eight presses on
+			# the roster used to leave a five-deep queue; now the last one
+			# wins and the fort makes that, over and over.
 			var ok2: bool = fort2.queue_unit("robot:psycho")
 			for i in 8:
 				fort2.queue_unit("robot:grunt")
-			var fp_rig := TestRig.start("FORTPROD")
-			fp_rig.check(fort2.queue.items.size() == 5,
-				"queue holds %d, the cap is 5" % fort2.queue.items.size())
-			for i in 4:  # cancel only the grunts, keep the psycho
-				fort2.cancel_at(fort2.queue.items.size() - 1)
+			fp_rig.check(fort2.selected_product() == "robot:grunt",
+				"nine roster presses left the fort on '%s', want the last one"
+				% fort2.selected_product())
+			fp_rig.check(fort2.queue_items().size() == 1,
+				"the fort holds %d items — a line holds one"
+				% fort2.queue_items().size())
+			ok2 = fort2.queue_unit("robot:psycho")
 			var count0 := tree.get_nodes_in_group(Groups.UNITS).size()
 			for i in 40:
 				fort2._process(0.5)
@@ -3223,13 +3292,12 @@ static func run(ctx: Node) -> void:
 					psychos2 += 1
 			fp_rig.check(ok2, "the fort refused a funded order")
 			fp_rig.check(psychos2 > 0, "the fort produced no psycho")
-			# fort cannon SLOTS: guns mount on the tower points, capped by
-			# the slot count (no unlimited turret spam)
-			var accepted := 0
-			for i in 6:
-				if fort2.queue_unit("cannon:gatling", true):
-					accepted += 1
-			for i in 40:
+			# FORT CANNON SLOTS ARE THE CANNON CAP. Guns mount on the four
+			# tower points; a cannon line fills them and then STALLS —
+			# keeping its selection, so it resumes by itself the moment a
+			# gun is destroyed. It must never turn out a fifth.
+			var accepted: bool = fort2.queue_unit("cannon:gatling", true)
+			for i in 80:
 				fort2._process(0.5)
 			var mounted_guns := 0
 			var on_slot := 0
@@ -3241,15 +3309,27 @@ static func run(ctx: Node) -> void:
 						if u6.global_position.distance_to(s) < 4.0:
 							on_slot += 1
 							break
-			fp_rig.check(accepted == fort_slots.size(),
-				"fort took %d gun orders for %d tower slots"
-				% [accepted, fort_slots.size()])
+			fp_rig.check(accepted, "the fort refused a cannon line")
 			fp_rig.check(mounted_guns > 0, "no tower gun was mounted")
 			fp_rig.check(on_slot == mounted_guns,
 				"%d of %d tower guns stand off their slot" % [
 					mounted_guns - on_slot, mounted_guns])
+			fp_rig.check(mounted_guns <= fort_slots.size(),
+				"%d guns for %d tower slots — the line overran the mounts"
+				% [mounted_guns, fort_slots.size()])
 			fp_rig.check(fort2.free_cannon_slots() == 0,
 				"%d slots still free after filling them" % fort2.free_cannon_slots())
+			# STALLED, NOT DROPPED: the selection survives so a destroyed
+			# turret is replaced without the player re-ordering it
+			fp_rig.check(fort2.selected_product() == "cannon:gatling",
+				"the fort dropped its cannon line when the mounts filled "
+				+ "(now '%s')" % fort2.selected_product())
+			var purse_stalled: int = int(MatchState.current.money.get(1, 0))
+			for i in 40:
+				fort2._process(0.5)
+			fp_rig.check(int(MatchState.current.money.get(1, 0)) == purse_stalled,
+				"a stalled line kept spending money (%d -> %d)"
+				% [purse_stalled, int(MatchState.current.money.get(1, 0))])
 			fp_rig.finish("guns=%d" % mounted_guns)
 	if "--cancel-test" in args:
 		var fort3: FortBuilding = null
@@ -3258,20 +3338,36 @@ static func run(ctx: Node) -> void:
 				fort3 = c
 				break
 		if fort3:
-			MatchState.current.set_money(1, 500)
-			fort3.queue_unit("robot:grunt")
-			fort3.queue_unit("robot:sniper")
-			var money_mid: int = MatchState.current.money[1]
-			fort3.cancel_at(1)  # refund the sniper ($80)
+			# CANCEL STOPS THE LINE. There is no "next item" to drop, so
+			# the button halts production, refunds the part-built unit and
+			# leaves the fort idle — and it has to STAY idle, or the
+			# default would quietly restart it and the button would do
+			# nothing at all.
 			var cancel_rig := TestRig.start("CANCEL")
+			TestLevers.fast_build = true
+			MatchState.current.set_money(1, 500)
+			fort3.queue_unit("robot:sniper")
+			fort3._process(0.1)  # starts the unit: this is when it is paid for
+			cancel_rig.check(fort3.line.paid,
+				"the unit on the line was never charged for")
+			var money_mid: int = int(MatchState.current.money[1])
+			fort3.stop_line()
 			var refund: int = int(MatchState.current.money[1]) - money_mid
 			cancel_rig.check(refund > 0,
-				"cancelling refunded nothing (money %d -> %d)"
-				% [money_mid, int(MatchState.current.money[1])])
-			cancel_rig.check(fort3.queue.items.size() == 1,
-				"cancel left %d items, want 1" % fort3.queue.items.size())
-			cancel_rig.check(String(fort3.queue.items[0]) == "robot:grunt",
-				"cancel removed the wrong item (%s left)" % fort3.queue.items[0])
+				"cancelling refunded nothing for the unit it abandoned "
+				+ "(money %d -> %d)" % [money_mid, int(MatchState.current.money[1])])
+			cancel_rig.check(fort3.selected_product() == "",
+				"cancel left the line on '%s'" % fort3.selected_product())
+			var units_before := tree.get_nodes_in_group(Groups.UNITS).size()
+			for i in 30:
+				fort3._process(0.5)
+			cancel_rig.check(fort3.selected_product() == "",
+				"a cancelled fort restarted itself on '%s'"
+				% fort3.selected_product())
+			cancel_rig.check(
+				tree.get_nodes_in_group(Groups.UNITS).size() == units_before,
+				"a cancelled fort produced %d unit(s) anyway"
+				% (tree.get_nodes_in_group(Groups.UNITS).size() - units_before))
 			cancel_rig.finish("refund=%d" % refund)
 	if "--vehpath-test" in args:
 		var rg: AStarGrid2D = NavWorld.current.nav_grid
@@ -3531,24 +3627,37 @@ static func run(ctx: Node) -> void:
 				break
 		if fort:
 			MatchState.current.set_money(1, 99999)
-			# drive production until the cap refuses everything
+			# run ONE line until the cap stops it
+			fort.queue_unit("robot:grunt")
 			for i in 200:
-				fort.queue_unit("robot:grunt")
 				fort._process(0.6)
 			var cap := MatchState.current.unit_cap(1)
 			var used := MatchState.current.unit_pop(1)
-			# note: with live CPU opponents the cap moves as zones flip;
-			# the invariant is that the queue went full (production
-			# refused) — pop may sit above a freshly shrunken cap
+			# note: with live CPU opponents the cap moves as zones flip,
+			# so pop may sit above a freshly shrunken cap
 			var cap_rig2 := TestRig.start("CAP")
 			cap_rig2.check(cap > 0, "unit cap is %d" % cap)
-			# AT the cap the fort must REFUSE the order outright (that is
-			# what stops the queue growing forever), and population must
-			# never overshoot
-			cap_rig2.check(not fort.queue_unit("robot:grunt"),
-				"the fort accepted an order at pop %d of cap %d" % [used, cap])
 			cap_rig2.check(used <= cap,
 				"population %d overshot the cap %d" % [used, cap])
+			# THE CAP STALLS THE LINE, it does not cancel it. Selection is
+			# no longer where the cap is enforced — a line is charged and
+			# gated as each unit STARTS — so what has to hold at the cap
+			# is that nothing more comes out and nothing more is spent,
+			# while the fort stays pointed at grunts (it resumes on its
+			# own the moment a unit dies).
+			cap_rig2.check(fort.selected_product() == "robot:grunt",
+				"the cap dropped the fort's line (now '%s')"
+				% fort.selected_product())
+			var pop_at_cap := MatchState.current.unit_pop(1)
+			var purse_at_cap: int = int(MatchState.current.money[1])
+			for i in 40:
+				fort._process(0.6)
+			cap_rig2.check(MatchState.current.unit_pop(1) <= pop_at_cap,
+				"population grew from %d to %d past the cap %d"
+				% [pop_at_cap, MatchState.current.unit_pop(1), cap])
+			cap_rig2.check(int(MatchState.current.money[1]) == purse_at_cap,
+				"a capped line kept spending (%d -> %d)"
+				% [purse_at_cap, int(MatchState.current.money[1])])
 			cap_rig2.finish("cap=%d pop=%d" % [cap, used])
 	if "--building-test" in args:
 		# every building kind: destroyed art resolves and animation
@@ -3738,6 +3847,7 @@ static func run(ctx: Node) -> void:
 				SelectionManager.current.clear_selection()
 				SelectionManager.current.toggle_select(c, false)
 				MatchState.current.set_money(MatchState.current.player_team, 600)
+				# re-pointing replaces: the last one is what it makes
 				c.queue_unit("robot:grunt")
 				c.queue_unit("robot:psycho")
 				c.queue_unit("robot:tough")

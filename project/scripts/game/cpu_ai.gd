@@ -88,10 +88,10 @@ func _order(u: Node2D, o: Order) -> void:
 	Net.relay_order(u, o)
 
 
-func _queue(f: Node, item: String) -> bool:
-	if not f.queue_unit(item, true):
+func _select(f: Node, item: String) -> bool:
+	if not f.select_product(item, true):
 		return false
-	Net.relay_queue(f, item)
+	Net.relay_line(f, item)
 	return true
 
 
@@ -318,46 +318,120 @@ func _frontier_facility() -> Node:
 
 # ------------------------- production -------------------------
 
-## Produce from every owned facility using its level-gated build list
-## (robots AND vehicles AND the cannons the roster allows). Robots keep
-## the army growing; vehicles wait for a bank buffer; cannons round out
-## defences when cash is flowing.
+## POINT EVERY FACILITY AT SOMETHING AND LEAVE IT ALONE.
+##
+## There is no queue to stuff (see ProductionLine): a facility is aimed at
+## ONE type and turns it out until it is re-aimed. So this pass is no
+## longer "spend money on four things"; it is "is this building making the
+## right thing, and if not, what should it make instead".
+##
+## THE LINE IS STICKY ON PURPOSE. Re-rolling the weighted pick every think
+## pass would re-aim every factory every second or two, and with switching
+## keeping the clock that means a factory whose choice keeps changing never
+## finishes anything recognisable — it would emit a random unit each time
+## the timer happened to land. So a line is only re-aimed when it is
+## genuinely wrong (idle, off-roster, or a cannon at a building that must
+## not make cannons) or when RELINE_MS has passed since the last change
+## AND the stance has moved on.
+const RELINE_MS := 25000
+
+var _line_stamp: Dictionary = {}   # facility -> msec of its last re-aim
+var _line_stance: Dictionary = {}  # facility -> stance it was aimed under
+
+
 func _produce() -> void:
 	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
-	var money := int(MatchState.current.money.get(team, 0))
 	var army_pop := MatchState.current.unit_pop(team)
 	var frontier := _frontier_facility()
+	var now := Time.get_ticks_msec()
 	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if not f.alive or f.team == 0 or f.team != team:
 			continue
-		if f.queue.items.size() >= 4:
-			continue
-		var options: Array = []
-		for item in f.build_options():
-			var parts: PackedStringArray = String(item).split(":")
-			if parts[0] == "vehicle" \
-					and money - ContentDB.def_for("vehicle", parts[1]).cost \
-					< _p().bank_before_vehicle - 150:
-				continue  # keep a reserve before committing to vehicles
-			options.append(item)
+		var options: Array = f.build_options()
 		if options.is_empty():
 			continue
-		var pick := String(_weighted_pick(options, army_pop, diff))
-		var parts: PackedStringArray = pick.split(":")
 		# a CANNON is immobile once built, so where it appears is decided
 		# entirely by which building makes it: only the facility nearest
-		# the frontier may build one, and anywhere else re-picks something
-		# that can walk to the fight
-		if parts[0] == "cannon" and f != frontier:
-			var mobile: Array = options.filter(
+		# the frontier may hold a cannon line, and anywhere else re-aims
+		# at something that can walk to the fight
+		var current: String = f.selected_product()
+		var cannon_ok: bool = f == frontier
+		var wrong: bool = current == "" or not options.has(current) \
+			or (current.begins_with("cannon:") and not cannon_ok)
+		var stale: bool = now - int(_line_stamp.get(f, -RELINE_MS)) >= RELINE_MS \
+			and String(_line_stance.get(f, "")) != _stance
+		if not wrong and not stale:
+			continue
+		var choices: Array = options
+		if not cannon_ok:
+			choices = options.filter(
 				func(i): return not String(i).begins_with("cannon:"))
-			if mobile.is_empty():
+		# UNARMED UNITS ARE NOT A PRODUCTION LINE. An APC and a crane both
+		# have damage 0, and under a queue the brain could afford to order
+		# one now and then. A LINE is forever: parking a vehicle factory on
+		# APCs means that factory never contributes another gun to the war
+		# for the rest of the match. So utility hulls are off the ordinary
+		# choice entirely, and built only when something actually needs
+		# one — see _utility_need below.
+		var need := _utility_need(f, choices)
+		if need != "":
+			if need != current and _select(f, need):
+				_line_stamp[f] = now
+				_line_stance[f] = _stance
+			continue
+		choices = choices.filter(func(i):
+			var p: PackedStringArray = String(i).split(":")
+			return p.size() == 2 and ContentDB.def_for(p[0], p[1]).damage > 0)
+		# THE BANK STILL MEANS SOMETHING, it just means something else.
+		# Money used to be spent when an item was queued, so the profile's
+		# reserve gated the enqueue. A line pays per unit as it starts, so
+		# the reserve now gates the CHOICE: a poor team does not park its
+		# factory on a unit it cannot keep paying for, because a stalled
+		# line produces nothing at all while a robot line keeps delivering.
+		if int(MatchState.current.money.get(team, 0)) < _p().bank_before_vehicle:
+			var cheap: Array = choices.filter(
+				func(i): return not String(i).begins_with("vehicle:"))
+			if not cheap.is_empty():
+				choices = cheap
+		if choices.is_empty():
+			continue
+		var pick := String(_weighted_pick(choices, army_pop, diff))
+		if pick != current and _select(f, pick):
+			_line_stamp[f] = now
+			_line_stance[f] = _stance
+
+
+## DOES THE WAR NEED A TOOL RIGHT NOW? The two unarmed hulls earn their
+## factory slot only against a concrete need, and only until it is met —
+## then the line goes back to weapons on the next pass.
+##
+##   CRANE  something of ours is broken (or a bridge is down) and we own
+##          no crane to fix it. _maintenance already knows what to do with
+##          one; it just never had one to work with.
+##   APC    we hold ground far from the fighting and have infantry to move.
+##          Deliberately conservative: one is plenty, and a second is a
+##          factory not making guns.
+func _utility_need(f: Node, choices: Array) -> String:
+	var have_crane := 0
+	var have_apc := 0
+	for u in UnitRegistry.current.world_units():
+		if u.team != team or not u.alive:
+			continue
+		if u.unit_name == "crane":
+			have_crane += 1
+		elif u.unit_name == "apc":
+			have_apc += 1
+	if have_crane == 0 and choices.has("vehicle:crane"):
+		for b in BuildingRegistry.all():
+			if not (b is Building2D) or not b.alive:
 				continue
-			pick = String(_weighted_pick(mobile, army_pop, diff))
-			parts = pick.split(":")
-		var cost := ContentDB.def_for(parts[0], parts[1]).cost
-		if money >= cost and _queue(f, pick):
-			money -= cost
+			var bld := b as Building2D
+			if bld.hp < bld.max_hp and (bld.is_bridge() or bld.team == team):
+				return "vehicle:crane"
+	if have_apc == 0 and choices.has("vehicle:apc") \
+			and _map != null and _map.zones_held >= 3:
+		return "vehicle:apc"
+	return ""
 
 
 ## Robots while the army is small, hardware once it stands — and fresh

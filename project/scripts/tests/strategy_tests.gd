@@ -338,6 +338,64 @@ static func squad_arrives_together(ctx: Node, rig: TestRig, team: int) -> void:
 		start_spread, contact_spread])
 
 
+## THE ENEMY KNOWS HOW TO BUILD. Z has no build queue — a factory is
+## pointed at ONE type and turns it out indefinitely — so the brain's job
+## is not "spend money on things", it is "keep every facility aimed at the
+## right thing and then LEAVE IT ALONE".
+##
+## Both halves are asserted, because each fails in its own way:
+##
+##   AIMED    a facility with no selection produces nothing at all, so an
+##            idle factory is the AI doing nothing with its economy.
+##   STICKY   re-rolling the choice every think pass is worse than not
+##            choosing. Switching carries the build clock over, so a line
+##            that changes every second emits whatever it happened to be
+##            pointing at when the timer landed — a random unit stream,
+##            and never the unit the stance actually wanted.
+static func builds_and_commits(ctx: Node, rig: TestRig, ai: CpuAi) -> void:
+	var mine: Array[Building2D] = []
+	for b in BuildingRegistry.all():
+		if b is Building2D and b.alive and b.produces_anything() \
+				and (b as Building2D).team == ai.team:
+			mine.append(b)
+	if mine.is_empty():
+		print("AIBUILD: the brain owns no facilities (skipped)")
+		return
+	var idle := 0
+	var off_roster := 0
+	for b in mine:
+		var sel := b.selected_product()
+		if sel == "":
+			idle += 1
+		elif not b.build_options().has(sel):
+			off_roster += 1
+	rig.check(idle == 0,
+		"%d of %d AI facilities are making nothing — an unaimed line is an "
+		% [idle, mine.size()] + "economy the brain is not using")
+	rig.check(off_roster == 0,
+		"%d AI facilities are aimed at something not on their own roster"
+		% off_roster)
+	# STICKY: think repeatedly with nothing about the map changed. The
+	# brain may re-aim a line it considers wrong, but it must not churn.
+	var before: Array[String] = []
+	for b in mine:
+		before.append(b.selected_product())
+	for i in 6:
+		ai._produce()
+	var churn := 0
+	for i in mine.size():
+		if mine[i].selected_product() != before[i]:
+			churn += 1
+	rig.check(churn == 0,
+		"%d of %d lines changed across 6 back-to-back think passes with "
+		% [churn, mine.size()] + "nothing changed — the brain is thrashing "
+		+ "its factories instead of committing")
+	var rows: Array[String] = []
+	for b in mine:
+		rows.append("%s=%s" % [b.kind_key(), b.selected_product()])
+	print("AIBUILD: %s" % ", ".join(rows))
+
+
 # ---- 4. one owner per unit -------------------------------------------
 
 ## THE RULE THAT KEEPS THE LAYERS APART. A unit may be spoken for by
