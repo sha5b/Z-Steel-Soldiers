@@ -4,6 +4,28 @@ Pivot note: this project originally targeted *Z: Steel Soldiers* (2001,
 3D). We switched to the original 2D **Z (1996)** — earlier Z:SS reverse-
 engineering work (model format, demo extraction) lives in git history.
 
+## PHRASES.BIN — DECODED (2026-08-21)
+
+The GOG `PHRASES.BIN` (35,328 bytes) is the commander-portrait FACE
+ANIMATION table, not audio: `u32 zero, u32 44` then 63 records of 552
+bytes — a 31-char NUL-terminated name and a FIXED 256-step timeline of
+`u16` pairs. The high byte of each pair is `FACE FRAME << 4` over the
+16-frame alphabet the SHEADBI composites use (0 = rest; speech mouths
+are 1..8; 15 = eyes-closed, 5 = wink, 4 = surprise — the idle gesture
+phrases blink/wink/surprise are IN this table). The low byte is a
+secondary channel, semantics still unknown (preserved as `aux`).
+
+Names are the spoken-line ids ("yes-sir-1-and-2", "unit-reporting-1",
+... "target-destroyed", "blink", "wink", "surprise",
+"grenades-collected"). Tick rate is undetermined, so the portrait plays
+timelines by PROGRESS through a bark rather than by absolute time.
+
+`tools/gog/convert_phrases.py` decodes to
+`project/assets/z/phrases.json`; `--ui-test` asserts the table exists,
+stays inside the alphabet, and that speech phrases are classified.
+STILL OPEN: per-line wav<->phrase mapping (a bark currently picks a
+random speech phrase), and the aux channel.
+
 ## 1. Existing open-source projects (reference, not dependency)
 
 - **[Zod Engine](https://github.com/a-sf-mirror/zod_engine)** — C++/SDL
