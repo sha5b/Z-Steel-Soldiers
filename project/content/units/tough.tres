@@ -18,6 +18,7 @@ asset_dir = "res://assets/z/robots_tough"
 sound = "GRENLOBX"
 hp = 270
 damage = 133
+building_frac = 0.032
 range_px = 120.0
 cooldown = 1.442
 speed = 51.0

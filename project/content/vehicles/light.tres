@@ -18,6 +18,7 @@ asset_dir = "res://assets/z/vehicles_light"
 sound = "LTANKGUN"
 hp = 270
 damage = 167
+building_frac = 0.0282
 range_px = 120.0
 cooldown = 1.128
 speed = 60.0

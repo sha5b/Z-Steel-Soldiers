@@ -18,6 +18,7 @@ asset_dir = "res://assets/z/vehicles_missile_launcher"
 sound = "MOBIMIS2"
 hp = 541
 damage = 670
+building_frac = 0.2969
 range_px = 160.0
 cooldown = 4.454
 speed = 26.0

@@ -914,6 +914,53 @@ static func run(ctx: Node) -> void:
 				String(spec[0]))
 			fk.check(is_equal_approx(def.building_frac, float(spec[1])),
 				"%s building_frac %.4f want %.4f" % [spec[0], def.building_frac, spec[1]])
+		# EVERY ARMED UNIT NEEDS AN ANTI-STRUCTURE SCALE. A weapon with
+		# building_frac 0 falls through to its flat UNIT damage against a
+		# 33333 HP fort, and for an explosive that is a rounding error:
+		# every tank, gun and missile on the map used to need 3.5-8
+		# MINUTES to raze one fort alone, while a pyro robot did it in 14
+		# seconds. That is the whole "tanks cannot attack any HQ" report.
+		# The band is deliberately wide — this asserts the MODEL is wired,
+		# not a particular balance point.
+		var ttk_rows: Array[String] = []
+		for kind3 in ["robot", "vehicle", "cannon"]:
+			for name3 in ContentDB.buildable(kind3):
+				var ud := ContentDB.def_for(kind3, String(name3))
+				if ud.damage <= 0:
+					continue  # cranes and APCs carry no weapon at all
+				if not fk.failed and ud.building_frac <= 0.0:
+					fk.check(false, "%s:%s has no building_frac — it can only "
+						% [kind3, name3] + "do its flat unit damage to a fort")
+					continue
+				if ud.building_frac <= 0.0:
+					continue
+				# seconds for ONE of these to raze a fort by itself
+				var dps: float = ud.building_frac * fk_fort.max_hp \
+					* ud.hit_chance / maxf(ud.cooldown, 0.01)
+				var ttk: float = float(fk_fort.max_hp) / maxf(dps, 0.001)
+				ttk_rows.append("%s %.0fs" % [name3, ttk])
+				fk.check(ttk < 700.0,
+					"%s:%s needs %.0fs to raze a fort alone — it is not a "
+					% [kind3, name3, ttk] + "weapon against structures")
+				fk.check(ttk > 8.0,
+					"%s:%s razes a fort in %.0fs alone — that is not a siege"
+					% [kind3, name3, ttk])
+		print("FORTKILL ttk: %s" % ", ".join(ttk_rows))
+		# AND THE TWO SCALES MUST NOT CROSS. A shell aimed at a building
+		# carries the building scale; the units caught in its blast must
+		# still be charged the flat unit number. Combat.amount_against is
+		# the single conversion point both paths go through.
+		var hvy := ContentDB.def_for("vehicle", "heavy")
+		var grunt_probe: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+			fk_fort.visual_center() + Vector2(0, 200)) as Unit2D
+		if is_instance_valid(grunt_probe):
+			fk.check(Combat.amount_against(grunt_probe, hvy.damage,
+					hvy.building_frac) == hvy.damage,
+				"a heavy shell charges a ROBOT on the building scale")
+			fk.check(Combat.amount_against(fk_fort, hvy.damage,
+					hvy.building_frac) > hvy.damage * 4,
+				"a heavy shell charges a FORT on the unit scale")
+			grunt_probe.queue_free()
 		# small-arms TTK: a laser (0.0178 of max HP per hit, 0.7 chance,
 		# ~0.4s cooldown) burns a full fort in original-order minutes,
 		# not hours
@@ -932,6 +979,9 @@ static func run(ctx: Node) -> void:
 			% [fk_fort.hp, fk_fort.max_hp, int(ticks * 0.05)])
 		if gunner:
 			gunner.queue_free()
+		# END TO END, per unit type: acquire the building, get in range,
+		# fire, let the shell fly, land on the building's own scale
+		await DamageTests.every_armed_unit_hurts_a_building(ctx, fk)
 		fk.finish()
 	if "--art-test" in args:
 		ArtTests.run(ctx, TestRig.start("ART"))
@@ -2250,6 +2300,30 @@ static func run(ctx: Node) -> void:
 			"cannon:howitzer": [270, 333, 4.86, 200.0, 0.0, 1.0, 40.0, 179.0],
 			"cannon:missile_cannon": [270, 667, 1.124, 144.0, 0.0, 1.0, 50.0, 182.0],
 		}
+		# ANTI-STRUCTURE SCALE, pinned. Not from zsettings — the original
+		# has no single field for it (small arms there are already a
+		# fraction of target max HP, explosives a flat integer, and the
+		# two cannot both be right once a fort has 33333 HP and a grunt
+		# has 86). The small-arms values are the transcribed reference;
+		# the explosive ones are derived as `cooldown / seconds-to-raze-a-
+		# fort-alone`, so fire rate is part of the answer. See
+		# docs/RESEARCH.md "Stat fidelity".
+		var want_frac := {
+			"robot:grunt": 0.0011, "robot:psycho": 0.0026,
+			"robot:sniper": 0.007, "robot:pyro": 0.0105,
+			"robot:laser": 0.0178, "robot:tough": 0.032,
+			"vehicle:jeep": 0.0027, "vehicle:light": 0.0282,
+			"vehicle:medium": 0.0934, "vehicle:heavy": 0.2271,
+			"vehicle:missile_launcher": 0.2969,
+			"cannon:gatling": 0.0027, "cannon:gun": 0.0563,
+			"cannon:howitzer": 0.1389, "cannon:missile_cannon": 0.045,
+		}
+		for key in want_frac:
+			var fparts: PackedStringArray = String(key).split(":")
+			var fd := ContentDB.def_for(fparts[0], fparts[1])
+			if not is_equal_approx(fd.building_frac, float(want_frac[key])):
+				bproblems.append("%s building_frac %.4f want %.4f"
+					% [key, fd.building_frac, float(want_frac[key])])
 		for key in want_stats:
 			var parts: PackedStringArray = String(key).split(":")
 			var d := ContentDB.def_for(parts[0], parts[1])
@@ -2313,6 +2387,43 @@ static func run(ctx: Node) -> void:
 				"res://assets/z/effects/%s" % art, art, def.fps)
 			if not frames_check.has_animation("fx"):
 				vproblems.append("%s has no sprite art (fallback)" % fx_name)
+		# EVERY WEAPON'S REPORT AND IMPACT MUST RESOLVE. A def naming a wav
+		# that does not ship fires in complete silence, and a projectile
+		# naming an effect with no art bursts as a generic coloured
+		# particle puff instead of its animation — both fail invisibly,
+		# which is how `sound = "MOBIMIS"` (the pack ships MOBIMISS and
+		# MOBIMIS2, never MOBIMIS) left the missile cannon AND the fort's
+		# own missile battery mute for the whole project.
+		for kind4 in ["robot", "vehicle", "cannon"]:
+			for name4 in ContentDB.buildable(kind4):
+				var ud4 := ContentDB.def_for(kind4, String(name4))
+				if ud4.sound != "" and not ResourceLoader.exists(
+						"%s/%s.wav" % [Fx.SOUNDS_DIR, ud4.sound]):
+					vproblems.append("%s:%s sound '%s' does not ship"
+						% [kind4, name4, ud4.sound])
+				if ud4.damage > 0 and ud4.sound == "":
+					vproblems.append("%s:%s fires silently (no sound)"
+						% [kind4, name4])
+				if ud4.projectile == null:
+					continue
+				if ud4.projectile.texture == null:
+					vproblems.append("%s:%s projectile has no sprite"
+						% [kind4, name4])
+				var idef := ContentDB.effect_def(ud4.projectile.impact)
+				var iart := idef.art_name if idef.art_name != "" else idef.id
+				var iprefix := idef.id if ResourceLoader.exists(
+					"res://assets/z/effects/%s/%s_n00.png" % [iart, idef.id]) \
+					else iart
+				var iframes: SpriteFrames = AnimLibrary.effect_frames(
+					"res://assets/z/effects/%s" % iart, iprefix, idef.fps)
+				if not iframes.has_animation("fx"):
+					vproblems.append("%s:%s impact '%s' has no art (falls back "
+						% [kind4, name4, ud4.projectile.impact]
+						+ "to a particle puff)")
+		# and the sounds the CODE names directly, not via a def
+		for wav in ["MOBIMISS", "GRENLOBX", "BEEP3L"]:
+			if not ResourceLoader.exists("%s/%s.wav" % [Fx.SOUNDS_DIR, wav]):
+				vproblems.append("code-referenced sound '%s' does not ship" % wav)
 		# effect scales are relative to the 2x unit baseline — no giants
 		for fx_name in ContentDB.effect_names():
 			var scale_v := ContentDB.effect_def(fx_name).scale

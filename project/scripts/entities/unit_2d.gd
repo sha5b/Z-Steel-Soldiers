@@ -12,6 +12,11 @@ extends CharacterBody2D
 @export var kind := "robot"  # robot | vehicle | cannon
 
 const GRENADE: ProjectileDef = preload("res://content/projectiles/grenade.tres")
+## Anti-structure scale of a THROWN grenade, matching the tough's grenade
+## launcher (content/units/tough.tres). Same rule as every other weapon:
+## a share of the target building's max HP, because the flat unit-scale
+## integer means nothing against a 33333 HP fort.
+const GRENADE_BUILDING_FRAC := 0.032
 
 signal died(unit: Node)
 signal damaged(amount: int)
@@ -603,7 +608,11 @@ func _combat() -> void:
 		Fx.gunfire("GRENLOBX")
 		ShellSolver.deliver(self, global_position, g_impact, GRENADE,
 			func():
-				Combat.area_damage(g_impact, 30.0, 133, team, true))  # grenade_damage 40/240 r30, x0.08
+				# GRENADE_BUILDING_FRAC, not the flat 133: robots throw
+				# grenades at forts by design (see the target filter
+				# above), and 133 against 33333 HP is a rounding error
+				Combat.area_damage(g_impact, 30.0, 133, team, true,
+					GRENADE_BUILDING_FRAC))  # grenade_damage 40/240 r30, x0.08
 		return
 	if _target and _fire_timer <= 0.0:
 		var to_target := _target_point() - global_position

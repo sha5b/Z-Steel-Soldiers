@@ -250,7 +250,9 @@ func _garrison_fire(delta: float) -> void:
 		return
 	_missile_timer = ContentDB.building_def(building_id).garrison_missile_cooldown
 	_missile_target = best
-	Fx.gunfire("MOBIMIS")
+	# MOBIMISS, not MOBIMIS: no such wav ships, so the fort's missile
+	# battery fired in complete silence
+	Fx.gunfire("MOBIMISS")
 	var from := visual_center() + Vector2(0, -10)
 	var impact: Vector2 = best.global_position
 	ShellSolver.deliver(self, from, impact, GARRISON_MISSILE,

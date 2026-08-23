@@ -18,6 +18,7 @@ asset_dir = "res://assets/z/cannons_howitzer"
 sound = "GRENLOBX"
 hp = 270
 damage = 333
+building_frac = 0.1389
 range_px = 200.0
 cooldown = 4.860
 speed = 0.0

@@ -60,7 +60,17 @@ static func dispatch(world_position: Vector2, queued := false) -> void:
 		# spot. The cursor has always shown "attack" here while the
 		# dispatch fell through to a plain move, so the unit walked to
 		# where the enemy stood at click time and stopped.
-		if foe != null and is_instance_valid(foe) and u.kind != "cannon":
+		#
+		# CANNONS TAKE THIS ORDER TOO. They were excluded here because
+		# they cannot move, but an attack order is not a move order: it
+		# names a target and the gun fires when that target is in reach
+		# (Unit2D._chase keeps the order and stands still when the aim is
+		# unreachable). Excluding them meant an emplaced gun could only
+		# ever shoot whatever wandered into its own radius — and a
+		# howitzer out-ranges everything on the map at 200px, so the one
+		# unit whose fire most wants directing was the one unit the
+		# player could not direct.
+		if foe != null and is_instance_valid(foe):
 			_order(u, Order.attack(foe, sprint), queued)
 			continue
 		var ring := maxi(int(sqrt(float(movers.size()))), 1)

@@ -19,19 +19,33 @@ static func weapon_of(def: UnitDef) -> String:
 ## def's splash radius around the impact.
 static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 		target: Node2D, amount: int) -> void:
-	# small arms scale with the TARGET (original zsettings: damage is a
-	# fraction of the target's max HP — flat integers left robot armies
-	# needing 30-45x too long to burn down a fort; explosives already
-	# carry the original scale)
-	if target is Building2D and def.building_frac > 0.0:
-		amount = maxi(1, int(round(def.building_frac * (target as Building2D).max_hp)))
-	# crate upgrades: grenades boost robots, rockets boost hardware
+	# TWO SCALES, CONVERTED PER VICTIM — never up front.
+	#
+	# Unit HP runs 86..800; a fort has 33333. One number cannot serve
+	# both, so a weapon carries a flat integer for units and
+	# `building_frac` (a share of the target's max HP) for structures.
+	# The conversion used to happen HERE, off the intended target, and
+	# the resulting number was then handed to area_damage — which damages
+	# units AND buildings in the blast. So the scale was decided by
+	# whatever the shell was aimed at and then applied to everything it
+	# actually hit: a shell aimed at a unit did unit-scale damage to the
+	# factory it landed on, and (once explosives had a building_frac at
+	# all) a shell aimed at a fort would have deleted every unit within
+	# its blast radius with a five-figure number.
+	#
+	# So `amount` stays UNIT scale all the way down, `building_frac`
+	# travels beside it, and each victim is charged on its own scale at
+	# the point of impact. The shooter's multipliers fold into BOTH.
 	var hit_chance := def.hit_chance
+	var frac := def.building_frac
 	if shooter is Unit2D:
-		amount = maxi(1, int(round(amount * MatchState.current.damage_multiplier(
-			(shooter as Unit2D).team, (shooter as Unit2D).kind))))
+		# crate upgrades: grenades boost robots, rockets boost hardware
+		var mult: float = MatchState.current.damage_multiplier(
+			(shooter as Unit2D).team, (shooter as Unit2D).kind) \
+			* (shooter as Unit2D).veteran_damage_scale()
+		amount = maxi(1, int(round(amount * mult)))
+		frac *= mult
 		# VETERANCY: rank pays in damage and in accuracy
-		amount = maxi(1, int(round(amount * (shooter as Unit2D).veteran_damage_scale())))
 		hit_chance = minf(1.0, hit_chance + (shooter as Unit2D).veteran_hit_bonus())
 	Fx.gunfire(def.sound)
 	Fx.play("muzzle", muzzle)
@@ -60,7 +74,7 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 	match weapon:
 		"laser":
 			Fx.laser(muzzle, aim)
-			_land(target, amount, aim, shooter_id)
+			_land(target, amount_against(target, amount, frac), aim, shooter_id)
 		"shell":
 			var splash := def.splash_radius
 			# capture ids, not nodes — the shooter and target may be
@@ -71,14 +85,28 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 				func():
 					if splash > 0.0:
 						Decals.crater(aim, splash > 36.0)
-						area_damage(aim, splash, amount, shooter_team)
+						area_damage(aim, splash, amount, shooter_team,
+							false, frac)
 					else:
 						var hit: Node2D = instance_from_id(tid) as Node2D
 						if hit and hit.alive:
-							_land(hit, amount, aim, shooter_id))
+							_land(hit, amount_against(hit, amount, frac),
+								aim, shooter_id))
 		_:
 			Fx.bullet(muzzle, aim)
-			_land(target, amount, aim, shooter_id)
+			_land(target, amount_against(target, amount, frac), aim, shooter_id)
+
+
+## THE NUMBER THAT ACTUALLY LANDS ON THIS VICTIM. A building is charged
+## `building_frac` of its own max HP; everything else takes the flat
+## unit-scale amount. One definition, called at every point of impact —
+## direct hit, shell arrival and splash all route through it, so the two
+## scales can never be crossed again.
+static func amount_against(target: Node2D, unit_amount: int,
+		building_frac: float) -> int:
+	if target is Building2D and building_frac > 0.0:
+		return maxi(1, int(round(building_frac * (target as Building2D).max_hp)))
+	return unit_amount
 
 
 ## Explosion splash (zod ProcessMissileDamage): ONE damage roll per
@@ -87,8 +115,10 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 ## Hits every enemy unit and BUILDING around the impact (not just
 ## forts/bridges), and crumbles rocks the blast reaches. Friendly fire
 ## is off — the shooter's team is spared.
+## `building_frac` is the anti-structure scale of the weapon that fired
+## (0 = none, charge buildings the flat amount like everything else).
 static func area_damage(world_pos: Vector2, radius: float, amount: int,
-		shooter_team: int, crater := false) -> void:
+		shooter_team: int, crater := false, building_frac := 0.0) -> void:
 	if crater:
 		Decals.crater(world_pos, radius > 36.0)
 	# NEUTRAL objects are not immune. `team != 0` used to sit here on both
@@ -108,7 +138,8 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 	for hit in BuildingRegistry.blast_targets(world_pos, radius, shooter_team):
 		var b: Building2D = hit.building
 		var cp: Vector2 = hit.at
-		b.take_damage(_falloff(amount, cp.distance_to(world_pos), radius), cp)
+		b.take_damage(_falloff(amount_against(b, amount, building_frac),
+			cp.distance_to(world_pos), radius), cp)
 	for rock in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ROCKS):
 		if rock is Node2D and rock.global_position.distance_to(world_pos) <= radius:
 			NavWorld.current.clear_rock(rock.global_position)

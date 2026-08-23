@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/content/defs/unit_def.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/content/defs/projectile_def.gd" id="2"]
-[ext_resource type="Texture2D" path="res://assets/z/vehicles_missile_launcher/bullet.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/z/vehicles_light/bullet.png" id="3"]
 
 [sub_resource type="Resource" id="Resource_sub"]
 script = ExtResource("2")
@@ -18,6 +18,7 @@ asset_dir = "res://assets/z/vehicles_medium"
 sound = "MTANKGUN"
 hp = 541
 damage = 267
+building_frac = 0.0934
 range_px = 128.0
 cooldown = 2.336
 speed = 51.0
