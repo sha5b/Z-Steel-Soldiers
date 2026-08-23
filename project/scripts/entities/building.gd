@@ -683,6 +683,33 @@ func visual_center() -> Vector2:
 	return world_footprint().get_center()
 
 
+## THE POINT A SHOOTER MEASURES TO. A fort's footprint is 160x144 px, so
+## its centre sits up to 100px inside the walls — further than any
+## robot's weapon range (58px for a grunt). Everything used to measure
+## reach to `visual_center()`, which meant a unit standing with its
+## barrel against the wall was still "out of range": it never fired, the
+## chase re-pathed, it arrived on the same cell, re-pathed again, and the
+## whole assault stood in the fort gate twitching. Measuring to the
+## nearest point of the footprint is the same rule `blast_targets`
+## already uses for splash, and it makes "adjacent" mean in range for
+## every weapon on every building size.
+func edge_point_from(from: Vector2) -> Vector2:
+	var fp := world_footprint()
+	return from.clamp(fp.position, fp.end)
+
+
+## Where an attacker should STAND: just outside the footprint on the side
+## it is approaching from, so a squad sent at one building spreads around
+## its walls instead of funnelling every unit onto the single open cell
+## nearest the centre (on a fort, that cell is the gate).
+func approach_point(from: Vector2, standoff := 20.0) -> Vector2:
+	var fp := world_footprint().grow(standoff)
+	var edge := from.clamp(fp.position, fp.end)
+	if edge != from:
+		return edge
+	return from  # already outside the standoff ring: stand where we are
+
+
 func set_rally(world_position: Vector2) -> void:
 	rally_point = world_position
 	if _rally_flag == null:

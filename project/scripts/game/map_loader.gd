@@ -51,6 +51,9 @@ static func load_map(parent: Node, map_path: String) -> Dictionary:
 		if String(o.type) == "building" and fort_def != null and fort_def.is_fort \
 				and int(o.owner) != 0:
 			ai_teams[int(o.owner)] = true
+	# every wall is stamped by now: cost the ring around them so routes
+	# keep their distance from buildings (NavWorld.paint_wall_margins)
+	NavWorld.current.paint_wall_margins()
 	_init_zone_owners(parent)
 	_grant_starting_squads(parent)
 	# every fort team gets a ledger entry (income + spend work for all)
@@ -419,6 +422,9 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 				child.apply_impassables(grid, vgrid)
 			if def.is_fort and child.team != 0:
 				ai_teams[child.team] = true
+	# every wall is stamped by now: cost the ring around them so routes
+	# keep their distance from buildings (NavWorld.paint_wall_margins)
+	NavWorld.current.paint_wall_margins()
 	_init_zone_owners(parent)
 	_grant_starting_squads(parent)
 	# every fort team gets a ledger entry (income + spend work for all)

@@ -52,6 +52,15 @@ const STATUS_PLATE := Rect2(66, 17, 47, 12)
 const TIME_SLOT := Rect2(87, 32, 21, 12)
 const CANCEL_BUTTON := Rect2(68, 46, 40, 14)
 const OK_BUTTON := Rect2(68, 62, 40, 15)
+## GARRISON EXIT strip, hung under the window art (the original has no
+## garrison, so there is no slot for it inside the chrome). Its height is
+## a CONSTANT because _place_over has to keep it on screen: the button
+## lives outside the Control's own 112x80 rect, so a clamp that only
+## knew about `size` put it under the bottom HUD strip for any fort in
+## the lower part of the map — the one button that says "your robots are
+## in here" was invisible exactly when the fort was on screen.
+const EXIT_GAP := 2.0
+const EXIT_HEIGHT := 14.0
 ## Roster flyout: object_button plates, four to a row, above the window.
 const ROSTER_SLOT := Vector2(45, 51)
 const ROSTER_COLUMNS := 4
@@ -135,8 +144,8 @@ func _ready() -> void:
 	# The original has no garrison at all, so this button cannot live in
 	# its window art — it sits just under it.
 	_exit = Button.new()
-	_exit.position = Vector2(0.0, WINDOW.y * SCALE + 2.0)
-	_exit.size = Vector2(56.0, 14.0)
+	_exit.position = Vector2(0.0, WINDOW.y * SCALE + EXIT_GAP)
+	_exit.size = Vector2(56.0, EXIT_HEIGHT)
 	_exit.focus_mode = Control.FOCUS_NONE
 	_exit.visible = false
 	_object_button_chrome(_exit, 2.0)
@@ -263,9 +272,11 @@ func _place_over(factory: Node) -> void:
 	var screen: Vector2 = canvas * (factory as Node2D).global_position
 	var view := HudFrame.view_rect()
 	var want := screen + Vector2(-size.x * 0.5, -size.y - 24.0)
+	# the EXIT strip hangs below the window art and must stay on screen
+	var tall: float = size.y + EXIT_GAP + EXIT_HEIGHT
 	position = Vector2(
 		clampf(want.x, view.position.x + 4.0, view.end.x - size.x - 4.0),
-		clampf(want.y, view.position.y + 4.0, view.end.y - size.y - 4.0))
+		clampf(want.y, view.position.y + 4.0, view.end.y - tall - 4.0))
 
 
 func _on_queue_changed() -> void:
@@ -334,11 +345,8 @@ func _sync_readouts() -> void:
 ## The garrison has no signal of its own (robots walk in by themselves),
 ## so the window's own tick follows it.
 func _sync_exit() -> void:
-	var held := 0
-	if _wired is FortBuilding:
-		for member in (_wired as FortBuilding).garrison:
-			if is_instance_valid(member) and member.alive:
-				held += 1
+	var held: int = (_wired as FortBuilding).crew_count() \
+			if _wired is FortBuilding else 0
 	_exit.visible = held > 0
 	if held > 0:
 		_exit.text = "EXIT %d" % held

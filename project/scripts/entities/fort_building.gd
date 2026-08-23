@@ -25,6 +25,10 @@ var garrison: Array[Node] = []
 var _missile_timer := 0.0
 var _missile_target: Node2D = null
 var slot_cannons: Array = []  # slot index -> manned cannon (or null)
+## Crew badge: one standing-robot sprite per defender inside, above the
+## fort's HP bar. See _sync_crew_badge.
+var _crew_pips: Array[Sprite2D] = []
+var _crew_shown := -1
 
 
 func kind_key() -> String:
@@ -123,9 +127,83 @@ func _death_visuals() -> void:
 
 
 
+## HOW MANY DEFENDERS ARE ACTUALLY INSIDE. The list can hold entries that
+## died some other way, so every caller that shows or acts on the
+## garrison counts through here — the badge, the panel's EXIT button and
+## the cursor used to each carry their own loop over `garrison`.
+func crew_count() -> int:
+	var live := 0
+	var stale := false
+	for member in garrison:
+		if _is_crew(member):
+			live += 1
+		else:
+			stale = true
+	if stale:
+		# a dead entry that stays in the list is a ghost defender: it ate
+		# a garrison_cap slot for the rest of the match and kept the
+		# missile battery firing with nobody left to crew it
+		garrison = garrison.filter(_is_crew)
+	return live
+
+
+## A garrison entry is a live robot that is still INSIDE — `carried` is
+## what "inside" means everywhere else in the game (APC cargo, vehicle
+## crew), and release_garrison clears it on the way out.
+static func _is_crew(member) -> bool:
+	return is_instance_valid(member) and member.alive and member.carried
+
+
+## THE CREW BADGE — the affordance the garrison never had.
+##
+## A robot ordered onto its own fort walks in and vanishes: no sprite, no
+## selection ring, out of the unit groups. Nothing on screen said it was
+## in there, so from the player's side a robot sent to man the missiles
+## was a robot thrown away, and the way to get it back (select the fort,
+## press X or the panel's EXIT) is undiscoverable if you cannot tell
+## there is anything to get back.
+##
+## So the fort WEARS its crew: one standing-robot sprite per defender,
+## in the owner's team colour, in a row above the HP bar. It is the
+## robots' own `stand_<team>_r270` art (facing the camera), so a crewed
+## fort reads at a glance and an ENEMY crewed fort does too — which is
+## real information, since a crewed fort is the one firing missiles.
+const CREW_ART := "res://assets/z/robots/stand_%s_r270.png"
+const CREW_PIP := 16.0     # the art is 16x16
+const CREW_ROW_Y := -46.0  # just above the fort HP bar (which spans -30..-24)
+
+
+func _sync_crew_badge() -> void:
+	var live := crew_count()
+	if live == _crew_shown:
+		return
+	_crew_shown = live
+	var tex: Texture2D = null
+	if live > 0:
+		var path: String = CREW_ART % AnimLibrary.team_name(team if team > 0 else 1)
+		tex = load(path) if ResourceLoader.exists(path) else null
+	while _crew_pips.size() < live:
+		var pip := Sprite2D.new()
+		pip.centered = false
+		pip.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		add_child(pip)
+		_crew_pips.append(pip)
+	# the row is centred on the fort art, like the flag above it
+	var row_w: float = float(live) * CREW_PIP
+	var left: float = -8.0 + (art_world_rect().size.x - row_w) * 0.5
+	for i in _crew_pips.size():
+		var pip: Sprite2D = _crew_pips[i]
+		pip.visible = i < live and tex != null
+		if not pip.visible:
+			continue
+		pip.texture = tex
+		pip.position = Vector2(left + float(i) * CREW_PIP, CREW_ROW_Y)
+
+
 ## A robot walks in: hide it, it fights (and hides) from inside.
 func garrison_robot(robot: Unit2D) -> bool:
-	if team == 0 or team != robot.team or garrison.size() >= ContentDB.building_def(building_id).garrison_cap:
+	if team == 0 or team != robot.team \
+			or crew_count() >= ContentDB.building_def(building_id).garrison_cap:
 		return false
 	garrison.append(robot)
 	robot.carried = true
@@ -137,13 +215,20 @@ func garrison_robot(robot: Unit2D) -> bool:
 	robot.remove_from_group(Groups.SELECTABLE)
 	robot.remove_from_group(Groups.UNITS)
 	SelectionManager.current.drop_from_selection(robot)
+	_sync_crew_badge()
 	return true
 
 
 func _tick_behaviours(delta: float) -> void:
 	tick_production(delta)
-	if team != 0 and not garrison.is_empty():
+	if team != 0 and crew_count() > 0:
 		_garrison_fire(delta)
+	# the garrison has no signal of its own (robots walk in by themselves,
+	# and a defender can die with the fort or to splash), so the badge
+	# follows the count — _sync_crew_badge returns immediately unless it
+	# actually changed
+	if not garrison.is_empty() or _crew_shown > 0:
+		_sync_crew_badge()
 
 
 ## The fort's own missile battery: fires while crewed (garrisoned) at
@@ -213,6 +298,7 @@ func release_garrison() -> int:
 		member.add_to_group(Groups.UNITS)
 		out += 1
 	garrison = garrison.filter(func(m): return is_instance_valid(m) and m.carried)
+	_sync_crew_badge()
 	if out > 0 and team == MatchState.current.player_team:
 		Fx.ui_click()
 	return out
@@ -225,3 +311,4 @@ func kill_garrison() -> void:
 			robot.carried = false
 			robot.die()
 	garrison.clear()
+	_sync_crew_badge()

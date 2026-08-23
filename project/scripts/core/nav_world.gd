@@ -54,6 +54,34 @@ const CELL := 16.0
 const BODY_HALF := {"robot": 7.0, "vehicle": 7.5, "cannon": 7.5}
 
 
+## WALL MARGIN — why a route has to keep its distance from a building.
+##
+## An open cell touching a wall is LEGAL to stand in and miserable to
+## drive through. The cell is 16px, its centre is 8px off the wall face,
+## and a vehicle's physics box is 16x16: half of it is 8px. So a vehicle
+## whose route runs along a building sits in permanent contact with that
+## building's collision shape for the whole leg — move_and_slide scrubs
+## it along the wall, the shoulder push from `_separation` tips it in, and
+## it grinds to a halt on the corner. Robots (12x12 box) have 2px of
+## slack, which the same shoulder push spends immediately.
+##
+## A* cannot see any of that: to the grid the wall-hugging route and the
+## route one cell out cost exactly the same, and the hugging one is
+## usually shorter, so it wins every time. THAT is "units get stuck on
+## the edges of buildings and never path AROUND them" — the path was
+## never around anything, because nothing preferred the open ground.
+##
+## Fix: cells next to a solid cell keep their PASSABILITY but cost more.
+## A* then routes a cell clear of walls whenever open ground exists, and
+## still squeezes through a fort gate or a rock defile when that is the
+## only way through — a preference, not a wall.
+const WALL_MARGIN_WEIGHT := 4.0
+## Cells (on either grid) that touch a solid cell. Kept as a set so the
+## path smoother can ask in O(1) without reading weights back off the
+## grid — see string_pull.
+var margin_cells: Dictionary = {}
+
+
 ## THE grid factory — region + the cell contract in one place. Both
 ## loader paths (JSON maps and scene maps) and the vehicle grid build
 ## through here, so a grid can never ship with the wrong origin.
@@ -87,6 +115,47 @@ static func cell_center(cell: Vector2i) -> Vector2:
 func reset() -> void:
 	nav_grid = null
 	vehicle_grid = null
+	margin_cells.clear()
+
+
+## Cost the ring of open cells around every wall, on both grids. THE
+## LOADERS CALL THIS ONCE, after every building has stamped its solids —
+## painting earlier would miss the buildings that stamp later, and a
+## half-painted margin is worse than none (routes would prefer clearance
+## on one side of the map and hug walls on the other).
+func paint_wall_margins() -> void:
+	margin_cells.clear()
+	var grids: Array[AStarGrid2D] = [nav_grid, vehicle_grid]
+	for grid in grids:
+		if grid == null:
+			continue
+		var r: Rect2i = grid.region
+		for y in r.size.y:
+			for x in r.size.x:
+				var cell: Vector2i = r.position + Vector2i(x, y)
+				if grid.is_point_solid(cell):
+					continue
+				if not _touches_solid(grid, cell):
+					continue
+				grid.set_point_weight_scale(cell, WALL_MARGIN_WEIGHT)
+				margin_cells[cell] = true
+
+
+## Does any of the 8 neighbours block? Out-of-region counts as wall (see
+## blocked), which also keeps routes off the map edge.
+static func _touches_solid(grid: AStarGrid2D, cell: Vector2i) -> bool:
+	for dx in [-1, 0, 1]:
+		for dy in [-1, 0, 1]:
+			if dx == 0 and dy == 0:
+				continue
+			if blocked(grid, cell + Vector2i(dx, dy)):
+				return true
+	return false
+
+
+## Is this cell in the ring next to a wall?
+func is_margin(cell: Vector2i) -> bool:
+	return margin_cells.has(cell)
 
 
 ## The grid a kind walks on — robots use the base grid, everything with
@@ -118,6 +187,28 @@ func clear_rock(rock_pos: Vector2) -> void:
 		if grid != null and grid.region.has_point(cell) \
 				and grid.is_point_solid(cell):
 			grid.set_point_solid(cell, false)
+	_repaint_margin_around(cell, 2)
+
+
+## Re-cost the margin in a small box: a cell that stopped being solid
+## changes whether its neighbours are still wall-adjacent, and a stale
+## margin makes A* avoid open ground for the rest of the match.
+func _repaint_margin_around(centre: Vector2i, radius: int) -> void:
+	var grids: Array[AStarGrid2D] = [nav_grid, vehicle_grid]
+	for grid in grids:
+		if grid == null:
+			continue
+		for dx in range(-radius, radius + 1):
+			for dy in range(-radius, radius + 1):
+				var cell := centre + Vector2i(dx, dy)
+				if not grid.region.has_point(cell) or grid.is_point_solid(cell):
+					continue
+				if _touches_solid(grid, cell):
+					grid.set_point_weight_scale(cell, WALL_MARGIN_WEIGHT)
+					margin_cells[cell] = true
+				else:
+					grid.set_point_weight_scale(cell, 1.0)
+					margin_cells.erase(cell)
 
 
 ## The 9-point body box: centre, edge midpoints and corners at `pad`.
@@ -237,22 +328,48 @@ const SMOOTH_WINDOW := 24
 ## was. `segment_clear` is deliberately the SAME predicate the walker
 ## audits itself with, so a smoothed route cannot claim a shortcut the
 ## walker would then refuse to take.
+##
+## AND IT MUST NOT UNDO THE WALL MARGIN. A* pays WALL_MARGIN_WEIGHT to
+## route a cell clear of a building; greedy smoothing then looks at the
+## straight line from before the corner to after it, finds every cell on
+## it merely PASSABLE, and collapses the detour right back onto the wall
+## it was avoiding. So a shortcut may not cut through the margin ring —
+## unless the anchor is already inside it, which is the corridor case
+## (a fort gate, a rock defile): there every cell is margin, refusing
+## would leave the raw staircase, and the staircase through a two-cell
+## gate is exactly what units used to jam on.
 func string_pull(path: PackedVector2Array, for_kind := "robot") -> PackedVector2Array:
 	if path.size() <= 2:
 		return path
 	var out := PackedVector2Array([path[0]])
 	var anchor := 0
 	while anchor < path.size() - 1:
+		var tight := is_margin(cell_at(path[anchor]))
 		var furthest := anchor + 1
 		var j := anchor + 2
 		while j < path.size() and j - anchor <= SMOOTH_WINDOW:
 			if not segment_clear(path[anchor], path[j], for_kind):
+				break
+			if not tight and not margin_free(path[anchor], path[j]):
 				break
 			furthest = j
 			j += 1
 		out.append(path[furthest])
 		anchor = furthest
 	return out
+
+
+## True when the straight segment stays out of the wall-margin ring. Same
+## marching step as segment_clear, so the two agree about what a segment
+## passes through.
+func margin_free(a: Vector2, b: Vector2) -> bool:
+	if margin_cells.is_empty():
+		return true
+	var steps := int(a.distance_to(b) / 4.0) + 1
+	for i in range(1, steps + 1):
+		if margin_cells.has(cell_at(a.lerp(b, float(i) / float(steps)))):
+			return false
+	return true
 
 
 ## Center-cell march along a segment — the same criterion the walker

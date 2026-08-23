@@ -882,6 +882,7 @@ static func run(ctx: Node) -> void:
 	if "--path-test" in args:
 		PathTests.walk_a_pair(ctx, TestRig.start("PATH"))
 		PathTests.walkers_arrive(ctx, TestRig.start("ARRIVE"))
+		await PathTests.assault_a_building(ctx, TestRig.start("ASSAULT"))
 	if "--fortkill-test" in args:
 		# forts must actually die: small arms scale with the target
 		# (original zsettings fractions — flat integers made a laser need
@@ -2848,6 +2849,19 @@ static func run(ctx: Node) -> void:
 			tac_rig.finish("robots %d->%d manned_peak=%d zones=%d%s" % [
 				int(before_t.robots), int(after_t.robots), manned_peak,
 				int(after_t.zones), dbg])
+			# the two layers ABOVE the per-unit passes: the map read, the
+			# stance table it feeds, the squad life cycle, and the rule
+			# that no unit is commanded by two layers at once
+			var strat_rig := TestRig.start("STRATEGY")
+			StrategyTests.map_read(ctx, strat_rig, t)
+			StrategyTests.stance_table(ctx, strat_rig, ai2)
+			StrategyTests.single_owner(ctx, strat_rig, ai2)
+			strat_rig.finish("stance=%s squads=%d" % [
+				String(ai2.strategy().name), ai2._squads.size()])
+			var squad_rig := TestRig.start("SQUAD")
+			StrategyTests.squad_lifecycle(ctx, squad_rig, t)
+			StrategyTests.squad_arrives_together(ctx, squad_rig, t)
+			squad_rig.finish()
 	if "--near-test" in args:
 		var jeep3: Vehicle2D = load("res://scenes/vehicle.tscn").instantiate()
 		jeep3.setup_vehicle("vehicle", "jeep", 0)

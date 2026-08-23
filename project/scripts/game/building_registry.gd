@@ -111,7 +111,10 @@ static func nearest_enemy(pos: Vector2, max_range: float, my_team: int) -> Build
 			continue
 		if b.team == 0 or b.team == my_team:
 			continue
-		var d: float = pos.distance_to(b.visual_center())
+		# to the nearest point of the FOOTPRINT, not the middle: a big
+		# factory measured from its centre sat outside every robot's
+		# range while the robot's barrel touched its wall
+		var d: float = pos.distance_to(b.edge_point_from(pos))
 		if d < best_d:
 			best_d = d
 			best = b

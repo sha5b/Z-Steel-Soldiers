@@ -98,10 +98,7 @@ func _can_eject(hover: Node2D) -> bool:
 	if not SelectionManager.current.selected.has(hover):
 		return false
 	if hover is FortBuilding and hover.team == MatchState.current.player_team:
-		for member in (hover as FortBuilding).garrison:
-			if is_instance_valid(member) and member.alive:
-				return true
-		return false
+		return (hover as FortBuilding).crew_count() > 0
 	if hover is Vehicle2D and hover.team == MatchState.current.player_team:
 		return (hover as Vehicle2D).manned or not (hover as Vehicle2D).cargo.is_empty()
 	return false

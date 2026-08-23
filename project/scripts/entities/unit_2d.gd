@@ -212,12 +212,80 @@ func _progress_watchdog(delta: float) -> void:
 	if _stuck_timer > 0.7:
 		_stuck_timer = 0.0
 		_repaths += 1
-		if _repaths > 3:
+		if _repaths > MAX_REPATHS:
 			_repaths = 0
 			_arrive()
 		else:
-			waypoints = NavWorld.current.request_path(
-				global_position, move_target, kind)
+			_unjam()
+
+
+## How many times a single move order may re-route before it is given up.
+const MAX_REPATHS := 4
+## How far to the side a wedged unit is routed before it retries the real
+## destination.
+const UNJAM_RADIUS := 40.0
+
+
+## RE-ROUTING FROM WHERE YOU STAND GIVES YOU THE ROUTE YOU ARE STUCK ON.
+## A* is deterministic: a unit pinned on a factory corner asks for a path
+## to the same destination from (almost) the same cell, gets the same
+## staircase back, walks into the same corner, and burns its whole
+## repath budget without ever trying anything else.
+##
+## So the first two retries are plain re-routes (the cheap case: a crowd
+## that has since dispersed), and after that the unit tries stepping ONE
+## CELL to a shoulder first — backing out of the pocket the way a player
+## does by hand.
+##
+## THE DETOUR IS ON A SHORT LEASH, and it has to be. A fort gate is a
+## two-cell corridor: it is the only route in, so any sidestep leaves it,
+## and a detour that wanders is a detour that abandons the errand. Hence
+## no ring search for the shoulder spot (that exact spot must be clear or
+## the shoulder is refused) and a hard length guard against the direct
+## route. In a corridor both shoulders are wall, the guard rejects them,
+## and this falls back to the plain re-route — which is correct there.
+const UNJAM_STEP := 20.0     # one cell plus a body: out of the pocket, no further
+const UNJAM_SLACK := 1.5     # a detour may cost this much more than going straight
+
+
+func _unjam() -> void:
+	var direct := NavWorld.current.request_path(global_position, move_target, kind)
+	if _repaths <= 2:
+		waypoints = direct
+		return
+	var toward: Vector2 = (move_target - global_position).normalized()
+	if toward == Vector2.ZERO:
+		toward = Vector2.RIGHT
+	var budget: float = _route_length(global_position, direct) * UNJAM_SLACK + 16.0
+	var side := toward.orthogonal()
+	for candidate in [side, -side]:
+		var spot: Vector2 = global_position + candidate * UNJAM_STEP
+		if not NavWorld.current.body_clear(spot,
+				NavWorld.BODY_HALF.get(kind, 7.0), kind):
+			continue
+		if not NavWorld.current.segment_clear(global_position, spot, kind):
+			continue
+		var out := NavWorld.current.request_path(spot, move_target, kind)
+		if out.is_empty():
+			continue
+		if UNJAM_STEP + _route_length(spot, out) > budget:
+			continue  # this shoulder is the long way round: not a detour
+		var detour := PackedVector2Array([spot])
+		detour.append_array(out)
+		waypoints = detour
+		return
+	waypoints = direct
+
+
+## Walked length of a route that starts at `from` (INF when there is no
+## route at all, so a missing direct path can never look cheap).
+static func _route_length(from: Vector2, route: PackedVector2Array) -> float:
+	if route.is_empty():
+		return INF
+	var total := from.distance_to(route[0])
+	for i in range(1, route.size()):
+		total += route[i - 1].distance_to(route[i])
+	return total
 
 
 ## THE movement engine — one implementation for robots and vehicles
@@ -333,17 +401,64 @@ func _arrive() -> void:
 	_on_arrived_extras()
 
 
+## THE UNIT SHADOW, RASTERISED ON THE PIXEL GRID.
+##
+## No unit shadow art ships in either asset set (only the buildings' cast
+## strips), so it is derived — but it has to be derived as PIXELS. The
+## first version was a `draw_circle` under a scale transform: a
+## resolution-independent vector ellipse with an antialiased sub-pixel
+## edge, sitting under 16x16 nearest-neighbour sprites on a world that
+## renders 1:1. It read as a smooth modern blob glued to pixel art,
+## which is exactly the "very crisp and doesn't fit the pixel style"
+## complaint — the edge was too clean for everything around it.
+##
+## So: one whole-pixel row at a time, integer widths, hard edges, spans
+## from the ellipse equation and rounded to the grid. The row table is
+## computed once per size and shared by every unit.
+const SHADOW_ALPHA := 0.28
+## Odd widths so the blob centres on a pixel instead of straddling two.
+const SHADOW_W := {"robot": 11, "vehicle": 15, "cannon": 15}
+const SHADOW_H := 4
+## Top row of the blob, in sprite-local pixels (the feet line).
+const SHADOW_TOP := {"robot": 3.0, "vehicle": 4.0, "cannon": 4.0}
+
+static var _shadow_spans_cache := {}
+
+
+## Whole-pixel row widths of an ellipse `w` x `h`, computed once per size.
+static func shadow_spans(w: int, h: int) -> Array:
+	var key := "%dx%d" % [w, h]
+	if _shadow_spans_cache.has(key):
+		return _shadow_spans_cache[key]
+	var rows: Array = []
+	var rx := float(w) * 0.5
+	var ry := float(h) * 0.5
+	for row in h:
+		var dy: float = (float(row) + 0.5) - ry
+		var t: float = 1.0 - (dy * dy) / (ry * ry)
+		# round to a WHOLE number of pixels, and keep it odd so the row
+		# stays centred on the same pixel column as every other row
+		var span: int = 0 if t <= 0.0 else int(round(rx * sqrt(t) * 2.0))
+		if span > 0 and span % 2 != w % 2:
+			span -= 1
+		rows.append(span)
+	_shadow_spans_cache[key] = rows
+	return rows
+
+
 func _draw() -> void:
 	if carried:
 		return
-	# the original's unit shadow: a soft dark blob under the feet. No
-	# unit shadow art ships in either asset set (only the buildings'
-	# cast strips) — derived here, like the factories' strips were.
-	var w := 14.0 if kind == "robot" else 18.0
-	var y := 5.0 if kind == "robot" else 6.0
-	draw_set_transform(Vector2(0, y), 0.0, Vector2(w / 6.0, 5.0 / 3.0))
-	draw_circle(Vector2.ZERO, 3.0, Color(0, 0, 0, 0.3))
-	draw_set_transform(Vector2.ZERO)
+	var w: int = int(SHADOW_W.get(kind, 11))
+	var top: float = float(SHADOW_TOP.get(kind, 3.0))
+	var shade := Color(0.0, 0.0, 0.0, SHADOW_ALPHA)
+	var spans := shadow_spans(w, SHADOW_H)
+	for row in spans.size():
+		var span: int = int(spans[row])
+		if span <= 0:
+			continue
+		draw_rect(Rect2(float(-span) * 0.5, top + float(row),
+			float(span), 1.0), shade)
 
 
 func offset_to_next_waypoint() -> float:
@@ -354,6 +469,21 @@ func offset_to_next_waypoint() -> float:
 
 ## Keep units from piling into one spot: push nearby units apart a little
 ## every frame (zod robots shoulder each other aside while walking).
+## RIGHT OF WAY. Symmetric separation deadlocks a corridor: two units
+## meeting in a fort gate push each other back with equal force, neither
+## makes ground, both trip the stuck watchdog, and the queue behind them
+## piles into the same knot. So the unit that is GOING somewhere holds
+## its line and the unit that is standing around yields — the same rule
+## that keeps a real doorway moving. `_yield_scale` is the multiplier on
+## the push this unit accepts.
+const YIELD_MOVING := 0.35   # walking: mostly hold the line
+const YIELD_STANDING := 1.6  # idle: get out of the way
+
+
+func _yield_scale() -> float:
+	return YIELD_MOVING if has_move_target() else YIELD_STANDING
+
+
 func _separation(delta: float) -> void:
 	var push := Vector2.ZERO
 	for u in UnitRegistry.current.world_units():
@@ -365,7 +495,7 @@ func _separation(delta: float) -> void:
 			push += (d / dist) * (14.0 - dist)
 		elif dist <= 0.01:
 			push += Vector2(randf() - 0.5, randf() - 0.5)  # perfectly stacked
-	var step := push * clampf(delta * 6.0, 0.0, 1.0) * 0.5
+	var step := push * clampf(delta * 6.0, 0.0, 1.0) * 0.5 * _yield_scale()
 	var target := global_position + step
 	if not _walkable(target) or _inside_building(target):
 		# never shove units into water/rock/WALLS: the cell check alone
@@ -483,13 +613,24 @@ func _combat() -> void:
 			_shoot(_target, to_target)
 
 
-## Where shots measure to: a building's footprint centre, a unit's body
-## (fort nodes sit at the art TOP edge — measuring to the node made
-## forts unreachable inside every weapon's range).
+## Where shots measure to: the nearest point of a building's footprint,
+## a unit's body. Measuring to the footprint CENTRE put a fort's middle
+## up to 100px inside its own walls — further than any robot's range —
+## so an assault standing against the gate never fired. See
+## Building2D.edge_point_from.
 func _target_point() -> Vector2:
-	if _target is Building2D:
-		return _target.visual_center()
-	return _target.global_position
+	return reach_point(_target)
+
+
+## ONE definition of "how far away is that thing" for every range gate
+## on this unit (opportunistic fire, ordered fire, the chase). A
+## building answers with the nearest point of its footprint.
+func reach_point(node: Node2D) -> Vector2:
+	if node == null or not is_instance_valid(node):
+		return global_position
+	if node is Building2D:
+		return (node as Building2D).edge_point_from(global_position)
+	return node.global_position
 
 
 ## An explicit ATTACK order outranks opportunistic targeting: a unit told
@@ -497,9 +638,8 @@ func _target_point() -> Vector2:
 func _ordered_or_nearest() -> Node2D:
 	if attack_target != null and is_instance_valid(attack_target) \
 			and attack_target.alive:
-		var aim: Vector2 = attack_target.visual_center() \
-				if attack_target is Building2D else attack_target.global_position
-		if global_position.distance_to(aim) <= range_px * sprite_scale:
+		if global_position.distance_to(reach_point(attack_target)) \
+				<= range_px * sprite_scale:
 			return attack_target
 	return _find_target()
 
@@ -820,6 +960,12 @@ func _order_anchor() -> Vector2:
 
 
 func _begin_move(world_pos: Vector2) -> void:
+	# A FRESH ROUTE GETS A FRESH BUDGET. `_repaths` used to accumulate for
+	# the whole life of the unit: three brief shoulder-jams anywhere on a
+	# long march — three DIFFERENT jams, minutes apart — spent the budget
+	# and the fourth cancelled the order outright. That is the "unit just
+	# stops and ignores me near buildings" report.
+	_repaths = 0
 	waypoints = NavWorld.current.request_path(global_position, world_pos, kind)
 	if waypoints.is_empty():
 		clear_move_target()  # unreachable (e.g. water for vehicles)
@@ -935,8 +1081,7 @@ func _chase(_delta: float) -> void:
 		_chase_anchor = Vector2.INF
 		_order_done()
 		return
-	var aim: Vector2 = attack_target.visual_center() \
-			if attack_target is Building2D else attack_target.global_position
+	var aim: Vector2 = reach_point(attack_target)
 	var reach := range_px * sprite_scale
 	if global_position.distance_to(aim) <= reach:
 		# in range: stop and shoot. _combat locks onto attack_target.
@@ -953,11 +1098,20 @@ func _chase(_delta: float) -> void:
 func _chase_repath() -> void:
 	if attack_target == null or not is_instance_valid(attack_target):
 		return
-	var aim: Vector2 = attack_target.visual_center() \
-			if attack_target is Building2D else attack_target.global_position
+	# THE ANCHOR IS WHAT WE MEASURE TO; the DESTINATION is where we stand
+	# to shoot it. For a building those are different points: walking at
+	# the footprint centre routes every attacker through the one open
+	# cell nearest the middle — a fort's gate — so a squad sent at one
+	# building queued up single file in the doorway. Standing off the
+	# wall on our OWN side of it spreads the squad around the structure.
+	var aim: Vector2 = reach_point(attack_target)
 	_chase_anchor = aim
+	var dest := aim
+	if attack_target is Building2D:
+		dest = (attack_target as Building2D).approach_point(global_position,
+			minf(range_px * sprite_scale * 0.6, 24.0))
 	var was := state
-	_begin_move(aim)
+	_begin_move(dest)
 	if not has_move_target():
 		# unreachable (water, walled in): keep the order but do not spin
 		state = was

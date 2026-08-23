@@ -1,7 +1,30 @@
 class_name CpuAi
 extends Node
-## Tactical CPU opponent (Z-flavoured, original-inspired). One brain per
-## non-player fort team; every think pass runs the full OODA loop:
+## THE CPU OPPONENT, in three layers.
+##
+##   STRATEGY  AiMap reads the map — a zone graph with adjacency, depth
+##             from our own fort, per-sector strength on both sides and
+##             per-sector value. `strategy()` turns that read into ONE
+##             stance for the whole team (turtle / consolidate / expand /
+##             press) and a budget: how much of the army defends, how
+##             much attacks, and what it attacks.
+##   OPERATIONS AiSquad holds a body of troops with one job. It forms up
+##             behind the line, refuses to commit until it is together
+##             and strong enough, advances as a body with laggards
+##             closing up, and breaks off when it has lost the fight.
+##   TACTICS   the per-unit passes below (produce, defend, crew, repair,
+##             hold the crossings) plus the ZBot mutual-nearest
+##             assignment, which now only sees the units no squad claimed.
+##
+## THE LAYER THAT WAS MISSING WAS THE MIDDLE ONE. The brain commanded
+## individuals: every pass it re-derived "the idle units" and handed each
+## the objective nearest it. So the army had no shape — units trickled at
+## a target one at a time, arrived alone, died alone, and the next
+## trickle walked over them. That reads as "it just storms", and no
+## amount of tuning the per-unit pass fixes it, because the problem is
+## that there is nothing between the unit and the map.
+##
+## Every think pass still runs the full OODA loop:
 ##
 ## - PRODUCE from every owned facility (money- and pop-gated queues,
 ##   robots first while the army is small, hardware once a bank buffer
@@ -11,6 +34,8 @@ extends Node
 ## - MAN empty hardware (vehicles and cannons — the biggest firepower
 ##   upgrade on any Z map); cranes repair, damaged vehicles visit the
 ##   repair shop
+## - COMMAND THE SQUADS: hold our threatened sectors, take the sectors
+##   worth taking, and assault what the stance says to assault
 ## - ASSIGN the rest (the ZBot Stage1AI_3 port, see "assignment" below):
 ##   read a POSTURE off how much of the map we hold, collect targets in
 ##   the original's priority order, and match units to them by MUTUAL
@@ -38,6 +63,10 @@ var _retake_at: Dictionary = {}        # zone node -> msec lost at
 var _owned_snapshot: Dictionary = {}   # zone node -> true (last think)
 var _attack_mode := false
 var _attack_focus := Vector2.INF
+## The strategic read and the squads that act on it (see AiMap/AiSquad).
+var _map: AiMap = null
+var _squads: Array[AiSquad] = []
+var _stance := "consolidate"
 
 
 func _init(cpu_team: int = 2) -> void:
@@ -110,12 +139,18 @@ func _think() -> void:
 				enemy_army += 1
 	if robots.is_empty() and vehicles.is_empty():
 		return
+	if _map == null:
+		_map = AiMap.new(team)
+	_map.refresh()  # ONE read of the map per pass; every layer below uses it
 	_track_lost_zones()
 	_produce()
 	_defend(robots, vehicles)
 	_man_hardware(robots, empty_hardware)
 	_maintenance(vehicles)
 	_hold_chokepoints(robots, vehicles)
+	# the operational layer: squads first, so the per-unit passes below
+	# only ever see the units no squad claimed
+	_command_squads(robots, vehicles)
 	_attack(robots, vehicles, enemy_army)
 	_assign(robots, vehicles)
 	_update_rallies()
@@ -220,9 +255,10 @@ func _hold_chokepoints(robots: Array[Node], vehicles: Array[Node]) -> void:
 	var already := {}
 	for u in guard_units():
 		already[u] = true
+	var in_squads := squad_units()
 	var free_units: Array[Node] = []
 	for u in _idle_of(robots) + _idle_of(vehicles):
-		if not already.has(u):
+		if not already.has(u) and not in_squads.has(u):
 			free_units.append(u)
 	for spot in spots:
 		if posted >= cap or free_units.is_empty():
@@ -326,6 +362,11 @@ func _produce() -> void:
 
 ## Robots while the army is small, hardware once it stands — and fresh
 ## options (vehicles, cannons) get a boost so the AI uses its roster.
+##
+## THE STANCE TILTS IT. A brain that is turtling wants emplaced guns and
+## bodies to hold ground with; a brain that is pressing wants armour,
+## because a fort is not coming down to rifles. Building the same mix
+## whatever the situation is the production half of "it has no strategy".
 func _weighted_pick(options: Array, army_pop: int, _diff: int) -> String:
 	var weights: Array = []
 	for item in options:
@@ -335,6 +376,20 @@ func _weighted_pick(options: Array, army_pop: int, _diff: int) -> String:
 			w = 8 if army_pop < 10 else 5
 		elif kind == "cannon":
 			w = 4
+		match _stance:
+			"turtle":
+				if kind == "cannon":
+					w += 4
+				elif kind == "robot":
+					w += 2
+			"press":
+				if kind == "vehicle":
+					w += 4
+				elif kind == "cannon":
+					w = maxi(w - 2, 1)
+			"expand":
+				if kind == "robot":
+					w += 1
 		weights.append(w)
 	var total := 0
 	for w in weights:
@@ -367,7 +422,16 @@ func _defend(robots: Array[Node], vehicles: Array[Node]) -> void:
 	if threats.is_empty():
 		return
 	var responders := 1 + clampi(MatchState.current.ai_difficulty, 0, 2)
-	var defenders := _idle_of(robots) + _idle_of(vehicles)
+	# A UNIT UNDER SQUAD ORDERS IS NOT SPARE. This pass used to grab any
+	# idle unit, squad members included, so a strike squad that paused for
+	# a breath was picked apart by the reactive layer and the assault
+	# dissolved. The DEFEND squads answer sector incursions now; this pass
+	# is the reflex for whatever is loose.
+	var committed := _committed()
+	var defenders: Array[Node] = []
+	for u in _idle_of(robots) + _idle_of(vehicles):
+		if not committed.has(u):
+			defenders.append(u)
 	for threat in threats:
 		if defenders.is_empty() or not is_instance_valid(threat):
 			continue
@@ -473,6 +537,372 @@ func _track_lost_zones() -> void:
 		if Time.get_ticks_msec() > int(_retake_at[z]) or now_owned.has(z):
 			_retake_at.erase(z)
 	_owned_snapshot = now_owned
+
+
+# ------------------------- strategy & squads -------------------------
+#
+# The two layers the brain did not have. `strategy()` is the WHOLE-TEAM
+# decision, taken once per pass off the AiMap read; `_command_squads`
+# turns it into standing bodies of troops with jobs, and keeps them
+# staffed. Everything below the squads (the ZBot assignment, the push)
+# only ever sees units no squad claimed — that separation is the point.
+# Two layers both commanding the same unit is worse than either alone:
+# it is what made units stop mid-path and turn around every second.
+
+## STANCES. Read as: how much of the army holds ground, how many
+## simultaneous strike squads to run, and whether a strike is allowed to
+## go for STRUCTURES (factories, then the fort) rather than just ground.
+##
+##   turtle       losing the power fight, or our own home is under
+##                pressure: nearly everything defends, nothing attacks
+##   consolidate  even fight: hold the worst front, take one cheap sector
+##   expand       we out-power them but do not hold the map: two strike
+##                squads on the sectors worth the least resistance
+##   press        ahead on power AND on ground: strike squads go for
+##                their production and then their fort
+const STANCES := {
+	"turtle":      {"defend": 0.75, "strikes": 0, "structures": false, "commit": 1.5},
+	"consolidate": {"defend": 0.45, "strikes": 1, "structures": false, "commit": 1.3},
+	"expand":      {"defend": 0.30, "strikes": 2, "structures": false, "commit": 1.15},
+	"press":       {"defend": 0.22, "strikes": 2, "structures": true,  "commit": 1.0},
+}
+## A zone this many hops from our fort or closer is HOME: pressure there
+## is an emergency, pressure further out is just the front moving.
+const HOME_DEPTH := 1
+## Never tie up more than this share of the army in squads — the crews,
+## the crate runs and the crossing guards need bodies too.
+const SQUAD_ARMY_SHARE := 0.8
+## Squad sizes. A squad below MIN_SQUAD is not a squad, it is a casualty
+## report; above MAX_SQUAD it cannot keep formation on a Z map's roads.
+const MIN_SQUAD := 3
+const MAX_SQUAD := 8
+## Floor on what a strike squad must weigh before it commits, so an
+## undefended sector does not get taken by one grunt who then dies to the
+## first counter-attack.
+const MIN_COMMIT_POWER := 120.0
+
+
+## THE WHOLE-TEAM DECISION, off the map read. Power ratio says whether we
+## can win a fight; map share says whether we need to. Home pressure
+## overrides both — a brain attacking while its fort burns is the failure
+## mode every "the AI ignores its own base" report describes.
+func strategy() -> Dictionary:
+	if _map == null:
+		_map = AiMap.new(team)
+		_map.refresh()
+	var ratio: float = _map.power_ratio()
+	var share: float = _map.share_held()
+	var home_pressure := 0.0
+	for t in _map.threatened_zones():
+		var entry: Dictionary = _map.entry_of(t.zone)
+		if int(entry.get("depth", AiMap.UNREACHABLE_DEPTH)) <= HOME_DEPTH:
+			home_pressure = maxf(home_pressure, float(t.raw))
+	var name := "consolidate"
+	# home pressure has to be a REAL force, not one scout that wandered
+	# in: a brain that turtles at the sight of a single enemy robot never
+	# leaves its base at all
+	if home_pressure > maxf(_map.own_power * 0.35, MIN_COMMIT_POWER) \
+			or ratio < 0.65:
+		name = "turtle"
+	elif ratio >= 1.35 and share >= 0.4:
+		name = "press"
+	elif ratio >= 0.95:
+		name = "expand"
+	_stance = name
+	var out: Dictionary = (STANCES[name] as Dictionary).duplicate()
+	out["name"] = name
+	out["ratio"] = ratio
+	out["share"] = share
+	out["home_pressure"] = home_pressure
+	return out
+
+
+## Every unit currently spoken for by a squad — the pool the tactical
+## passes must NOT touch.
+func squad_units() -> Dictionary:
+	var out := {}
+	for sq in _squads:
+		for u in sq.members:
+			if is_instance_valid(u):
+				out[u] = true
+	return out
+
+
+## Guards plus squad members: everything already under orders from a
+## layer above the per-unit one.
+func _committed() -> Dictionary:
+	var out := guard_units()
+	for u in squad_units():
+		out[u] = true
+	return out
+
+
+## Raise, staff, retire. One pass:
+##   1. tick the squads that exist (they issue their own orders)
+##   2. retire the ones whose job is done or who are gone
+##   3. work out which sectors need a squad and which are worth one
+##   4. reinforce what exists before raising anything new
+func _command_squads(robots: Array[Node], vehicles: Array[Node]) -> void:
+	var plan := strategy()
+	# 1+2. run and retire. A stance that has stopped allowing strikes
+	# RECALLS the ones in flight instead of letting them finish a plan the
+	# team can no longer afford — that is the whole point of having a
+	# stance: an attack launched while we were ahead is a liability once
+	# our own home is under pressure.
+	var recall: bool = int(plan.strikes) <= 0
+	var live: Array[AiSquad] = []
+	for sq in _squads:
+		if recall and sq.mission != AiSquad.Mission.DEFEND \
+				and sq.phase != AiSquad.Phase.FALLING_BACK:
+			sq.phase = AiSquad.Phase.FALLING_BACK
+		sq.tick(_order)
+		if sq.done or sq.size() == 0:
+			sq.disband()  # survivors fall back into the free pool
+			continue
+		live.append(sq)
+	_squads = live
+	# 3. the free pool: not guarding a crossing, not already in a squad,
+	# not walking into a hull or a repair shop (those errands are worth
+	# more than one more rifle in a line)
+	var claimed := _committed()
+	var pool: Array[Node] = []
+	for u in robots + vehicles:
+		if not is_instance_valid(u) or not u.alive or u.carried:
+			continue
+		if claimed.has(u) or u.enter_target != null:
+			continue
+		if AiMap.power_of(u) <= 0.0:
+			continue  # cranes and empty transports are not line troops
+		pool.append(u)
+	var army_power: float = _map.own_power
+	var in_squads: float = 0.0
+	for sq in _squads:
+		in_squads += sq.strength()
+	var budget: float = army_power * SQUAD_ARMY_SHARE - in_squads
+	# 4. the jobs, defence first: ground already ours is cheaper to hold
+	# than to retake, and a fort lost is the match
+	var jobs: Array = _defence_jobs(plan) + _strike_jobs(plan)
+	for job in jobs:
+		if pool.is_empty():
+			break
+		var existing: AiSquad = _squad_for(job)
+		if existing != null:
+			budget -= _reinforce(existing, job, pool, budget)
+			continue
+		if budget <= 0.0:
+			break
+		budget -= _raise_squad(job, pool, budget)
+
+
+## Which of OUR sectors need holding, worst first. Only sectors under
+## real pressure or on the seam get a squad — garrisoning quiet interior
+## ground is how a brain talks itself out of ever attacking.
+func _defence_jobs(plan: Dictionary) -> Array:
+	var out: Array = []
+	var allowance: float = _map.own_power * float(plan.defend)
+	var spent := 0.0
+	for t in _map.threatened_zones():
+		if spent >= allowance:
+			break
+		# A QUIET FRONT NEEDS NO SQUAD. threatened_zones lists our border
+		# sectors whether or not anything is actually pressing on them,
+		# and raising a standing squad for every quiet seam parks the
+		# whole army on empty ground — the crossing guards already cover
+		# the seam, and a squad that is not needed is an attack that does
+		# not happen.
+		if float(t.raw) <= 0.0:
+			continue
+		var entry: Dictionary = _map.entry_of(t.zone)
+		var need: float = maxf(float(t.raw) * 1.2, MIN_COMMIT_POWER * 0.6)
+		out.append({
+			"kind": "defend", "zone": t.zone, "at": t.at, "node": null,
+			"need": need, "commit": 0.0,
+			"staging": t.at, "fallback": _fallback_near(t.at),
+			"home": int(entry.get("depth", 9)) <= HOME_DEPTH,
+		})
+		spent += need
+	return out
+
+
+## What is worth going after, best first: the sectors whose value beats
+## their resistance and their march, and — when the stance allows it —
+## the structures inside them.
+func _strike_jobs(plan: Dictionary) -> Array:
+	var out: Array = []
+	var wanted := int(plan.strikes)
+	if wanted <= 0:
+		return out
+	if bool(plan.structures):
+		for b in _strike_structures():
+			if out.size() >= wanted:
+				break
+			out.append({
+				"kind": "assault", "zone": _map.zone_at(b.visual_center()),
+				"at": b.visual_center(), "node": b,
+				"need": maxf(_map.foe_power * 0.35, MIN_COMMIT_POWER),
+				"commit": float(plan.commit),
+				"staging": _staging_toward(b.visual_center()),
+				"fallback": _fallback_near(b.visual_center()), "home": false,
+			})
+	for t in _map.target_zones():
+		if out.size() >= wanted:
+			break
+		if _blacklisted(t.zone):
+			continue
+		# AN EMPTY NEUTRAL FLAG IS NOT A SQUAD JOB. Walking onto ground
+		# nobody is standing on takes one unit, and the mutual-nearest
+		# assignment below already spreads single units over exactly this
+		# kind of target. Forming a squad for it costs the early
+		# expansion that decides a Z map — squads are for ground that is
+		# HELD, and for structures.
+		if bool(t.neutral) and float(t.foe) <= 0.0:
+			continue
+		out.append({
+			"kind": "capture", "zone": t.zone, "at": t.at, "node": null,
+			"need": maxf(float(t.foe) * 1.4, MIN_COMMIT_POWER),
+			"commit": float(plan.commit),
+			"staging": _staging_toward(t.at),
+			"fallback": _fallback_near(t.at), "home": false,
+		})
+	return out
+
+
+## Enemy structures worth a squad, production before the fort: a factory
+## denied is an army that never arrives, and the original bot lists
+## buildings above units for the same reason. The fort comes last because
+## it is the hardest target on the map, not because it matters least.
+func _strike_structures() -> Array:
+	var producers: Array = []
+	var forts: Array = []
+	for b in BuildingRegistry.all():
+		if not (b is Building2D) or not b.alive or (b as Building2D).is_bridge():
+			continue
+		var bld := b as Building2D
+		if bld.team == 0 or bld.team == team:
+			continue
+		if bld.is_fort:
+			forts.append(bld)
+		elif bld.produces_anything():
+			producers.append(bld)
+	var from: Vector2 = _map.home if _map.home != Vector2.INF else Vector2.ZERO
+	var by_distance := func(a, b):
+		return from.distance_squared_to(a.visual_center()) \
+			< from.distance_squared_to(b.visual_center())
+	producers.sort_custom(by_distance)
+	forts.sort_custom(by_distance)
+	return producers + forts
+
+
+## The squad already doing this job, if any. Jobs are keyed by their
+## OBJECT (a structure) or their SECTOR, so the commander cannot raise
+## two squads for one flag every time it thinks.
+func _squad_for(job: Dictionary) -> AiSquad:
+	for sq in _squads:
+		if job.node != null and sq.objective_node == job.node:
+			return sq
+		if job.node == null and job.zone != null and sq.zone == job.zone \
+				and sq.mission == _mission_of(job):
+			return sq
+	return null
+
+
+static func _mission_of(job: Dictionary) -> AiSquad.Mission:
+	match String(job.kind):
+		"defend":
+			return AiSquad.Mission.DEFEND
+		"assault":
+			return AiSquad.Mission.ASSAULT
+		_:
+			return AiSquad.Mission.CAPTURE
+
+
+## Staff a new squad from the pool: the units nearest its staging point,
+## up to the weight the job asks for. Returns the power committed.
+func _raise_squad(job: Dictionary, pool: Array[Node], budget: float) -> float:
+	var want: float = minf(float(job.need), budget)
+	var sq := AiSquad.new(team, _mission_of(job))
+	sq.zone = job.zone
+	sq.objective = job.at
+	sq.objective_node = job.node
+	sq.staging = job.staging
+	sq.fallback = job.fallback
+	sq.commit_power = float(job.need) * float(job.commit)
+	var taken := _draft(sq, pool, want, job)
+	if sq.size() < MIN_SQUAD and not bool(job.home):
+		# not enough bodies for a real squad and not an emergency: put
+		# them back rather than send three men at a defended sector
+		for u in sq.disband():
+			pool.append(u)
+		return 0.0
+	_squads.append(sq)
+	return taken
+
+
+## Top an existing squad back up to its job's weight — a squad that has
+## taken losses gets replacements instead of being disbanded and re-raised
+## somewhere else, which is what made objectives change hands every pass.
+func _reinforce(sq: AiSquad, job: Dictionary, pool: Array[Node],
+		budget: float) -> float:
+	sq.objective = job.at
+	sq.objective_node = job.node
+	sq.fallback = job.fallback
+	var short: float = float(job.need) - sq.strength()
+	if short <= 0.0 or sq.size() >= MAX_SQUAD or budget <= 0.0:
+		return 0.0
+	return _draft(sq, pool, minf(short, budget), job)
+
+
+## Pull the nearest suitable units out of the pool until the squad has
+## the weight it needs (or the size cap stops it). Returns the power
+## actually taken.
+func _draft(sq: AiSquad, pool: Array[Node], want: float,
+		job: Dictionary) -> float:
+	var anchor: Vector2 = job.staging if job.staging != Vector2.INF else job.at
+	pool.sort_custom(func(a, b):
+		return anchor.distance_squared_to((a as Node2D).global_position) \
+			< anchor.distance_squared_to((b as Node2D).global_position))
+	var taken := 0.0
+	while not pool.is_empty() and sq.size() < MAX_SQUAD and taken < want:
+		var u: Node = pool.pop_front()
+		if not is_instance_valid(u):
+			continue
+		sq.add(u)
+		taken += AiMap.power_of(u)
+	return taken
+
+
+## Where a squad forms up before going at `target`: the centre of our own
+## sector nearest it. Massing on friendly ground and then walking in as a
+## body is the whole difference between an assault and a trickle.
+func _staging_toward(target: Vector2) -> Vector2:
+	var best := Vector2.INF
+	var best_d := INF
+	for z in MatchState.current.zones:
+		var entry: Dictionary = _map.entry_of(z)
+		if entry.is_empty() or int(entry.owner) != team:
+			continue
+		var d: float = (entry.at as Vector2).distance_squared_to(target)
+		if d < best_d:
+			best_d = d
+			best = entry.at
+	if best == Vector2.INF:
+		return _map.home
+	# stand off the target rather than in our sector's dead centre
+	return best.lerp(target, 0.25)
+
+
+## Where a beaten squad runs to: our quietest ground near it, else the
+## fort. A squad with nowhere to fall back to fights where it stands,
+## which is correct — there is nothing left behind it.
+func _fallback_near(from: Vector2) -> Vector2:
+	var best := Vector2.INF
+	var best_d := INF
+	for r in _map.rally_zones():
+		var d: float = (r.at as Vector2).distance_squared_to(from)
+		if d < best_d:
+			best_d = d
+			best = r.at
+	return best if best != Vector2.INF else _map.home
 
 
 # ------------------------- assignment (ZBot Stage1AI_3) -------------------------
@@ -709,11 +1139,13 @@ func _assign(robots: Array[Node], vehicles: Array[Node]) -> void:
 	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
 	_next_assign_ms = now + int(float(post.delay) * 1000.0
 		* (1.3 - 0.15 * float(diff)))
-	# guards hold their crossing; units walking into hardware keep going
-	var guards := guard_units()
+	# guards hold their crossing, squads keep their mission, and units
+	# walking into hardware keep going: this pass only ever sees what is
+	# genuinely loose
+	var committed := _committed()
 	var free: Array[Node] = []
 	for u in _idle_of(robots) + _idle_of(vehicles):
-		if guards.has(u) or u.enter_target != null:
+		if committed.has(u) or u.enter_target != null:
 			continue
 		free.append(u)
 	if free.is_empty():
@@ -755,11 +1187,13 @@ func _attack(robots: Array[Node], vehicles: Array[Node], enemy_army: int) -> voi
 		_attack_mode = false
 		return
 	# a guard swept into the push was never a guard: the crossings have to
-	# still be held when the army walks away from them
-	var guards := guard_units()
+	# still be held when the army walks away from them — and a squad on a
+	# mission is not spare either (the push used to strip strike squads of
+	# their members the moment one went briefly idle)
+	var committed := _committed()
 	var idle: Array[Node] = []
 	for u in _idle_of(robots) + _idle_of(vehicles):
-		if not guards.has(u):
+		if not committed.has(u):
 			idle.append(u)
 	var ring := maxi(int(sqrt(float(idle.size()))), 1)
 	for i in idle.size():
@@ -820,18 +1254,38 @@ func _attack_destination() -> Vector2:
 # ------------------------- rallies -------------------------
 
 ## Fresh units stream toward the current objective instead of idling at
-## the factory door: the attack focus during a push, else the nearest
-## zone worth taking.
+## the factory door. Priority: a squad that is still FORMING UP near this
+## factory (reinforcements walk to the muster, which is what makes a
+## build-up a build-up), then the push, then the nearest zone worth
+## taking. Each facility answers for itself — a factory in the rear and
+## one on the frontier should not feed the same spot.
 func _update_rallies() -> void:
-	var objective := _attack_focus if _attack_mode else Vector2.INF
 	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if not (f is Building2D) or not f.alive or f.team != team:
 			continue
+		var objective := _muster_near(f.visual_center())
+		if objective == Vector2.INF and _attack_mode:
+			objective = _attack_focus
 		if objective == Vector2.INF:
 			objective = _nearest_takeable(f.visual_center())
-			if objective == Vector2.INF:
-				return
+		if objective == Vector2.INF:
+			continue
 		_rally(f, objective)
+
+
+## The staging point of the nearest squad still gathering — where a fresh
+## unit is worth more than anywhere else on the map.
+func _muster_near(from: Vector2) -> Vector2:
+	var best := Vector2.INF
+	var best_d := INF
+	for sq in _squads:
+		if sq.phase != AiSquad.Phase.GATHERING or sq.staging == Vector2.INF:
+			continue
+		var d: float = sq.staging.distance_squared_to(from)
+		if d < best_d:
+			best_d = d
+			best = sq.staging
+	return best
 
 
 func _nearest_takeable(from: Vector2) -> Vector2:
