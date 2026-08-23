@@ -7,6 +7,7 @@ extends Node2D
 
 var _map_list: PackedStringArray = []
 var _map_index := 0
+var _control_groups := {}  # 1..9 -> Array[Node] (original control groups)
 
 @onready var camera: RtsCamera2D = $RtsCamera2D
 
@@ -369,6 +370,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		if slot >= 0:
 			_control_group(slot, event.ctrl_pressed)
 			return
+	# control groups (original): ctrl+N assigns the selection, N recalls
+	# it — dead members drop out, an empty group clears
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode >= KEY_1 and event.keycode <= KEY_9:
+		var group: int = event.keycode - KEY_1 + 1
+		if event.ctrl_pressed:
+			_assign_control_group(group)
+		else:
+			_recall_control_group(group)
+		return
 	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		var pause := get_node_or_null("CanvasLayer/PauseMenu")
 		if pause and not GameState.over:
@@ -452,6 +463,35 @@ func _control_group(slot: int, assign: bool) -> void:
 			var centre := sel.group_center(slot)
 			if centre != Vector2.INF:
 				camera.position = centre
+
+
+func _assign_control_group(group: int) -> void:
+	var members: Array[Node] = []
+	for u in SelectionManager.current.selected:
+		if u is Unit2D and is_instance_valid(u) and u.alive:
+			members.append(u)
+	if members.is_empty():
+		_control_groups.erase(group)
+	else:
+		_control_groups[group] = members
+	Fx.ui_click()
+
+
+func _recall_control_group(group: int) -> void:
+	if not _control_groups.has(group):
+		return
+	var members: Array[Node] = []
+	for u in _control_groups[group]:
+		if is_instance_valid(u) and u.alive:
+			members.append(u)
+	if members.is_empty():
+		_control_groups.erase(group)
+		SelectionManager.current.clear_selection()
+		return
+	SelectionManager.current.clear_selection()
+	for u in members:
+		SelectionManager.current.toggle_select(u, true)
+	Fx.ui_click()
 
 
 func _pick_select(screen_pos: Vector2) -> void:
