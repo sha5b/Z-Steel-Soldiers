@@ -16,7 +16,7 @@
 %global __requires_exclude_from ^%{_bindir}/z-remake$
 
 Name:           z-remake
-Version:        0.2.0
+Version:        0.2.7
 # BUILD STAMP. Without it every rebuild is the same NEVRA
 # (z-remake-0.1.0-1.fc44) with different contents, so dnf sees no reason
 # to replace what is installed and you cannot tell two builds apart --
@@ -77,6 +77,30 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
+* Sun Aug 23 2026 sha5b <cloud@fiber-elements.com> - 0.2.7-1
+- Production is a LINE, not a queue: point a factory at one unit type and
+  it turns that out indefinitely. Cancel stops it; switching keeps the
+  build clock. Z has no build queue and never did.
+- Nothing enters a building any more. The fort garrison is gone; a fort
+  defends itself with its four tower guns, which can be shot off it.
+- Every explosive weapon can finally hurt a building. Tanks, cannons and
+  missiles had no anti-structure damage scale at all, so a heavy tank
+  needed 341s to raze a fort that a pyro robot razed in 14s. Crewed
+  vehicles and cannons also could not fire on a fort AT ALL: their range
+  gate measured to the fort's middle, ~80px inside its own wall.
+- Cannons are no longer treated as manoeuvre units. A turret has speed 0,
+  so drafting it into a squad dragged the squad's rally point onto an
+  immobile gun and parked the army around it on one bridge.
+- The CPU brain got a strategic layer (zone graph, per-sector strength and
+  value, four stances) and squads that muster before they commit and
+  withdraw when beaten. Its cadences run on GAME time, so pausing no
+  longer fires every timer at once on unpause.
+- Units path AROUND buildings: cells next to a wall now cost more, so a
+  route prefers open ground instead of grinding along a factory wall.
+- A captured factory no longer inherits the previous owner's rally point.
+- Unit shadows are rasterised on the pixel grid instead of being smooth
+  antialiased ellipses under 16px sprites.
+
 * Fri Aug 21 2026 sha5b <cloud@fiber-elements.com> - 0.2.0-1
 - Fix an exported build loading none of its content: Godot packs an
   imported file as a .import sidecar, and every directory scan filtered

@@ -81,8 +81,8 @@ Download a build from the
 [releases page](https://github.com/sha5b/Z-Steel-Soldiers/releases) and
 run it. Nothing to install.
 
-To run it from source you need Godot **4.7.1** and your own copy of the
-game — see [Get the assets in](#get-the-assets-in) below, then:
+To run it from source you need Godot **4.7.x** (built and tested on
+4.7.2) and your own copy of the game — see [Get the assets in](#get-the-assets-in) below, then:
 
 ```bash
 flatpak run org.godotengine.Godot   # open project/project.godot, press F5
@@ -93,6 +93,13 @@ the radar pan the camera. The wheel zooms. Drag to box-select,
 double-click to take every unit of that type on screen, right-click to
 order. `Ctrl`+right-click **queues** the order behind what the unit is
 already doing.
+
+**Production is a line, not a queue.** Z has no build queue. Select a
+factory, pick one unit type, and it turns that out indefinitely until you
+pick something else — switching keeps the build clock, Cancel stops the
+line, and every producer starts on the first entry of its own list. Units
+do not enter buildings; a fort defends itself with the four tower guns it
+builds, which can be shot back off it.
 
 Every hotkey is the letter printed on the HUD plate that it presses, so
 the frame teaches its own keyboard:
@@ -175,8 +182,12 @@ puts them in the right order with the right arguments.
 
 ## Build the desktop releases
 
-All three targets cross-build from Linux. You need the Godot 4.7.1 export
-templates and the icon set.
+All three targets cross-build from Linux. You need the export templates
+**matching your editor exactly** — 4.7.2 templates for a 4.7.2 editor —
+and the icon set. A mismatch fails with `No export template found at the
+expected path: .../4.7.2.stable/linux_release.x86_64`; installing the
+templates is Editor > Manage Export Templates, or unzip the `.tpz` into
+`~/.var/app/org.godotengine.Godot/data/godot/export_templates/<version>/`.
 
 ```bash
 python3 tools/gog/make_icons.py   # cuts the Z logo out of the retail splash
