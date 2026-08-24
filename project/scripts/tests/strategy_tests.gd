@@ -353,14 +353,37 @@ static func squad_arrives_together(ctx: Node, rig: TestRig, team: int) -> void:
 ##            pointing at when the timer landed — a random unit stream,
 ##            and never the unit the stance actually wanted.
 static func builds_and_commits(ctx: Node, rig: TestRig, ai: CpuAi) -> void:
+	# TWO SOURCES, AND THEY MUST AGREE. The brain iterates the FACILITIES
+	# group; `produces_anything()` is what the rest of the game calls a
+	# producer. Group membership is decided ONCE in Building2D._ready, so
+	# a producer that missed it is invisible to the brain for the whole
+	# match — it would never be aimed at anything and would never build a
+	# thing, which is a different and worse bug than an idle line.
+	# Asserted separately so the two cannot be confused.
 	var mine: Array[Building2D] = []
+	var unseen: Array[String] = []
 	for b in BuildingRegistry.all():
-		if b is Building2D and b.alive and b.produces_anything() \
-				and (b as Building2D).team == ai.team:
-			mine.append(b)
+		if not (b is Building2D) or not b.alive or not b.produces_anything():
+			continue
+		if (b as Building2D).team != ai.team:
+			continue
+		if not b.is_in_group(Groups.FACILITIES):
+			unseen.append("%s(id=%d)" % [b.kind_key(), b.building_id])
+			continue
+		mine.append(b)
+	rig.check(unseen.is_empty(),
+		"%d producer(s) of the brain's are NOT in the FACILITIES group, so "
+		% unseen.size() + "it can never aim them: %s" % ", ".join(unseen))
 	if mine.is_empty():
 		print("AIBUILD: the brain owns no facilities (skipped)")
 		return
+	# THINK FIRST. This used to count idle lines straight off the end of
+	# the simulation, where a factory captured on the final frame has
+	# legitimately not been aimed yet — the brain aims it on its next
+	# pass, which is exactly what is being asserted. Measuring before that
+	# pass made the check fail about one run in six for a brain that was
+	# behaving correctly.
+	ai._produce()
 	var idle := 0
 	var off_roster := 0
 	for b in mine:
@@ -376,7 +399,8 @@ static func builds_and_commits(ctx: Node, rig: TestRig, ai: CpuAi) -> void:
 		"%d AI facilities are aimed at something not on their own roster"
 		% off_roster)
 	# STICKY: think repeatedly with nothing about the map changed. The
-	# brain may re-aim a line it considers wrong, but it must not churn.
+	# pass above already settled every line, so from here the brain must
+	# be absolutely still.
 	var before: Array[String] = []
 	for b in mine:
 		before.append(b.selected_product())
@@ -394,6 +418,54 @@ static func builds_and_commits(ctx: Node, rig: TestRig, ai: CpuAi) -> void:
 	for b in mine:
 		rows.append("%s=%s" % [b.kind_key(), b.selected_product()])
 	print("AIBUILD: %s" % ", ".join(rows))
+
+
+## AN EMPLACEMENT IS NOT A MANOEUVRE UNIT. Cannons are Vehicle2D with
+## speed 0 — they cannot walk to a post, cannot muster with a squad and
+## cannot capture a sector. Every allocation pass in the brain drafts from
+## one list of "vehicles", so until that list was split by ROLE a turret
+## could be posted on a bridge it could never reach (holding a guard slot
+## against the static-defence cap while guarding nothing) and, worse, be
+## drafted into a squad: it is armed, so it counted toward the squad's
+## strength, and a squad's centre is the mean of its members — so the
+## squad's own rally point was dragged onto the immobile gun and every
+## member was told to close up on it. An army parked around one turret on
+## one bridge is what that looks like in play.
+static func emplacements_never_manoeuvre(ctx: Node, rig: TestRig,
+		ai: CpuAi) -> void:
+	var guns: Array[Node] = []
+	for u in UnitRegistry.current.world_units():
+		if u is Vehicle2D and u.alive and u.team == ai.team and u.speed <= 0.0:
+			guns.append(u)
+	# the roster must classify them, whether or not any exist right now
+	var roster: Dictionary = ai._roster()
+	rig.check((roster.emplacements as Array).size() == guns.size(),
+		"the roster sorted %d of %d immobile guns as emplacements"
+		% [(roster.emplacements as Array).size(), guns.size()])
+	for g in guns:
+		rig.check(not (roster.mobile as Array).has(g),
+			"an immobile gun is in the brain's MOBILE list — every pass "
+			+ "that moves things will draft it")
+	if guns.is_empty():
+		print("EMPLACE: the brain owns no guns yet (classification asserted)")
+		return
+	# and nothing that moves units may be holding one
+	var in_squads := ai.squad_units()
+	var guards := ai.guard_units()
+	var drafted := 0
+	var posted := 0
+	for g in guns:
+		if in_squads.has(g):
+			drafted += 1
+		if guards.has(g):
+			posted += 1
+	rig.check(drafted == 0,
+		"%d immobile gun(s) are in a squad — the squad will wait at a "
+		% drafted + "muster they can never reach")
+	rig.check(posted == 0,
+		"%d immobile gun(s) are posted on a crossing they cannot walk to"
+		% posted)
+	print("EMPLACE: %d gun(s), none drafted or posted" % guns.size())
 
 
 # ---- 4. one owner per unit -------------------------------------------

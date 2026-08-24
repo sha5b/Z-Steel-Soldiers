@@ -84,7 +84,12 @@ var fallback := Vector2.INF
 var commit_power := 0.0
 var peak_power := 0.0
 var done := false            # the commander disbands it and pools the units
-var _formed_at := 0          # msec the gather started
+var _formed_at := -1         # game-time ms the gather started (-1 = unstamped)
+## The commander's GAME-time clock, handed in on every tick. Never
+## Time.get_ticks_msec(): a squad that measures its muster against the
+## wall clock gives up on forming the instant the game is unpaused (see
+## CpuAi.clock_ms).
+var now_ms := 0
 var _intent: Dictionary = {} # unit -> the destination we last sent it to
 var _label := ""
 
@@ -92,7 +97,7 @@ var _label := ""
 func _init(for_team: int = 2, for_mission: Mission = Mission.CAPTURE) -> void:
 	team = for_team
 	mission = for_mission
-	_formed_at = Time.get_ticks_msec()
+	_formed_at = -1  # stamped on the first tick, from the commander's clock
 
 
 # ---- roster ------------------------------------------------------------
@@ -169,7 +174,10 @@ func describe() -> String:
 
 ## One command cycle. `issue` is CpuAi._order — the relay seam, so squad
 ## orders reach multiplayer peers like every other AI intent.
-func tick(issue: Callable) -> void:
+func tick(issue: Callable, clock_ms := 0) -> void:
+	now_ms = clock_ms
+	if _formed_at < 0:
+		_formed_at = now_ms
 	if not prune():
 		done = true
 		return
@@ -221,7 +229,7 @@ func _gather(issue: Callable) -> void:
 	if where == Vector2.INF:
 		done = true
 		return
-	var waited: int = Time.get_ticks_msec() - _formed_at
+	var waited: int = now_ms - _formed_at
 	var formed: bool = spread() <= COHESION_RADIUS \
 			and centre().distance_to(where) <= GATHER_RADIUS
 	if (formed and strength() >= commit_power) or waited > GATHER_TIMEOUT_MS:

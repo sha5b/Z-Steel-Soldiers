@@ -63,6 +63,20 @@ var _retake_at: Dictionary = {}        # zone node -> msec lost at
 var _owned_snapshot: Dictionary = {}   # zone node -> true (last think)
 var _attack_mode := false
 var _attack_focus := Vector2.INF
+## GAME-TIME CLOCK, in milliseconds, accumulated from the frame delta.
+##
+## Every cadence in this brain used to read clock_ms — WALL
+## clock. That is wrong in three separate ways. Pause the game for two
+## minutes and the wall clock runs on, so the first frame after unpause
+## fires every timer at once: the assignment re-tasks the whole army, the
+## 25s line stickiness evaporates, and every zone blacklist and retake
+## window expires together. `Engine.time_scale` desynchronises the same
+## way. And a headless sim that hand-steps a hundred think passes in a
+## tenth of a second advances no cadence at all, which is why the tactics
+## lane was unreproducible.
+##
+## A brain's sense of time has to be the GAME's sense of time.
+var clock_ms := 0
 ## The strategic read and the squads that act on it (see AiMap/AiSquad).
 var _map: AiMap = null
 var _squads: Array[AiSquad] = []
@@ -108,8 +122,16 @@ func _p() -> AiProfileDef:
 
 
 func _process(delta: float) -> void:
+	advance(delta)
+
+
+## Give the brain `delta` seconds of GAME time: moves its clock and runs a
+## think pass when one is due. `_process` is nothing but this, so a test
+## can drive the brain exactly the way the engine does.
+func advance(delta: float) -> void:
 	if GameState.over:
 		return
+	clock_ms += int(round(delta * 1000.0))
 	_accum += delta
 	if _accum < _p().think_seconds:
 		return
@@ -117,27 +139,65 @@ func _process(delta: float) -> void:
 	_think()
 
 
-func _think() -> void:
-	var robots: Array[Node] = []
-	var vehicles: Array[Node] = []       # own manned vehicles
-	var empty_hardware: Array[Node] = [] # unmanned vehicles/cannons
-	var enemy_army := 0
+## THE ROSTER, BY ROLE — not by art category.
+##
+## A CANNON IS A Vehicle2D. That one implementation detail was quietly
+## wrong in every pass below, because `vehicles` is the list this brain
+## hands to everything that MOVES things: the crossing guards, the squads,
+## the push, the ZBot assignment, even the repair-shop run. A cannon has
+## speed 0. It cannot walk to a bridge, cannot muster, cannot advance, and
+## cannot capture anything, ever.
+##
+## So a turret drafted as a bridge guard sat wherever it was built holding
+## a post it could never reach, while still consuming a guard slot against
+## CHOKE_ARMY_SHARE. Drafted into a squad it was worse: AiMap.power_of
+## counts it (it is armed), so it inflated the squad's strength, and
+## AiSquad.centre() is the mean of its members — so the squad's own centre
+## was dragged onto the immobile gun and `_march` told everyone to "close
+## up on the squad", i.e. to walk back to the turret. THAT is a whole army
+## parked on one bridge around a gun.
+##
+## The fix is to stop asking what a unit IS and start asking what it can
+## DO. `mobile` is everything with speed; `emplacements` are the guns that
+## hold the ground they stand on and take no manoeuvre order at all.
+func _roster() -> Dictionary:
+	var out := {
+		"robots": [] as Array[Node],      # own infantry: crews, capturers
+		"mobile": [] as Array[Node],      # own hardware that can actually move
+		"emplacements": [] as Array[Node],# own guns: speed 0, hold what they see
+		"empty": [] as Array[Node],       # unmanned hulls anyone may crew
+		"enemy_army": 0,
+	}
 	for u in UnitRegistry.current.world_units():
 		if not (u is Unit2D) or not u.alive or u.carried:
 			continue
 		if u is Vehicle2D:
 			if u.team == team:
-				vehicles.append(u)
+				if u.speed > 0.0:
+					(out.mobile as Array[Node]).append(u)
+				else:
+					(out.emplacements as Array[Node]).append(u)
 			elif not u.manned:
-				empty_hardware.append(u)
+				(out.empty as Array[Node]).append(u)
 			elif u.team != 0:
-				enemy_army += 1
+				out.enemy_army = int(out.enemy_army) + 1
 		elif u.kind == "robot":
 			if u.team == team:
-				robots.append(u)
+				(out.robots as Array[Node]).append(u)
 			elif u.team != 0:
-				enemy_army += 1
-	if robots.is_empty() and vehicles.is_empty():
+				out.enemy_army = int(out.enemy_army) + 1
+	return out
+
+
+func _think() -> void:
+	var roster := _roster()
+	var robots: Array[Node] = roster.robots
+	# EVERY pass below gets `mobile`, never the emplacements — see _roster
+	var vehicles: Array[Node] = roster.mobile
+	var empty_hardware: Array[Node] = roster.empty
+	var enemy_army: int = int(roster.enemy_army)
+	if robots.is_empty() and vehicles.is_empty() \
+			and (roster.emplacements as Array).is_empty():
 		return
 	if _map == null:
 		_map = AiMap.new(team)
@@ -180,7 +240,7 @@ var _choke_claims: Dictionary = {}   # spot (Vector2) -> guard unit
 
 
 func _chokepoints() -> Array[Vector2]:
-	var now := Time.get_ticks_msec()
+	var now := clock_ms
 	if now - _choke_stamp < CHOKE_REFRESH_MS and not _choke_cache.is_empty():
 		return _choke_cache
 	_choke_stamp = now
@@ -356,19 +416,47 @@ func _produce() -> void:
 	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
 	var army_pop := MatchState.current.unit_pop(team)
 	var frontier := _frontier_facility()
-	var now := Time.get_ticks_msec()
+	var now := clock_ms
 	var short_of_crew := crew_shortfall()
+	# THE TOOL NEEDS ARE A SHOPPING LIST, NOT A PREDICATE. _utility_need
+	# answers "does the war want one of these?" — a GLOBAL question — and
+	# it used to be asked once per facility, so every factory that could
+	# build an APC aimed at one on the same pass. Three vehicle factories
+	# and the fort all turning out APCs is not a transport policy, it is
+	# the same decision made four times. Build the list once and let each
+	# facility CLAIM from it.
+	var needs: Array = [] if short_of_crew > 0 else _utility_needs()
 	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if not f.alive or f.team == 0 or f.team != team:
 			continue
 		var options: Array = f.build_options()
 		if options.is_empty():
 			continue
+		# AN IDLE FACILITY IS FIXED FIRST, BEFORE ANY OTHER REASONING.
+		# Every branch below can `continue` — the stickiness gate, the tool
+		# claim, an empty choice list after filtering — and any of them
+		# leaving the line empty means a factory the brain owns produces
+		# nothing at all for the rest of the match. That is strictly worse
+		# than any choice it could have made, so it gets the first entry of
+		# its own list up front (the same default Producer._ensure_default
+		# uses) and the reasoning below then refines it. Making the
+		# invariant structural beats hunting the one path that broke it.
+		if f.selected_product() == "":
+			_select(f, String(options[0]))
+		# FIRST SIGHTING COUNTS AS A DECISION. Without this an unstamped
+		# facility reads as instantly stale (now - (-RELINE_MS) is already
+		# a full window), so the very first think pass after a factory is
+		# captured — or after Producer._ensure_default aims it at the first
+		# entry of its own list — threw that line away and re-rolled it.
+		# The default is a decision; record it as one.
+		if not _line_stamp.has(f):
+			_line_stamp[f] = now
+			_line_stance[f] = _stance
 		# a CANNON is immobile once built, so where it appears is decided
 		# entirely by which building makes it: only the facility nearest
 		# the frontier may hold a cannon line, and anywhere else re-aims
 		# at something that can walk to the fight
-		var current: String = f.selected_product()
+		var current: String = f.selected_product()  # after the default above
 		var cannon_ok: bool = f == frontier
 		var makes_robots: bool = false
 		for o in options:
@@ -399,12 +487,18 @@ func _produce() -> void:
 		# for the rest of the match. So utility hulls are off the ordinary
 		# choice entirely, and built only when something actually needs
 		# one — see _utility_need below.
-		var need := "" if crew_short else _utility_need(f, choices)
+		# claim a tool this facility can actually build
+		var need := ""
+		for want in needs:
+			if choices.has(want):
+				need = String(want)
+				break
 		if need != "":
-			if need != current and _select(f, need):
+			if need == current or _select(f, need):
+				needs.erase(need)  # claimed: nobody else builds this one
 				_line_stamp[f] = now
 				_line_stance[f] = _stance
-			continue
+				continue
 		choices = choices.filter(func(i):
 			var p: PackedStringArray = String(i).split(":")
 			return p.size() == 2 and ContentDB.def_for(p[0], p[1]).damage > 0)
@@ -426,10 +520,18 @@ func _produce() -> void:
 				choices = cheap
 		if choices.is_empty():
 			continue
+		# STAMP THE DECISION, NOT THE CHANGE. This used to record the
+		# timestamp only when the re-roll actually moved the line, so a
+		# stale facility whose weighted pick happened to land on what it
+		# was already building stayed stale — and rolled again, every
+		# single pass, until the dice finally differed. The observable
+		# effect was one or two factories quietly reshuffling their line
+		# forever while the rest held. Reassessing IS the decision.
 		var pick := String(_weighted_pick(choices, army_pop, diff))
-		if pick != current and _select(f, pick):
-			_line_stamp[f] = now
-			_line_stance[f] = _stance
+		_line_stamp[f] = now
+		_line_stance[f] = _stance
+		if pick != current:
+			_select(f, pick)  # a refusal leaves the default set above
 
 
 ## HOW MANY ROBOTS ARE WE SHORT OF? Positive means every hull we could
@@ -454,9 +556,10 @@ func crew_shortfall() -> int:
 	return (empty_near + CREW_RESERVE) - robots
 
 
-## DOES THE WAR NEED A TOOL RIGHT NOW? The two unarmed hulls earn their
-## factory slot only against a concrete need, and only until it is met —
-## then the line goes back to weapons on the next pass.
+## WHAT TOOLS DOES THE WAR WANT RIGHT NOW? The two unarmed hulls earn a
+## factory slot only against a concrete need, and the list is capped at
+## what is actually wanted — one entry per hull we are missing, claimed by
+## the first facility that can build it (see _produce).
 ##
 ##   CRANE  something of ours is broken (or a bridge is down) and we own
 ##          no crane to fix it. _maintenance already knows what to do with
@@ -464,7 +567,7 @@ func crew_shortfall() -> int:
 ##   APC    we hold ground far from the fighting and have infantry to move.
 ##          Deliberately conservative: one is plenty, and a second is a
 ##          factory not making guns.
-func _utility_need(f: Node, choices: Array) -> String:
+func _utility_needs() -> Array:
 	var have_crane := 0
 	var have_apc := 0
 	for u in UnitRegistry.current.world_units():
@@ -474,17 +577,18 @@ func _utility_need(f: Node, choices: Array) -> String:
 			have_crane += 1
 		elif u.unit_name == "apc":
 			have_apc += 1
-	if have_crane == 0 and choices.has("vehicle:crane"):
+	var out: Array = []
+	if have_crane == 0:
 		for b in BuildingRegistry.all():
 			if not (b is Building2D) or not b.alive:
 				continue
 			var bld := b as Building2D
 			if bld.hp < bld.max_hp and (bld.is_bridge() or bld.team == team):
-				return "vehicle:crane"
-	if have_apc == 0 and choices.has("vehicle:apc") \
-			and _map != null and _map.zones_held >= 3:
-		return "vehicle:apc"
-	return ""
+				out.append("vehicle:crane")
+				break
+	if have_apc == 0 and _map != null and _map.zones_held >= 3:
+		out.append("vehicle:apc")
+	return out
 
 
 ## Robots while the army is small, hardware once it stands — and fresh
@@ -515,8 +619,16 @@ func _weighted_pick(options: Array, army_pop: int, _diff: int) -> String:
 				elif kind == "cannon":
 					w = maxi(w - 2, 1)
 			"expand":
+				# GROUND IS TAKEN BY THINGS THAT MOVE. A jeep crosses a Z
+				# map at 73px/s against a grunt's 60 and survives being
+				# shot at on the way, so expanding wants wheels as much as
+				# bodies — and a cannon can never take a sector at all.
 				if kind == "robot":
 					w += 1
+				elif kind == "vehicle":
+					w += 3
+				elif kind == "cannon":
+					w = maxi(w - 2, 1)
 		weights.append(w)
 	var total := 0
 	for w in weights:
@@ -659,9 +771,9 @@ func _track_lost_zones() -> void:
 			now_owned[z] = true
 	for z in _owned_snapshot:
 		if not now_owned.has(z):
-			_retake_at[z] = Time.get_ticks_msec() + RETAKE_MS
+			_retake_at[z] = clock_ms + RETAKE_MS
 	for z in _retake_at.keys():
-		if Time.get_ticks_msec() > int(_retake_at[z]) or now_owned.has(z):
+		if clock_ms > int(_retake_at[z]) or now_owned.has(z):
 			_retake_at.erase(z)
 	_owned_snapshot = now_owned
 
@@ -782,7 +894,7 @@ func _command_squads(robots: Array[Node], vehicles: Array[Node]) -> void:
 		if recall and sq.mission != AiSquad.Mission.DEFEND \
 				and sq.phase != AiSquad.Phase.FALLING_BACK:
 			sq.phase = AiSquad.Phase.FALLING_BACK
-		sq.tick(_order)
+		sq.tick(_order, clock_ms)
 		if sq.done or sq.size() == 0:
 			sq.disband()  # survivors fall back into the free pool
 			continue
@@ -1252,12 +1364,12 @@ func _issue(u: Node, t: Dictionary) -> void:
 			_order(u, Order.move_attack(Vector2(t.at)))
 			if String(t.kind) == "flag" and u.waypoints.is_empty():
 				# no route (island/enclosed): park this zone for a while
-				_zone_blacklist[t.zone] = Time.get_ticks_msec() + BLACKLIST_MS
+				_zone_blacklist[t.zone] = clock_ms + BLACKLIST_MS
 
 
 ## One assignment cycle, gated by the posture's own order delay.
 func _assign(robots: Array[Node], vehicles: Array[Node]) -> void:
-	var now := Time.get_ticks_msec()
+	var now := clock_ms
 	if now < _next_assign_ms:
 		return
 	var post := posture()
@@ -1448,7 +1560,7 @@ func _own_fort() -> Node2D:
 func _blacklisted(z: Node) -> bool:
 	if not _zone_blacklist.has(z):
 		return false
-	if Time.get_ticks_msec() > int(_zone_blacklist[z]):
+	if clock_ms > int(_zone_blacklist[z]):
 		_zone_blacklist.erase(z)
 		return false
 	return true

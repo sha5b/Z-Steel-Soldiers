@@ -320,9 +320,16 @@ static func run(ctx: Node) -> void:
 			GameSettings.sfx_volume = g_sfx
 			GameSettings.apply()
 			GameSettings.save()
-			# production panel wiring regression: enqueuing WITHOUT
-			# reselecting must refresh the window's readouts (they used
-			# to miss pure enqueues until the player reselected)
+			# production panel wiring regression: re-pointing the line
+			# WITHOUT reselecting must refresh the window's readouts (they
+			# used to miss it until the player reselected).
+			#
+			# The probe has to pick a DIFFERENT type than the one already
+			# running. Every producer now defaults to the first entry of
+			# its own list, so a facility is already building something the
+			# moment it is selected and the Time readout is already
+			# counting — re-selecting that same type is correctly a no-op,
+			# which is what this check used to do.
 			var panel: ProductionPanel = ctx.get_node_or_null(
 				"CanvasLayer/HUD/ProductionPanel")
 			var any_facility = null
@@ -338,15 +345,42 @@ static func run(ctx: Node) -> void:
 				SelectionManager.current.toggle_select(any_facility, false)
 				await tree.process_frame
 				MatchState.current.set_money(MatchState.current.player_team, 500)
-				var before: String = panel._time.text
-				any_facility.queue_unit("robot:grunt", true)
-				await tree.process_frame
-				await tree.process_frame
-				var after: String = panel._time.text
-				if after == before or after == "":
-					fails.append("panel readout did not refresh on enqueue (reselect bug)")
+				var roster: Array = any_facility.build_options()
+				var running: String = any_facility.selected_product()
+				var other := ""
+				for opt in roster:
+					if String(opt) != running:
+						other = String(opt)
+						break
+				if other == "":
+					fails.append("the player's producer offers only one type")
+				else:
+					var before: String = panel._time.text
+					any_facility.select_product(other, true)
+					await tree.process_frame
+					await tree.process_frame
+					var after: String = panel._time.text
+					if after == before or after == "":
+						fails.append("panel readout did not refresh when the "
+							+ "line was re-pointed %s -> %s (reselect bug)"
+							% [running, other])
+				# the object window shows WHAT is on the line, so it is
+				# checked while something IS on it
 				if panel._object.texture == null:
 					fails.append("panel object window empty while building")
+				# ...and STOPPING has to show too. Last, because it leaves
+				# the window legitimately empty.
+				if other != "":
+					var running_time: String = panel._time.text
+					any_facility.stop_line()
+					await tree.process_frame
+					await tree.process_frame
+					if panel._time.text == running_time:
+						fails.append("panel readout did not refresh when the "
+							+ "line was stopped")
+					if panel._object.texture != null:
+						fails.append("panel object window still shows a unit "
+							+ "on a stopped line")
 				SelectionManager.current.clear_selection()
 			# SIGNAL ARITY AUDIT. A 0-arg method connected to a 1-arg
 			# signal is not a parse error — it throws
@@ -1249,6 +1283,43 @@ static func run(ctx: Node) -> void:
 					break
 			rr.check(product.global_position.distance_to(rally) < 60.0,
 				"manned vehicle ignored the move order")
+		# A CAPTURE DOES NOT INHERIT THE RALLY POINT. It is the previous
+		# owner's instruction about where THEIR army gathers, and for a CPU
+		# owner that is wherever its brain was attacking — so a factory
+		# taken off the AI kept marching everything the new owner built at
+		# the old owner's objective, which from the player's side of the
+		# map is the player's own HQ. (The unit ON the line IS meant to
+		# change hands; that is scrap_queue, and it is asserted in
+		# --capture-test.)
+		var loser := 2 if MatchState.current.player_team != 2 else 3
+		vf.owner_team = loser
+		vf.team = loser
+		vz.owner_team = loser
+		var stolen_rally := vf.global_position + Vector2(-400.0, 0.0)
+		vf.set_rally(stolen_rally)
+		rr.check(vf.rally_point == stolen_rally, "the fixture rally did not stick")
+		# hand the sector back: _follow_zone_owner runs on the next tick
+		vz.owner_team = MatchState.current.player_team
+		vf._process(0.05)
+		rr.check(vf.owner_team == MatchState.current.player_team,
+			"the factory did not follow its zone back")
+		rr.check(vf.rally_point == Vector2.INF,
+			"a captured factory kept the previous owner's rally point %s — "
+			% vf.rally_point + "everything built there marches at their objective")
+		# and the next unit off the line stays home instead of marching
+		vf.queue_unit("vehicle:jeep", true)
+		var before_count := ctx.get_child_count()
+		var kept_home := true
+		for i in 400:
+			vf._process(0.05)
+			if ctx.get_child_count() > before_count:
+				for c in ctx.get_children():
+					if c is Vehicle2D and c.unit_name == "jeep" \
+							and c.has_move_target():
+						kept_home = false
+				break
+		rr.check(kept_home,
+			"a unit built after the capture still took a rally order")
 		rr.finish()
 	if "--dir-test" in args:
 		# zod convention: r000 faces +X (right), r090 up, r180 left, r270
@@ -2890,6 +2961,14 @@ static func run(ctx: Node) -> void:
 					if z3.owner_team == t:
 						zones2 += 1
 				return {"robots": robots2, "manned": manned2, "zones": zones2}
+			# REPRODUCIBLE SIM. This lane hand-steps a live 8-team war, so
+			# every hit roll, weighted production pick and squad shuffle
+			# comes out of the global RNG — unseeded, the same code gave
+			# 3 to 12 zones across runs and a genuine regression inside
+			# that band could not be told from noise. Seeding it, plus
+			# advancing the brain on GAME time (ai2.advance, not a bare
+			# _think), makes the run repeat exactly.
+			seed(20260823)
 			var before_t: Dictionary = count.call()
 			var manned_peak := 0
 			var empty_start := 0
@@ -2900,7 +2979,11 @@ static func run(ctx: Node) -> void:
 			# zone time (units must walk, capture zones, board hardware)
 			for i in 40:
 				MatchState.current.set_money(t, 2000)
-				ai2._think()
+				# 4 seconds of GAME time per iteration — the same 4s the
+				# entities below get. The brain's own cadences (assignment
+				# delay, line stickiness, zone blacklists) key off
+				# clock_ms, so they only advance if we advance it.
+				ai2.advance(4.0)
 				for c3 in ctx.get_children():
 					if c3 is RobotFactory or c3 is VehicleFactory or c3 is FortBuilding:
 						for j in 8:
@@ -2927,15 +3010,27 @@ static func run(ctx: Node) -> void:
 			# hold territory. (A brain that only charges the enemy fort
 			# passes none of these.)
 			var tac_rig := TestRig.start("TACTICS")
-			tac_rig.check(int(after_t.robots) > int(before_t.robots),
-				"the AI produced no robots in ~3 simulated minutes (%d -> %d)"
-				% [int(before_t.robots), int(after_t.robots)])
+			# FLOORS WITH TEETH. These used to be `> 0` and `> before`,
+			# which a brain that produced one robot and captured one flag
+			# would pass. Seeding the sim (above) and putting the brain's
+			# cadences on GAME time narrowed the spread from 4..27 robots
+			# and 3..12 zones to 24..29 and 8..13 across runs, so the
+			# floors can sit an order of magnitude above "did something"
+			# and still keep 2x headroom. Residual run-to-run variance is
+			# real and is NOT the RNG — see the note on ShellSolver in
+			# docs/HANDOFF.md.
+			var built: int = int(after_t.robots) - int(before_t.robots)
+			tac_rig.check(built >= 10,
+				"the AI produced %d robots in ~3 simulated minutes (%d -> %d)"
+				% [built, int(before_t.robots), int(after_t.robots)]
+				+ " — the observed floor is 20")
 			if empty_start > 0:
 				tac_rig.check(manned_peak > int(before_t.manned) or man_orders > 0,
 					"%d empty hulls on the map and the AI never crewed or "
 					% empty_start + "even ordered a robot onto one")
-			tac_rig.check(int(after_t.zones) > 0,
-				"the AI holds no territory after the sim")
+			tac_rig.check(int(after_t.zones) >= 4,
+				"the AI holds %d sectors after the sim — the observed floor "
+				% int(after_t.zones) + "is 8, so this brain is not expanding")
 			# ADAPTIVE POSTURE (ZBot::GoAllOut_3). The commitment table
 			# must follow the share of the map held, not sit on one
 			# setting: holding a fair share means a SMALL slice on a SLOW
@@ -3052,6 +3147,7 @@ static func run(ctx: Node) -> void:
 			StrategyTests.stance_table(ctx, strat_rig, ai2)
 			StrategyTests.single_owner(ctx, strat_rig, ai2)
 			StrategyTests.builds_and_commits(ctx, strat_rig, ai2)
+			StrategyTests.emplacements_never_manoeuvre(ctx, strat_rig, ai2)
 			strat_rig.finish("stance=%s squads=%d" % [
 				String(ai2.strategy().name), ai2._squads.size()])
 			var squad_rig := TestRig.start("SQUAD")

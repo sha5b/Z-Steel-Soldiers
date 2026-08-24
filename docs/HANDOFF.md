@@ -210,12 +210,84 @@ sprites. Now rasterised as whole-pixel rows with hard edges.
 
 ---
 
+## 5. The unit model was the real AI bug (2026-08-23, later)
+
+Player report: *"instead of going for the tank and jeep and using that to
+capture, it just took a turret and stayed on one bridge and clogged it."*
+
+**A CANNON IS A `Vehicle2D`.** That one implementation detail was wrong in
+every allocation pass, because `vehicles` is the list the brain hands to
+everything that MOVES things — the crossing guards, the squads, the push,
+the ZBot assignment, the repair-shop run. A cannon has `speed 0`.
+
+- Posted as a bridge guard it sat where it was built holding a post it
+  could never reach, while still consuming a slot against
+  `CHOKE_ARMY_SHARE`.
+- Drafted into a squad it was worse. It is armed, so `AiMap.power_of`
+  counted it toward the squad's strength; and `AiSquad.centre()` is the
+  MEAN of its members, so the squad's own rally point was dragged onto the
+  immobile gun and `_march` told every member to "close up on the squad" —
+  i.e. to walk back to the turret. **Measured: 3 of 4 guns were in
+  squads.** An army parked around one turret on one bridge is exactly what
+  that produces.
+
+`CpuAi._roster()` now partitions by **what a unit can DO**, not what it is:
+`robots` (crews, capturers), `mobile` (hardware with speed), `emplacements`
+(guns that hold the ground they stand on and take no manoeuvre order),
+`empty` (unmanned hulls). Every pass gets `mobile`, never the emplacements.
+`--tactics-test` zones went 8–13 → 13–14 on the same seed.
+
+Also: the `expand` stance now rewards mobile hardware (+3 vehicles, −2
+cannons). Ground is taken by things that move; a jeep crosses at 71px/s
+against a grunt's 60 and survives the trip.
+
+### The pattern worth remembering
+
+Every AI bug in this project has been the same shape — **the brain
+reasoning about ART CATEGORIES instead of ROLES**:
+
+| Bug | Category asked | Role that mattered |
+|---|---|---|
+| Factories on permanent APC/crane lines | "it's a vehicle" | can it shoot? (`damage > 0`) |
+| Tanks built with no infantry | "it's hardware" | does it need a crew? (spawns team 0) |
+| Turrets in squads on a bridge | "it's a `Vehicle2D`" | can it move? (`speed > 0`) |
+| Tanks unable to hurt a fort | "it's an explosive" | does it have `building_frac`? |
+
+Anything new added to the brain should be asked in role terms. The defs
+already carry every predicate needed (`speed`, `damage`, `building_frac`,
+`pop`, `cost`) — there is no need to invent a taxonomy.
+
+## 6. AI determinism (partial)
+
+`--tactics-test` hand-steps a live 8-team war, so its result came out of
+the global RNG and the wall clock. Two fixes:
+
+- **`CpuAi.clock_ms`** — a GAME-time clock accumulated from the frame
+  delta. Every cadence (assignment delay, line stickiness, zone blacklist,
+  retake window, squad muster timeout) read `Time.get_ticks_msec()`, which
+  is wrong in play and not only in tests: pause for two minutes and the
+  first frame after unpause fires every timer at once. `advance(delta)` is
+  the whole of `_process`, so a test drives the brain the way the engine
+  does.
+- **The lane seeds the RNG** (`seed(20260823)`).
+
+Result: spread narrowed from 4–27 robots / 3–12 zones to ~20–29 / 8–14,
+and the floors are now `>= 10 built` and `>= 4 sectors` instead of
+`> 0`. Several runs are bit-identical.
+
+**It is NOT bit-deterministic, and the residual variance is not the RNG.**
+`ShellSolver.deliver` lands damage on a `SceneTreeTimer`, which advances
+with real frames — and the lane hand-steps `_process` without advancing
+frames, so how many shells land mid-loop depends on machine load. Making
+it exact means giving ShellSolver its own game-time list of in-flight
+shells instead of tree timers. That is worth doing (it would also make
+shells respect `Engine.time_scale`) but it was not done here.
+
 ## Open / next
 
-1. **`--tactics-test` is noisy.** Zone count over a 3-minute sim ranges
-   ~3–12 across seeds. It asserts *floors*, not values, deliberately —
-   but a genuine regression inside that band would not be caught. Worth a
-   longer, seeded AI lane.
+1. **`ShellSolver` should run on game time**, not `SceneTreeTimer` — see
+   §6. It is the last source of run-to-run variance in `--tactics-test`
+   and it would also make shells in flight respect `Engine.time_scale`.
 2. **The pyro's 14 s fort razing.** Faithful to the reference table and
    still absurd next to a heavy tank's 18 s at 3× the cost. Fixing it
    means departing from a transcribed number; the player's call.

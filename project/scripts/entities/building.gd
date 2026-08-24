@@ -769,6 +769,14 @@ func set_rally(world_position: Vector2) -> void:
 	_rally_flag.visible = selected
 
 
+## Forget the gather point: produced units stay on the apron until the
+## new owner names a spot of their own.
+func clear_rally() -> void:
+	rally_point = Vector2.INF
+	if _rally_flag:
+		_rally_flag.visible = false
+
+
 func set_selected(value: bool) -> void:
 	selected = value
 	if _rally_flag:
@@ -834,6 +842,14 @@ func _follow_zone_owner() -> void:
 		return
 	team = owner_team
 	update_flag(owner_team)
+	# THE RALLY POINT DOES NOT CHANGE HANDS. It is the previous owner's
+	# instruction about where THEIR army should gather, and for a CPU
+	# owner that is wherever its brain was attacking — so a factory you
+	# take off the AI kept marching everything you built out of it at the
+	# objective it had picked, which from your side of the map is your own
+	# HQ. (`scrap_queue` below hands over the unit on the line, which IS
+	# meant to change hands; this is the opposite case.)
+	clear_rally()
 	if produces_anything():
 		# the unit on the line changes hands; the rest of the queue is
 		# refunded to the team that just lost the sector
