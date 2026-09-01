@@ -57,7 +57,17 @@ const RETAKE_MS := 45000  # a lost zone stays a priority target this long
 
 var team := 2
 var _profile: AiProfileDef
-var _accum := 0.0
+## Starts FULL so the first think fires on the first frame — a fresh
+## brain used to sit through one whole think interval (4-6s) before its
+## opening move, which read as "the AI does nothing for a long time".
+var _accum := 3600.0
+## THE BRAIN'S OWN DICE, seeded per match+team. The global randi made
+## every brain share one stream AND made headless sims unreproducible;
+## a seeded stream plays the same map + seat the same way twice, which
+## is what tuning and the tactic lanes need. Only the host runs brains
+## and every decision replays over the wire, so the host's stream is
+## the only one that matters.
+var rng := RandomNumberGenerator.new()
 var _zone_blacklist: Dictionary = {}   # zone node -> msec until skipped
 var _retake_at: Dictionary = {}        # zone node -> msec lost at
 var _owned_snapshot: Dictionary = {}   # zone node -> true (last think)
@@ -85,6 +95,8 @@ var _stance := "consolidate"
 
 func _init(cpu_team: int = 2) -> void:
 	team = cpu_team
+	# GameState.current_map is set before the loader spawns brains
+	rng.seed = hash("zai:%d:%s" % [team, GameState.current_map])
 
 
 # ---- the relay seam ----------------------------------------------------
@@ -216,6 +228,26 @@ func _think() -> void:
 	_update_rallies()
 
 
+## SORT BY MARCH, NOT BY CROW-FLIGHT — the one "nearest" this brain
+## allows. `walk_distance` measures over the nav grid, so a unit across
+## the river or behind the fort ranks where its BOOTS put it, not where
+## a ruler does, and a unit that cannot legally arrive at all ranks
+## last instead of first. Ties break by straight line. `dists` is
+## computed once: A* inside a sort comparator would be quadratic.
+func _sort_by_walk(units: Array, anchor: Vector2) -> void:
+	var dists := {}
+	for u in units:
+		if is_instance_valid(u):
+			dists[u] = _map.walk_distance(anchor, u.global_position)
+	units.sort_custom(func(a, b):
+		var da: float = float(dists.get(a, INF))
+		var db: float = float(dists.get(b, INF))
+		if da == db:
+			return anchor.distance_squared_to((a as Node2D).global_position) \
+				< anchor.distance_squared_to((b as Node2D).global_position)
+		return da < db)
+
+
 # ------------------------- holding ground -------------------------
 
 ## A Z map's real chokepoints are its BRIDGES. Infantry fords a river,
@@ -329,16 +361,14 @@ func _hold_chokepoints(robots: Array[Node], vehicles: Array[Node]) -> void:
 				here += 1
 		if here >= per_spot:
 			continue
-		free_units.sort_custom(func(a, b):
-			return a.global_position.distance_squared_to(spot) \
-				< b.global_position.distance_squared_to(spot))
+		_sort_by_walk(free_units, spot)
 		var guard: Node = free_units.pop_front()
 		if not is_instance_valid(guard):
 			continue
 		# DEFEND, not move: the unit walks there and re-holds the post if
 		# it gets shoved off, which is the whole point of a guard
 		_order(guard, Order.move_defend(spot
-			+ Vector2(randf_range(-18.0, 18.0), randf_range(-18.0, 18.0))))
+			+ Vector2(rng.randf_range(-18.0, 18.0), rng.randf_range(-18.0, 18.0))))
 		_choke_claims[spot] = guard
 		posted += 1
 
@@ -369,7 +399,8 @@ func _frontier_facility() -> Node:
 	for f in get_tree().get_nodes_in_group(Groups.FACILITIES):
 		if not f.alive or f.team != team:
 			continue
-		var d: float = (f as Node2D).global_position.distance_squared_to(target)
+		var d: float = _map.walk_distance(target,
+			(f as Node2D).global_position)
 		if d < pick_d:
 			pick_d = d
 			pick = f
@@ -633,7 +664,7 @@ func _weighted_pick(options: Array, army_pop: int, _diff: int) -> String:
 	var total := 0
 	for w in weights:
 		total += int(w)
-	var roll := randi() % total
+	var roll := rng.randi() % total
 	for i in options.size():
 		roll -= int(weights[i])
 		if roll < 0:
@@ -674,14 +705,12 @@ func _defend(robots: Array[Node], vehicles: Array[Node]) -> void:
 	for threat in threats:
 		if defenders.is_empty() or not is_instance_valid(threat):
 			continue
-		defenders.sort_custom(func(a, b):
-			return a.global_position.distance_squared_to(threat.global_position) \
-				< b.global_position.distance_squared_to(threat.global_position))
+		_sort_by_walk(defenders, threat.global_position)
 		for i in mini(responders, defenders.size()):
 			var d: Node = defenders.pop_front()
 			if is_instance_valid(d):
 				_order(d, Order.move_attack(threat.global_position
-					+ Vector2(randf_range(-14.0, 14.0), randf_range(-14.0, 14.0))))
+					+ Vector2(rng.randf_range(-14.0, 14.0), rng.randf_range(-14.0, 14.0))))
 
 
 # ------------------------- manning hardware -------------------------
@@ -705,7 +734,8 @@ func _man_hardware(robots: Array[Node], empty_hardware: Array[Node]) -> void:
 		for hw in empty_hardware:
 			if not is_instance_valid(hw) or not hw.alive or hw.manned:
 				continue
-			var dist: float = r.global_position.distance_to(hw.global_position)
+			var dist: float = _map.walk_distance(
+				r.global_position, hw.global_position)
 			if dist > radius:
 				continue
 			var score := dist + int(_p().man_priority.get(hw.unit_name, 5)) * 30.0
@@ -748,7 +778,7 @@ func _maintenance(vehicles: Array[Node]) -> void:
 			var best_b: Node = null
 			var best_d := INF
 			for b in damaged_buildings:
-				var d: float = v.global_position.distance_squared_to(
+				var d: float = _map.walk_distance(v.global_position,
 					b.world_footprint().get_center())
 				if d < best_d:
 					best_d = d
@@ -1023,12 +1053,20 @@ func _strike_structures() -> Array:
 			forts.append(bld)
 		elif bld.produces_anything():
 			producers.append(bld)
+	# march order from home, not crow-flight: the fort across the river
+	# is the LAST thing this brain wants, however close it looks
 	var from: Vector2 = _map.home if _map.home != Vector2.INF else Vector2.ZERO
-	var by_distance := func(a, b):
-		return from.distance_squared_to(a.visual_center()) \
-			< from.distance_squared_to(b.visual_center())
-	producers.sort_custom(by_distance)
-	forts.sort_custom(by_distance)
+	for list in [producers, forts]:
+		var dists := {}
+		for b in list:
+			dists[b] = _map.walk_distance(from, b.visual_center())
+		list.sort_custom(func(a, b):
+			var da: float = float(dists.get(a, INF))
+			var db: float = float(dists.get(b, INF))
+			if da == db:
+				return from.distance_squared_to(a.visual_center()) \
+					< from.distance_squared_to(b.visual_center())
+			return da < db)
 	return producers + forts
 
 
@@ -1097,9 +1135,7 @@ func _reinforce(sq: AiSquad, job: Dictionary, pool: Array[Node],
 func _draft(sq: AiSquad, pool: Array[Node], want: float,
 		job: Dictionary) -> float:
 	var anchor: Vector2 = job.staging if job.staging != Vector2.INF else job.at
-	pool.sort_custom(func(a, b):
-		return anchor.distance_squared_to((a as Node2D).global_position) \
-			< anchor.distance_squared_to((b as Node2D).global_position))
+	_sort_by_walk(pool, anchor)
 	var taken := 0.0
 	while not pool.is_empty() and sq.size() < MAX_SQUAD and taken < want:
 		var u: Node = pool.pop_front()
@@ -1120,7 +1156,7 @@ func _staging_toward(target: Vector2) -> Vector2:
 		var entry: Dictionary = _map.entry_of(z)
 		if entry.is_empty() or int(entry.owner) != team:
 			continue
-		var d: float = (entry.at as Vector2).distance_squared_to(target)
+		var d: float = _map.walk_distance(target, entry.at)
 		if d < best_d:
 			best_d = d
 			best = entry.at
@@ -1137,7 +1173,7 @@ func _fallback_near(from: Vector2) -> Vector2:
 	var best := Vector2.INF
 	var best_d := INF
 	for r in _map.rally_zones():
-		var d: float = (r.at as Vector2).distance_squared_to(from)
+		var d: float = _map.walk_distance(from, r.at)
 		if d < best_d:
 			best_d = d
 			best = r.at
@@ -1216,6 +1252,15 @@ func _collect_targets(all_out: bool) -> Array:
 	var flags: Array = []
 	for z in MatchState.current.zones:
 		if z.owner_team == team or _blacklisted(z):
+			continue
+		# A HELD ENEMY FLAG IS NOT A ONE-ROBOT ERRAND. The assignment used
+		# to offer every flag we do not own, so on first think the whole
+		# starting squad marched INTO the nearest enemy's home sector —
+		# arriving by the half minute and dying on their fort's guns (or
+		# worse: razing a defenceless owner and ending the match at
+		# t=16s). Held ground is SQUAD work (see _strike_jobs); single
+		# units grab neutral flags, until the posture goes all out.
+		if z.owner_team != 0 and not all_out:
 			continue
 		var bias := 1.0
 		if _zone_has_building(z):
@@ -1468,7 +1513,7 @@ func _attack_destination() -> Vector2:
 	var diff := clampi(MatchState.current.ai_difficulty, 0, 2)
 	var fort := _own_fort()
 	var from: Vector2 = fort.visual_center() if fort else Vector2.ZERO
-	var want_factory := randf() < 0.5 + 0.15 * diff
+	var want_factory := rng.randf() < 0.5 + 0.15 * diff
 	var best := Vector2.INF
 	var best_d := INF
 	# "buildings" carries forts only — factories are in "all_buildings"

@@ -298,6 +298,7 @@ func request_path(from: Vector2, to: Vector2, for_kind := "robot") -> PackedVect
 	var path := grid.get_point_path(a, b)
 	if path.is_empty():
 		return PackedVector2Array()  # no route for this kind: refuse
+	path = _repair_diagonal_corners(path, grid)
 	path = string_pull(path, for_kind)
 	# land exactly on the clicked point instead of the last cell centre,
 	# but only when that final approach is itself clear — a beeline from
@@ -309,10 +310,74 @@ func request_path(from: Vector2, to: Vector2, for_kind := "robot") -> PackedVect
 	return path
 
 
+## A route that treats OTHER UNITS as ground to route around. The base
+## grid knows terrain and buildings only, so a unit wedged against a
+## parked crowd re-planned the exact route it was stuck on — through the
+## bodies. Each `avoid` entry (a world position of a stationary unit) has
+## its cell stamped solid for the duration of ONE query and restored
+## right after; the query therefore inherits every request_path
+## guarantee, including string-pulling that respects the stamps. Cells
+## adjacent to `from` are never stamped (a crowd pressed against the
+## asker must not wall it in), and when the blockers seal every route the
+## plain path is returned — walking at a crowd that WILL disperse beats
+## refusing the order.
+func request_path_avoiding(from: Vector2, to: Vector2, for_kind: String,
+		avoid: Array) -> PackedVector2Array:
+	var grid := grid_for(for_kind)
+	if grid == null or avoid.is_empty():
+		return request_path(from, to, for_kind)
+	var start := cell_at(from)
+	var goal := cell_at(to)
+	var stamped: Array[Vector2i] = []
+	for pos in avoid:
+		var c := cell_at(pos)
+		if c == goal or (absi(c.x - start.x) <= 1 and absi(c.y - start.y) <= 1):
+			continue
+		if not grid.region.has_point(c) or grid.is_point_solid(c):
+			continue
+		grid.set_point_solid(c, true)
+		stamped.append(c)
+	var path := request_path(from, to, for_kind)
+	for c in stamped:
+		grid.set_point_solid(c, false)
+	if path.is_empty():
+		return request_path(from, to, for_kind)
+	return path
+
+
 ## How far ahead a corner may be skipped, in path points. Unbounded
 ## look-ahead makes smoothing quadratic on long routes; 24 cells is far
 ## more than any single straight run needs.
 const SMOOTH_WINDOW := 24
+
+
+## DIAGONAL LEGS MUST NOT SQUEEZE CORNERS. AStarGrid2D's
+## ONLY_IF_NO_OBSTACLES allows a diagonal move between two open cells
+## whose OTHER shared neighbour is solid — the straight leg between the
+## cell centres then clips that solid corner. Invisible while the nav
+## grid only held rocks and buildings, and obvious the moment terrain
+## impassability arrived and routes ran along cliff walls. The repair
+## inserts the open shared cell, turning one corner-grazing diagonal
+## into two orthogonal legs on open ground.
+func _repair_diagonal_corners(path: PackedVector2Array, grid: AStarGrid2D) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	out.append(path[0])
+	for i in range(1, path.size()):
+		var prev := cell_at(out[out.size() - 1])
+		var next := cell_at(path[i])
+		var dx := next.x - prev.x
+		var dy := next.y - prev.y
+		if absi(dx) == 1 and absi(dy) == 1:
+			var shared_a := prev + Vector2i(dx, 0)
+			var shared_b := prev + Vector2i(0, dy)
+			var a_open := grid.region.has_point(shared_a) \
+				and not grid.is_point_solid(shared_a)
+			var b_open := grid.region.has_point(shared_b) \
+				and not grid.is_point_solid(shared_b)
+			if a_open != b_open:
+				out.append(cell_center(shared_a if a_open else shared_b))
+		out.append(path[i])
+	return out
 
 
 ## Drop the corners nobody has to turn at.
@@ -378,11 +443,58 @@ func segment_clear(a: Vector2, b: Vector2, for_kind := "robot") -> bool:
 	var grid := grid_for(for_kind)
 	if grid == null:
 		return true
-	var steps := int(a.distance_to(b) / 4.0) + 1
-	for i in range(1, steps + 1):
-		if blocked(grid, cell_at(a.lerp(b, float(i) / float(steps)))):
+	## Exact cell walk (Amanatides–Woo): visits EVERY cell the segment
+	## passes through, and each solid one gets a shrunk-rect intersection
+	## test. Uniform marching — 4px, even 2px — can straddle the thin
+	## chord where a leg grazes a solid corner and call the leg clear;
+	## the route audit caught a walker's centre doing exactly that on
+	## cliff-heavy terrain.
+	var diff := b - a
+	var len := diff.length()
+	if len < 0.01:
+		return not blocked(grid, cell_at(a))
+	var dir := diff / len
+	var cell := cell_at(a)
+	var step_x := 1 if dir.x > 0.0 else -1
+	var step_y := 1 if dir.y > 0.0 else -1
+	var t_delta_x := absf(CELL / dir.x) if dir.x != 0.0 else INF
+	var t_delta_y := absf(CELL / dir.y) if dir.y != 0.0 else INF
+	var t_max_x := absf((float(cell.x + (1 if step_x > 0 else 0)) * CELL - a.x) / dir.x) \
+		if dir.x != 0.0 else INF
+	var t_max_y := absf((float(cell.y + (1 if step_y > 0 else 0)) * CELL - a.y) / dir.y) \
+		if dir.y != 0.0 else INF
+	for i in int(len) + 3:
+		if blocked(grid, cell) and _seg_cuts_cell(a, b, cell):
 			return false
+		if t_max_x <= t_max_y:
+			if t_max_x > len:
+				return true
+			cell.x += step_x
+			t_max_x += t_delta_x
+		else:
+			if t_max_y > len:
+				return true
+			cell.y += step_y
+			t_max_y += t_delta_y
 	return true
+
+
+## Does the segment actually cross this cell's INTERIOR (1px epsilon
+## shave so a leg running exactly along a cell border stays clear)?
+func _seg_cuts_cell(a: Vector2, b: Vector2, cell: Vector2i) -> bool:
+	var r := Rect2(Vector2(cell) * CELL, Vector2(CELL, CELL)).grow(-0.01)
+	if r.has_point(a) or r.has_point(b):
+		return true
+	var tl := r.position
+	var tr := Vector2(r.end.x, r.position.y)
+	var br := r.end
+	var bl := Vector2(r.position.x, r.end.y)
+	for edge in [[tl, tr], [tr, br], [br, bl], [bl, tl]]:
+		var hit = Geometry2D.segment_intersects_segment(
+			a, b, edge[0], edge[1])
+		if hit != null:
+			return true
+	return false
 
 
 ## Nearest open cell to `cell` (itself when open), or (-1,-1) when the

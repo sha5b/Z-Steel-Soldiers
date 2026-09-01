@@ -132,11 +132,22 @@ static func flag_frames(team := 0) -> SpriteFrames:
 static var _flag_cache := {}
 
 
+## Built frame sets are SHARED resources — an AnimatedSprite2D never
+## mutates its SpriteFrames, so every builder below caches its result.
+## The per-spawn rebuild probed the filesystem hundreds of times per
+## type+team, and match start (plus every factory output spike) paid for
+## all of it.
+static var _frames_cache := {}
+
+
 ## Full frame set for a robot type: stand/walk (shared art), fire (type
 ## art), a random death variant, idle humor flavors and the victory
 ## celebration. Missing art is skipped silently.
 static func robot_frames(unit_type: String, team: int) -> SpriteFrames:
 	var tn := team_name(team)
+	var key := "robot:%s:%s" % [unit_type, tn]
+	if _frames_cache.has(key):
+		return _frames_cache[key]
 	var frames := SpriteFrames.new()
 	# stand/walk from the shared folder
 	for anim in ["stand", "walk"]:
@@ -186,6 +197,7 @@ static func robot_frames(unit_type: String, team: int) -> SpriteFrames:
 		_add_directional_or_numbered(frames, gesture, tn)
 	# victory celebration
 	_add_numbered(frames, "celebrate", tn, "celebrate", 6.0, true)
+	_frames_cache[key] = frames
 	return frames
 
 
@@ -252,6 +264,9 @@ static func _add_numbered(frames: SpriteFrames, anim: String, tn: String,
 ## - `wasted[_<team>]` is the wreck; tanks have none — they explode.
 static func vehicle_frames(asset_dir: String, team: int, damaged := false) -> SpriteFrames:
 	var tn := team_name(team)
+	var key := "veh:%s:%s:%s" % [asset_dir, tn, damaged]
+	if _frames_cache.has(key):
+		return _frames_cache[key]
 	var frames := SpriteFrames.new()
 	for anim in ["empty", "base", "fire"]:
 		if anim == "fire" and _fire_art_is_overlay(asset_dir, tn):
@@ -335,6 +350,7 @@ static func vehicle_frames(asset_dir: String, team: int, damaged := false) -> Sp
 		frames.add_frame("wasted", load(wasted))
 	else:
 		frames.remove_animation("wasted")
+	_frames_cache[key] = frames
 	return frames
 
 
@@ -387,6 +403,9 @@ static func apc_open_set(asset_dir: String, team: int) -> Dictionary:
 ## "aim_off", "scans"} or {} when the type has no layer.
 static func turret_set(unit_name: String, asset_dir: String, team: int) -> Dictionary:
 	var tn := team_name(team)
+	var key := "turret:%s:%s:%s" % [unit_name, asset_dir, tn]
+	if _frames_cache.has(key):
+		return _frames_cache[key]
 	var frames := SpriteFrames.new()
 	var found := false
 	var canvas_off := PackedVector2Array()
@@ -452,7 +471,9 @@ static func turret_set(unit_name: String, asset_dir: String, team: int) -> Dicti
 			frames.add_frame("pop", tex)
 	# hull/aim offsets live on the per-type scenes (exported DoRender
 	# tables) — only the art-derived canvas alignment is computed here
-	return {"frames": frames, "canvas_off": canvas_off}
+	var out := {"frames": frames, "canvas_off": canvas_off}
+	_frames_cache[key] = out
+	return out
 
 
 ## Crane: arm layer (INVERTED rotation numbering — facing d lives in
@@ -761,6 +782,9 @@ static func _fire_art_is_overlay(asset_dir: String, tn: String) -> bool:
 ## have no animation. Returns {"frames", "offsets"} or {}.
 static func jeep_wheel_set(asset_dir: String, team: int, manned: bool) -> Dictionary:
 	var tn := team_name(team)
+	var key := "jeepw:%s:%s:%s" % [asset_dir, tn, manned]
+	if _frames_cache.has(key):
+		return _frames_cache[key]
 	var frames := SpriteFrames.new()
 	var found := false
 	var offsets := PackedVector2Array()
@@ -793,13 +817,18 @@ static func jeep_wheel_set(asset_dir: String, team: int, manned: bool) -> Dictio
 					_canvas_size("%s/under_r%03d_n00.png" % [asset_dir, d * 45]))
 	if not found:
 		return {}
-	return {"frames": frames, "offsets": offsets}
+	var out := {"frames": frames, "offsets": offsets}
+	_frames_cache[key] = out
+	return out
 
 
 ## Generic numbered-frame scan for effect folders:
 ## `<dir>/<name>_n00.png` ... Returns an empty-framed result when no art
 ## exists (caller decides on a fallback).
 static func effect_frames(dir: String, name: String, fps: float) -> SpriteFrames:
+	var key := "fx:%s:%s:%s" % [dir, name, fps]
+	if _frames_cache.has(key):
+		return _frames_cache[key]
 	var frames := SpriteFrames.new()
 	frames.add_animation("fx")
 	frames.set_animation_speed("fx", fps)
@@ -813,11 +842,15 @@ static func effect_frames(dir: String, name: String, fps: float) -> SpriteFrames
 		frame += 1
 	if frame == 0:
 		frames.remove_animation("fx")
+	_frames_cache[key] = frames
 	return frames
 
 
 ## Directional effect frames (vehicle smoke/dust): `<dir>/<name>_r<deg>_n<frame>.png`.
 static func dir_effect_frames(dir: String, name: String, d: int, fps: float) -> SpriteFrames:
+	var key := "dfx:%s:%s:%d:%s" % [dir, name, d, fps]
+	if _frames_cache.has(key):
+		return _frames_cache[key]
 	var frames := SpriteFrames.new()
 	frames.add_animation("fx")
 	frames.set_animation_speed("fx", fps)
@@ -831,4 +864,5 @@ static func dir_effect_frames(dir: String, name: String, d: int, fps: float) -> 
 		frame += 1
 	if frame == 0:
 		frames.remove_animation("fx")
+	_frames_cache[key] = frames
 	return frames

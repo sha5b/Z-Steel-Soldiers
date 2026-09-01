@@ -130,6 +130,8 @@ func _ready() -> void:
 	scale = Vector2(sprite_scale, sprite_scale)
 	collision_layer = 1
 	collision_mask = 2  # physics solves unit-vs-BUILDING only
+	if GameSettings.rvo_avoidance:
+		_build_avoidance()
 	_build_frames()
 
 
@@ -138,6 +140,7 @@ func _ready() -> void:
 ## dangling reference. die() additionally runs the elimination check —
 ## freeing without dying must NOT eliminate a team.
 func _exit_tree() -> void:
+	_free_avoidance()
 	if UnitRegistry.current:
 		UnitRegistry.current.forget(self)
 	set_selected(false)
@@ -163,6 +166,7 @@ func _process(delta: float) -> void:
 	if not alive:
 		return
 	_fire_timer = maxf(0.0, _fire_timer - delta)
+	_alert_timer = maxf(0.0, _alert_timer - delta)
 	if _entering != null:
 		_enter_timer += delta
 		if _enter_timer > 0.9:  # gesture missing or signal never came
@@ -253,8 +257,38 @@ const UNJAM_STEP := 20.0     # one cell plus a body: out of the pocket, no furth
 const UNJAM_SLACK := 1.5     # a detour may cost this much more than going straight
 
 
+## How far around a stuck unit other STANDING units are treated as
+## obstacles when it re-plans (see NavWorld.request_path_avoiding).
+const UNJAM_AVOID_RADIUS := 96.0
+
+
+## World positions of nearby stationary units — the bodies a stuck
+## re-route must plan around. Moving units are left out: they will have
+## cleared the cell by the time we get there, and stamping them solid
+## would make two crossing columns refuse each other's ground.
+func _stationary_blockers() -> Array:
+	var out: Array = []
+	for u in UnitRegistry.current.world_units():
+		if u == self or not (u is Unit2D) or not u.alive or u.carried:
+			continue
+		if u.velocity.length_squared() > 4.0:
+			continue
+		if global_position.distance_to(u.global_position) > UNJAM_AVOID_RADIUS:
+			continue
+		out.append(u.global_position)
+	return out
+
+
 func _unjam() -> void:
-	var direct := NavWorld.current.request_path(global_position, move_target, kind)
+	# PARKED UNITS ARE PART OF THE MAP for a stuck re-route. The plain
+	# grid only knows terrain and buildings, so a unit wedged against a
+	# standing crowd asked for a path THROUGH the crowd, got the same
+	# route back, and burned its repath budget in place — "units get
+	# stuck in other units". The avoiding query routes around every
+	# stationary body near us and falls back to the plain route when the
+	# crowd seals the only way through.
+	var direct := NavWorld.current.request_path_avoiding(
+		global_position, move_target, kind, _stationary_blockers())
 	if _repaths <= 2:
 		waypoints = direct
 		return
@@ -293,11 +327,64 @@ static func _route_length(from: Vector2, route: PackedVector2Array) -> float:
 	return total
 
 
+## RVO AVOIDANCE PILOT — NavigationServer2D agents, the server's own
+## RVO layer (C++, built for exactly this: crowds that must not knot).
+## The unit's DESIRED velocity goes in through agent_set_velocity()
+## each physics tick; the server answers through the avoidance callback
+## with a SAFE velocity that flows around neighbours instead of into
+## them. One tick of latency is inherent (the answer arrives during the
+## server sync, after the request). This is the raw server API, not a
+## NavigationAgent2D wrapper — the wrapper's deferred submission fought
+## the hand-driven _steer. A pilot beside _separation, not a
+## replacement: separation still resolves sub-cell overlap and keeps
+## bodies out of walls; RVO adds the cooperative yield that makes an
+## army MARCH like one. Off by default — GameSettings.rvo_avoidance.
+var _agent := RID()
+var _rvo_safe := Vector2.ZERO
+var _rvo_has := false
+
+
+func _build_avoidance() -> void:
+	_agent = NavigationServer2D.agent_create()
+	NavigationServer2D.agent_set_map(_agent, get_world_2d().navigation_map)
+	NavigationServer2D.agent_set_avoidance_enabled(_agent, true)
+	NavigationServer2D.agent_set_radius(_agent,
+		float(NavWorld.BODY_HALF.get(kind, 7.0)))
+	NavigationServer2D.agent_set_max_speed(_agent, speed)
+	NavigationServer2D.agent_set_neighbor_distance(_agent, 64.0)
+	NavigationServer2D.agent_set_max_neighbors(_agent, 8)
+	NavigationServer2D.agent_set_avoidance_layers(_agent, 1)
+	NavigationServer2D.agent_set_avoidance_mask(_agent, 1)
+	NavigationServer2D.agent_set_avoidance_callback(_agent, _on_rvo_safe)
+
+
+func _on_rvo_safe(safe: Vector2) -> void:
+	_rvo_safe = safe
+	_rvo_has = true
+
+
+func _free_avoidance() -> void:
+	if _agent != RID():
+		NavigationServer2D.agent_set_avoidance_callback(_agent, Callable())
+		NavigationServer2D.free_rid(_agent)
+		_agent = RID()
+
+
 ## THE movement engine — one implementation for robots and vehicles
 ## (Vehicle2D used to carry a copy that drifted: arrivals stopped arming
 ## defend posts and clearing orders for hardware). Per-type differences
 ## live in the hook methods below.
+## FIRING PINS THE FACING for a beat. The shot snaps `_last_dir` at the
+## target; without the pin, the next steering tick snapped it right back
+## to the travel direction, so a jeep trading fire on the move flicked
+## between two facings every shot — the "spasm". While the pin runs the
+## chassis keeps pointing where it shot.
+const FACE_LOCK_SECONDS := 0.35
+var _face_lock := 0.0
+
+
 func _steer(delta: float) -> void:
+	_face_lock = maxf(0.0, _face_lock - delta)
 	if has_move_target():
 		var next: Vector2 = waypoints[0] if not waypoints.is_empty() else move_target
 		var offset := next - global_position
@@ -306,13 +393,29 @@ func _steer(delta: float) -> void:
 				waypoints.remove_at(0)
 			else:
 				_arrive()
+		elif _amove_hold:
+			velocity = Vector2.ZERO  # AGRO: hold this ground and shoot
 		else:
 			velocity = offset.normalized() * speed * _run_multiplier(delta)
+	if _agent != RID():
+		# position, desired in, safe out (last tick's answer — see the
+		# pilot note). A holding unit reports zero velocity, so marchers
+		# route AROUND it instead of pushing it.
+		NavigationServer2D.agent_set_position(_agent, global_position)
+		if velocity.length_squared() > 0.01:
+			var wanted := velocity
+			if _rvo_has:
+				velocity = _rvo_safe.limit_length(wanted.length())
+			NavigationServer2D.agent_set_velocity(_agent, wanted)
+		else:
+			NavigationServer2D.agent_set_velocity(_agent, Vector2.ZERO)
+		_rvo_has = false
 	if not has_move_target():
 		_run_flag = false
 	run_stamina = minf(1.0, run_stamina + delta * 0.08)
 	if velocity.length_squared() > 1.0:
-		_last_dir = _angle_to_dir(velocity.angle())
+		if _face_lock <= 0.0:
+			_last_dir = _angle_to_dir(velocity.angle())
 		_play_move()
 		var dist_before := offset_to_next_waypoint()
 		# the final leg has no waypoint — offset_to_next_waypoint is INF
@@ -369,7 +472,9 @@ func _play_move() -> void:
 
 
 func _play_idle() -> void:
-	_play("fire" if _target else "stand", _last_dir)
+	# weapon-up while engaged OR freshly shot at — a robot standing slack
+	# in the middle of incoming fire read as ignoring the fight
+	_play("fire" if _target != null or _alert_timer > 0.0 else "stand", _last_dir)
 
 
 ## Called with the step length after each actual move (vehicles stamp
@@ -585,13 +690,28 @@ func play_gesture(gesture: String) -> void:
 		sprite.play(anim)
 
 
-func _combat() -> void:
+## AGRO halt handoff. _combat runs in _process and zeroes velocity to
+## stop and fight — but _steer runs in the NEXT physics tick and used
+## to overwrite it from the waypoint, so attack-move never actually
+## halted: units fired on the move. The flag carries the halt across
+## the tick boundary; _steer holds still while it is set.
+var _amove_hold := false
+
+
+## Shared amove acquisition (robots and crewed hardware): halt and
+## engage anything in range, resume the march once it is clear.
+func _amove_probe() -> void:
+	_amove_hold = false
 	if attack_move and has_move_target():
-		# AGRO order: halt and engage anything in range, resume after
 		var probe := _find_target()
 		if probe != null:
+			_amove_hold = true
 			velocity = Vector2.ZERO
 			_target = probe
+
+
+func _combat() -> void:
+	_amove_probe()
 	if velocity.length_squared() > 4.0:
 		return  # no fire-and-move yet
 	_grenade_timer = maxf(0.0, _grenade_timer - get_process_delta_time())
@@ -618,7 +738,12 @@ func _combat() -> void:
 		var to_target := _target_point() - global_position
 		if to_target.length() <= range_px * sprite_scale:
 			_last_dir = _angle_to_dir(to_target.angle())
-			_fire_timer = cooldown
+			_face_lock = FACE_LOCK_SECONDS
+			# JITTERED RELOAD: a flat cooldown fires a whole squad in
+			# lockstep volleys forever — the machine-like cadence in the
+			# "we don't randomize stuff" report. ±10% desynchronises the
+			# line within a few shots without changing the average rate.
+			_fire_timer = cooldown * randf_range(0.9, 1.1)
 			_shoot(_target, to_target)
 
 
@@ -678,15 +803,6 @@ func _shoot(target: Node2D, to_target: Vector2) -> void:
 	var def := ContentDB.def_for(kind, unit_name)
 	var muzzle := global_position + to_target.normalized() * 6.0
 	var amount := damage
-	# the lid over a tank's crew hatch opens while it fires — that is the
-	# window a marksman takes (original: can_be_sniped = lid_open)
-	if def.snipe_chance > 0.0 and target is Vehicle2D and target.manned \
-			and target.lid_open and randf() < def.snipe_chance:
-		Fx.laser(muzzle, target.global_position) \
-			if def.weapon == "laser" else Fx.bullet(muzzle, target.global_position)
-		Fx.play("muzzle", muzzle)
-		target.eject_driver()
-		return
 	Combat.fire(self, def, muzzle, target, amount)
 
 
@@ -696,6 +812,44 @@ func _shoot(target: Node2D, to_target: Vector2) -> void:
 const DISTRESS_AT := 0.6
 const DISTRESS_GAP := 9.0
 var _distress_quiet_until := 0.0
+
+
+## RETALIATION. A unit that takes a hit fights back and RAISES ITS
+## NEIGHBOURS: idle friends inside the alert radius join in, so a
+## sniper picking a squad apart from beyond its return range no longer
+## gets ignored by everyone he is not currently shooting ("when one
+## gets hit the others don't go attack it"). Team-agnostic — the AI's
+## squads answer fire the same way. A unit under real orders, holding
+## a DEFEND post, or already fighting is never diverted.
+const ALERT_RADIUS := 120.0
+## How long a hit keeps a standing unit in its weapon-up stance.
+const ALERT_SECONDS := 3.0
+var _alert_timer := 0.0
+
+
+func notify_attacked(shooter: Node2D) -> void:
+	if not alive or carried:
+		return
+	_retaliate(shooter)
+	for u in UnitRegistry.current.world_units():
+		if u != self and u is Unit2D and u.alive and not u.carried \
+				and u.team == team \
+				and u.global_position.distance_to(global_position) < ALERT_RADIUS:
+			u._retaliate(shooter)
+
+
+func _retaliate(shooter: Node2D) -> void:
+	_alert_timer = ALERT_SECONDS  # weapon up (see _play_idle)
+	if shooter == null or not is_instance_valid(shooter):
+		return
+	if not (shooter is Unit2D) or not shooter.alive \
+			or shooter.team == team or shooter.team == 0:
+		return
+	# only a unit with genuinely nothing to do gives chase; a held
+	# DEFEND post outranks revenge (the post would be lost to the order)
+	if not _is_at_rest() or defend_post != Vector2.INF:
+		return
+	_auto_order(Order.attack(shooter))
 
 
 func take_damage(amount: int) -> void:
@@ -856,6 +1010,7 @@ func halt() -> void:
 	velocity = Vector2.ZERO
 	_target = null
 	_run_flag = false
+	_amove_hold = false
 	defend_post = Vector2.INF
 	_order_done()
 
@@ -901,7 +1056,7 @@ func _begin_order(new_order: Order) -> void:
 		attack_move = false
 		enter_target = null
 		attack_target = order.target
-		_chase_repath()
+		_chase_repath(true)
 		state = State.MOVING
 	elif order.type == Order.Type.DEFEND \
 			and global_position.distance_to(order.position) <= HOLD_REACH:
@@ -968,7 +1123,13 @@ func _order_anchor() -> Vector2:
 	return order.target.global_position
 
 
-func _begin_move(world_pos: Vector2) -> void:
+## `announce` = this move is the player's own fresh order: play the
+## acknowledgement and draw the dotted route ONCE. Internal re-routes —
+## the chase following a moving target, the stuck-watchdog unjam — pass
+## false, because a route that redraws itself every 28px of target
+## drift reads as flicker, not feedback (the "path newly generates all
+## the time" report).
+func _begin_move(world_pos: Vector2, announce := true) -> void:
 	# A FRESH ROUTE GETS A FRESH BUDGET. `_repaths` used to accumulate for
 	# the whole life of the unit: three brief shoulder-jams anywhere on a
 	# long march — three DIFFERENT jams, minutes apart — spent the budget
@@ -995,7 +1156,8 @@ func _begin_move(world_pos: Vector2) -> void:
 		state = State.MOVING
 		if waypoints.size() > 1 and global_position.distance_to(waypoints[0]) < 10.0:
 			waypoints.remove_at(0)  # don't step back to the start cell centre
-	if team == MatchState.current.player_team:
+	if announce and not _auto_issuing \
+			and team == MatchState.current.player_team:
 		play_gesture("point")
 		_play_voice("acknowledge")
 		PathIndicator.show_path(get_parent(), waypoints,
@@ -1015,6 +1177,7 @@ func _order_done() -> void:
 	order = null
 	state = State.IDLE
 	attack_move = false
+	_amove_hold = false
 	_advance_order_queue()
 
 
@@ -1079,32 +1242,48 @@ func _try_enter() -> void:
 ## The order ends only when the target dies — that is what makes an
 ## attack FOLLOW instead of walking to a stale position.
 const CHASE_REPATH := 28.0  # target drift that invalidates our route
+## Once holding fire in range, do not resume the pursuit until the
+## target is genuinely clear of the range line — a target hovering ON
+## the line used to yo-yo the chassis between hold and pursuit every
+## few frames (part of the jeep "spasm").
+const CHASE_RESUME := 1.15
 var _chase_anchor := Vector2.INF
+var _chase_holding := false
 
 
 func _chase(_delta: float) -> void:
 	if attack_target == null:
+		_chase_holding = false
 		return
 	if not is_instance_valid(attack_target) or not attack_target.alive:
 		attack_target = null
 		_chase_anchor = Vector2.INF
+		_chase_holding = false
 		_order_done()
 		return
 	var aim: Vector2 = reach_point(attack_target)
 	var reach := range_px * sprite_scale
-	if global_position.distance_to(aim) <= reach:
+	var dist := global_position.distance_to(aim)
+	if dist <= reach:
 		# in range: stop and shoot. _combat locks onto attack_target.
 		clear_move_target()
 		waypoints = PackedVector2Array()
 		velocity = Vector2.ZERO
 		_chase_anchor = aim
+		_chase_holding = true
 		return
+	if _chase_holding and dist <= reach * CHASE_RESUME:
+		return  # hysteresis band: hold the stance, the shot will connect again
+	_chase_holding = false
 	if _chase_anchor == Vector2.INF or aim.distance_to(_chase_anchor) > CHASE_REPATH \
 			or not has_move_target():
 		_chase_repath()
 
 
-func _chase_repath() -> void:
+## `announce` is true only for the FIRST route of a fresh ATTACK order —
+## the upkeep repaths that follow a moving target stay silent (see
+## _begin_move).
+func _chase_repath(announce := false) -> void:
 	if attack_target == null or not is_instance_valid(attack_target):
 		return
 	# THE ANCHOR IS WHAT WE MEASURE TO; the DESTINATION is where we stand
@@ -1120,7 +1299,7 @@ func _chase_repath() -> void:
 		dest = (attack_target as Building2D).approach_point(global_position,
 			minf(range_px * sprite_scale * 0.6, 24.0))
 	var was := state
-	_begin_move(dest)
+	_begin_move(dest, announce)
 	if not has_move_target():
 		# unreachable (water, walled in): keep the order but do not spin
 		state = was
@@ -1222,7 +1401,8 @@ func _return_to_post() -> void:
 	if defend_post == Vector2.INF or not is_idle():
 		return
 	if global_position.distance_to(defend_post) > 36.0:
-		issue_order(Order.move_defend(defend_post))
+		# self-issued: no acknowledgement bark, no route redraw
+		_auto_order(Order.move_defend(defend_post))
 
 
 ## A BUILDING ORDER RESOLVES AS A WALK-UP-AND-STOP. Robots used to walk

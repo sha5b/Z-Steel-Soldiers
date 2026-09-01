@@ -70,6 +70,11 @@ func _rect(at: Rect2) -> TextureRect:
 	r.size = at.size
 	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	# IGNORE_SIZE, or the control can never be NARROWER than its art: a
+	# TextureRect's minimum size is the texture size, so the green health
+	# span (74px art) silently refused every width under 74 and the bar
+	# was stuck reading FULL no matter the unit's HP.
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(r)
 	return r

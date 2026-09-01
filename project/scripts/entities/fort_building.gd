@@ -18,10 +18,24 @@ extends Building2D
 # turret spam (the original's tower guns; zod stores max 4 built cannons
 # per producer). Slot guns spawn MANNED: tower cells are solid, a robot
 # could never walk up to crew them.
-const SLOTS_FRONT := [Vector2(38, 80), Vector2(122, 80),
-	Vector2(10, 26), Vector2(150, 26)]
-const SLOTS_BACK := [Vector2(40, 64), Vector2(120, 64),
-	Vector2(10, 14), Vector2(150, 14)]
+# MEASURED OFF THE ART (fort_desert_front/back.png at 3x): the four
+# octagonal tower platforms centre at these art pixels — identical on
+# both variants; only the gate ramp below differs. The old table put
+# the outer pair at the art EDGES (x 10/150, between the towers and
+# thin air), which is why tower guns rendered floating beside the fort.
+const SLOTS_FRONT := [Vector2(26, 63), Vector2(134, 63),
+	Vector2(25, 16), Vector2(135, 16)]
+const SLOTS_BACK := [Vector2(26, 63), Vector2(134, 63),
+	Vector2(25, 16), Vector2(135, 16)]
+
+## Elevation pays in reach: a gun on a fort tower outranges its
+## ground-level twin, or it could not even cover its own fort's apron —
+## the fort art is 160px across and a stock gatling reaches 120, so a
+## tower gun measured from the far tower could not touch an enemy AT
+## THE GATE ("the range is wrong, it never hits anything").
+const TOWER_RANGE_SCALE := 1.8
+## Map forts start with this many tower guns manned (the rest are built).
+const STARTING_TOWER_GUNS := 1
 
 var slot_cannons: Array = []  # slot index -> manned cannon (or null)
 
@@ -49,6 +63,17 @@ func cannon_slots() -> Array:
 func _ready() -> void:
 	super()
 	slot_cannons.resize(cannon_slots().size())
+	# MAP FORTS STAND ARMED — but not fully. The original's starting
+	# fort shoots back from minute one, so an undefended fort died to a
+	# 4-unit opening rush; four free gatlings, though, made the opening
+	# game a siege. ONE manned tower gun now (STARTING_TOWER_GUNS); the
+	# other towers are the build-up. A gun destroyed or sniped frees its
+	# slot exactly like a built one.
+	if Engine.is_editor_hint() or owner_team == 0:
+		return
+	for i in STARTING_TOWER_GUNS:
+		if not mount_product("cannon", "gatling"):
+			break
 
 
 ## Is tower mount `i` taken? A gun that DIED or was towed off frees its
@@ -116,8 +141,11 @@ func mount_product(kind: String, type_name: String) -> bool:
 	for i in slots.size():
 		if _slot_taken(i, slots):
 			continue
-		slot_cannons[i] = Spawner.spawn(get_parent(), "cannon", type_name,
+		var gun := Spawner.spawn(get_parent(), "cannon", type_name,
 			owner_team, slots[i], true)
+		if gun is Unit2D:
+			(gun as Unit2D).range_px *= TOWER_RANGE_SCALE  # elevation bonus
+		slot_cannons[i] = gun
 		return true
 	return false  # no free mount: the producer spawns it beside
 

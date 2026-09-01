@@ -1012,7 +1012,13 @@ func _burn_fx() -> void:
 		return
 	var want := int(_max_burn * (1.0 - clampf(
 		float(hp) / float(maxi(max_hp, 1)), 0.0, 1.0)))
-	_burn_effects = _burn_effects.filter(func(fx): return is_instance_valid(fx))
+	# the common case is an intact building with no fires: leave without
+	# allocating anything (the filter ran — and allocated — every frame)
+	if _burn_effects.is_empty():
+		if want <= 0:
+			return
+	else:
+		_burn_effects = _burn_effects.filter(func(fx): return is_instance_valid(fx))
 	# DEVIATION, deliberate: the original never shrinks `extra_effects`,
 	# so a repaired building burns for the rest of the match. We repair
 	# buildings (crane + repair shop), so the fires have to go back out.

@@ -118,12 +118,8 @@ func _on_unit_died(unit: Node) -> void:
 func select_area(world_rect: Rect2, additive := false) -> void:
 	if not additive:
 		clear_selection()
-	for unit in get_tree().get_nodes_in_group(Groups.SELECTABLE):
-		# own units only — enemy hardware is never selectable/orderable
-		if not (unit is Unit2D) or not unit.alive or unit.carried \
-				or unit.team != MatchState.current.player_team:
-			continue
-		if world_rect.has_point(unit.global_position) and unit not in selected:
+	for unit in Pick.box_candidates(world_rect, MatchState.current.player_team):
+		if unit not in selected:
 			selected.append(unit)
 	_cleanup()
 	selection_changed.emit(selected)
@@ -139,13 +135,10 @@ func select_same_type(like: Node, world_rect: Rect2, additive := false) -> int:
 	var model := like as Unit2D
 	if not additive:
 		clear_selection()
-	for unit in get_tree().get_nodes_in_group(Groups.SELECTABLE):
-		if not (unit is Unit2D) or not unit.alive or unit.carried \
-				or unit.team != MatchState.current.player_team:
-			continue
+	for unit in Pick.box_candidates(world_rect, MatchState.current.player_team):
 		if unit.kind != model.kind or unit.unit_name != model.unit_name:
 			continue
-		if world_rect.has_point(unit.global_position) and unit not in selected:
+		if unit not in selected:
 			selected.append(unit)
 	if model not in selected:
 		selected.append(model)  # the unit under the cursor is always in

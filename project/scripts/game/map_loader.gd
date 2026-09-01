@@ -96,20 +96,72 @@ static func _build_terrain(parent: Node, data: Dictionary, planet: String, w: in
 
 static func _build_nav_grid(data: Dictionary, w: int, h: int) -> AStarGrid2D:
 	var grid := NavWorld.make_grid(Rect2i(0, 0, w, h))
+	# terrain passability: the stored mask when the map ships one, the
+	# per-planet tileinfo tables otherwise. The zod multiplayer set
+	# (bb_orig/p03/p04/p08) ships NEITHER array, and the old code read a
+	# missing mask as "everything walkable" — every unit in skirmish
+	# strolled across cliffs and rivers as open ground.
+	var info := _tileinfo(String(data.get("terrain", "")))
+	var passable: Array = data.passable if _mask_ok(data.passable, w, h) \
+			else []
 	for y in h:
 		for x in w:
-			if data.passable != null and not bool(data.passable[y * w + x]):
+			var i := y * w + x
+			var walkable := true
+			if not passable.is_empty():
+				walkable = bool(passable[i])
+			elif not info.is_empty():
+				walkable = bool(info.get(str(int(data.tiles[i])), [true, true])[1])
+			if not walkable:
 				grid.set_point_solid(Vector2i(x, y), true)
 	NavWorld.current.nav_grid = grid
 	NavWorld.current.map_rect = Rect2(0.0, 0.0, float(w) * TILE, float(h) * TILE)
 	return grid
 
 
-## Rock scenery: one sprite per rock item from the planet's rock sheet
-## (sheet layout from zod orock.cpp: 6x6 grid of 16px pieces; (3,3) is the
-## standalone rock, (1,1) the mid-cluster top). Individual sprites (not a
-## TileMapLayer) so each rock Y-sorts against units on the sorted parent —
-## a rock correctly covers a unit standing behind it.
+## A stored mask only counts when it covers every cell (a partial or
+## absent array must fall back to derivation, not to "no terrain").
+static func _mask_ok(mask, w: int, h: int) -> bool:
+	return mask != null and (mask as Array).size() == w * h
+
+
+## Rock scenery: CLIFF COLUMNS, a faithful port of zod's ORock. The map
+## stores one object per 16px rock column; each renders up to three
+## tiles — a TOP piece picked by the four-neighbour rule over the whole
+## rock list (16 shapes: centre, corners, edges, vertical/horizontal
+## runs), then up to two UNDER pieces wherever no rock continues below,
+## plus a cast SHADOW drawn one tile EAST as a ground prerender (under
+## every unit, like the original blitting shadows into the map). Only
+## the BASE tile is impassable: a cliff overhangs, units walk behind the
+## face and the Y-sort covers them. Blasting a column leaves a permanent
+## rubble stamp on its base tile (zod PermStamp of rock_destroyed).
+##
+## The old assembly inferred a piece per CELL from left/right/depth —
+## there is no such rule in the original, and it showed: blobby pillars
+## with no shadows and wrong faces.
+##
+## Piece atlas coords are zod ORock::Init, verbatim.
+const ROCK_PIECES := {
+	"center": Vector2i(1, 1),
+	"up_left": Vector2i(0, 0), "up_right": Vector2i(2, 0),
+	"down_right": Vector2i(2, 2), "down_left": Vector2i(0, 2),
+	"up": Vector2i(1, 0), "down": Vector2i(1, 2),
+	"right": Vector2i(2, 1), "left": Vector2i(0, 1),
+	"vert_up": Vector2i(3, 0), "vert_mid": Vector2i(3, 1),
+	"vert_down": Vector2i(3, 2),
+	"horz_left": Vector2i(0, 5), "horz_mid": Vector2i(1, 5),
+	"horz_right": Vector2i(2, 5),
+	"left_mid": Vector2i(0, 3), "left_bottom": Vector2i(0, 4),
+	"mid_mid": Vector2i(1, 3), "mid_bottom": Vector2i(1, 4),
+	"right_mid": Vector2i(2, 3), "right_bottom": Vector2i(2, 4),
+	"single_mid": Vector2i(3, 3), "single_bottom": Vector2i(3, 4),
+	"up_shadow": Vector2i(4, 2), "mid_shadow": Vector2i(4, 3),
+	"bottom_shadow": Vector2i(4, 4),
+	"mid_mid_shadow": Vector2i(5, 0), "mid_bottom_shadow": Vector2i(5, 1),
+	"right_mid_shadow": Vector2i(4, 0), "right_bottom_shadow": Vector2i(4, 1),
+}
+
+
 static func _build_rocks(parent: Node, data: Dictionary, planet: String, grid: AStarGrid2D) -> void:
 	var rock_cells := {}
 	for o in data.objects:
@@ -117,88 +169,131 @@ static func _build_rocks(parent: Node, data: Dictionary, planet: String, grid: A
 			rock_cells[Vector2i(int(o.x), int(o.y))] = true
 	if rock_cells.is_empty():
 		return
-	var rock_sheet: Texture2D = load("res://assets/z/planets/rocks_%s.png" % planet)
-	for cell in rock_cells:
-		var atlas := AtlasTexture.new()
-		atlas.atlas = rock_sheet
-		atlas.region = Rect2(Vector2(_rock_piece(cell, rock_cells)) * TILE,
-			Vector2(TILE, TILE))
-		var rock := Sprite2D.new()
+	var sheet: Texture2D = load("res://assets/z/planets/rocks_%s.png" % planet)
+	var map_w: int = int(data.width)
+	var map_h: int = int(data.height)
+	var ground := _ground_decal_layer(parent)
+	for cell: Vector2i in rock_cells:
+		var built := _rock_column_pieces(cell, rock_cells, map_w, map_h)
+		var rock := Node2D.new()
 		rock.name = "Rock_%d_%d" % [cell.x, cell.y]
-		rock.texture = atlas
-		rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		rock.position = Vector2(cell) * TILE + Vector2(8, 8)
+		# the node anchors at the column's TOP edge — zod sorts objects by
+		# loc.y, so a unit on the plateau draws in front of the rim and a
+		# unit behind the cliff is covered by the face
+		rock.position = Vector2(cell) * TILE
+		for piece: Vector2i in built.body:
+			rock.add_child(_rock_sprite(sheet, piece,
+				Vector2(0, rock.get_child_count() * TILE)))
 		parent.add_child(rock)
 		rock.add_to_group(Groups.ROCKS)
-		grid.set_point_solid(cell, true)
+		# ONLY the base blocks movement (ORock::SetMapImpassables)
+		var base := cell + Vector2i(0, 2)
+		if grid.region.has_point(base):
+			grid.set_point_solid(base, true)
+		rock.set_meta("base_cell", base)
+		for i in built.shadows.size():
+			ground.add_child(_rock_sprite(sheet, built.shadows[i],
+				Vector2(cell.x * TILE + TILE, cell.y * TILE + i * TILE)))
 
 
-## Which piece of the 6x6 rock sheet a cell shows, from its neighbours.
-##
-## SHEET LAYOUT, read off the art (rocks_<planet>.png, 6x6 of 16px):
-##   cols 0..3   left edge / middle / middle / right edge
-##   col 4       the cast SHADOW block (near-black with a lit curve)
-##   col 5       loose ground and rubble speckle
-##   row 0       plateau top edge (the scalloped rim)
-##   row 1       plateau interior
-##   rows 2,3,4  the CLIFF FACE — THREE rows of striated rock, top to
-##               bottom, row 4 being where the face meets the ground
-##   row 5       the ground at the foot of the cliff
-##
-## The face being three rows tall is the part that was missed: the old
-## mapping called rows 2 and 3 "(2 unused) / south CLIFF FACE" and drew
-## row 3 — the MIDDLE of the face — for every south-edge cell. So every
-## cliff rendered as rim + one band of mid-face, with the top of the drop
-## and its base never drawn at all: "the bottom is missing".
-##
-## Now the face is drawn as a face: a cell's row comes from how far it
-## sits from the bottom of its own rock column, so a three-deep mass
-## reads top-of-face / mid-face / base, and a shallower one uses the
-## bottom rows (the base always shows, because that is the edge the eye
-## reads the height from).
-const ROCK_COL_LEFT := 0
-const ROCK_COL_MID := 1
-const ROCK_COL_RIGHT := 2
-const ROCK_COL_SINGLE := 3
-const ROCK_ROW_TOP := 0
-const ROCK_ROW_INNER := 1
-## The three face rows, top of the drop to its base.
-const ROCK_FACE_ROWS := [2, 3, 4]
+static func _rock_sprite(sheet: Texture2D, piece: Vector2i, offset: Vector2) -> Sprite2D:
+	var atlas := AtlasTexture.new()
+	atlas.atlas = sheet
+	atlas.region = Rect2(Vector2(piece) * TILE, Vector2(TILE, TILE))
+	var sprite := Sprite2D.new()
+	sprite.texture = atlas
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	sprite.centered = false
+	sprite.position = offset
+	return sprite
 
 
-## How many rock cells run downward from `cell` before the mass ends.
-static func _rock_depth_below(cell: Vector2i, rock_cells: Dictionary) -> int:
-	var n := 0
-	while rock_cells.has(cell + Vector2i(0, n + 1)):
-		n += 1
-		if n > 64:
-			break   # runaway guard on a pathological map
-	return n
+## The GroundDecals layer: z-index -1 under every unit and building.
+static func _ground_decal_layer(parent: Node) -> Node2D:
+	var layer := parent.get_node_or_null("GroundDecals") as Node2D
+	if layer == null:
+		layer = Node2D.new()
+		layer.name = "GroundDecals"
+		layer.z_index = -1
+		parent.add_child(layer)
+	return layer
 
 
-static func _rock_piece(cell: Vector2i, rock_cells: Dictionary) -> Vector2i:
-	var left := rock_cells.has(cell + Vector2i(-1, 0))
-	var right := rock_cells.has(cell + Vector2i(1, 0))
-	var above := rock_cells.has(cell + Vector2i(0, -1))
-	var col := ROCK_COL_SINGLE
-	if left and right:
-		col = ROCK_COL_MID
-	elif right:
-		col = ROCK_COL_LEFT
-	elif left:
-		col = ROCK_COL_RIGHT
-	var below_count := _rock_depth_below(cell, rock_cells)
-	if below_count >= ROCK_FACE_ROWS.size():
-		# deep inside the mass: plateau surface, rim on the north edge
-		return Vector2i(col, ROCK_ROW_INNER if above else ROCK_ROW_TOP)
-	# within the bottom three rows: this cell is part of the drop. Index
-	# from the BASE so the base row always lands on the last cell.
-	var row: int = ROCK_FACE_ROWS[ROCK_FACE_ROWS.size() - 1 - below_count]
-	# a one-cell-tall rock with clear ground above it is not a cliff at
-	# all — give it the rim so it does not read as a floating face
-	if not above and below_count == 0:
-		return Vector2i(col, ROCK_ROW_TOP)
-	return Vector2i(col, row)
+## ORock::SetupRockRender, line for line. Returns the column's BODY
+## pieces (top, optional mid-under, optional bottom-under) and its EAST
+## SHADOW pieces, both as atlas cells; a NULL under piece in zod is
+## simply absent here (the next column's top renders there instead).
+static func _rock_column_pieces(cell: Vector2i, rock_cells: Dictionary,
+		map_w: int, map_h: int) -> Dictionary:
+	var tx := cell.x
+	var ty := cell.y
+	var has := func(c: Vector2i) -> bool: return rock_cells.has(c)
+	var r: bool = tx == map_w - 1 or has.call(cell + Vector2i(1, 0))
+	var l: bool = tx == 0 or has.call(cell + Vector2i(-1, 0))
+	var up: bool = ty == 0 or has.call(cell + Vector2i(0, -1))
+	var dn: bool = ty == map_h - 1 or has.call(cell + Vector2i(0, 1))
+	var dl: bool = tx != 0 and ty != map_h - 1 and has.call(cell + Vector2i(-1, 1))
+	var ddn: bool = ty >= map_h - 2 or has.call(cell + Vector2i(0, 2))
+	var uup: bool = ty < 2 or has.call(cell + Vector2i(0, -2))
+	var uur: bool = ty >= 2 and tx < map_w - 1 and has.call(cell + Vector2i(1, -2))
+	var ur: bool = ty >= 1 and tx < map_w - 1 and has.call(cell + Vector2i(1, -1))
+	var dr: bool = ty < map_h - 1 and tx < map_w - 1 and has.call(cell + Vector2i(1, 1))
+	var ddr: bool = ty < map_h - 2 and tx < map_w - 1 and has.call(cell + Vector2i(1, 2))
+
+	# the top piece: the exact if-chain from SetupRockRender
+	var top := "vert_down"
+	if r and l and up and dn: top = "center"
+	elif r and not l and not up and dn: top = "up_left"
+	elif not r and l and not up and dn: top = "up_right"
+	elif not r and l and up and not dn: top = "down_right"
+	elif r and not l and up and not dn: top = "down_left"
+	elif r and l and not up and dn: top = "up"
+	elif r and l and up and not dn: top = "down"
+	elif not r and l and up and dn: top = "right"
+	elif r and not l and up and dn: top = "left"
+	elif not r and not l and not up and dn: top = "vert_up"
+	elif not r and not l and up and dn: top = "vert_mid"
+	elif not r and not l and up and not dn: top = "vert_down"
+	elif r and not l and not up and not dn: top = "horz_left"
+	elif r and l and not up and not dn: top = "horz_mid"
+	elif not r and l and not up and not dn: top = "horz_right"
+
+	var body: Array = [ROCK_PIECES[top]]
+	# the mid under: suppressed when rock continues below; shadow variants
+	# when a rock sits down-left (it casts INTO this tile)
+	if ty + 1 < map_h:
+		if dn:
+			pass
+		elif dl:
+			body.append(ROCK_PIECES["mid_mid_shadow" if r else "right_mid_shadow"])
+		elif r and l: body.append(ROCK_PIECES["mid_mid"])
+		elif r: body.append(ROCK_PIECES["left_mid"])
+		elif l: body.append(ROCK_PIECES["right_mid"])
+		else: body.append(ROCK_PIECES["single_mid"])
+	# the bottom under
+	if ty + 2 < map_h:
+		if ddn or dn:
+			pass
+		elif dl:
+			body.append(ROCK_PIECES["mid_bottom_shadow" if r else "right_bottom_shadow"])
+		elif r and l: body.append(ROCK_PIECES["mid_bottom"])
+		elif r: body.append(ROCK_PIECES["left_bottom"])
+		elif l: body.append(ROCK_PIECES["right_bottom"])
+		else: body.append(ROCK_PIECES["single_bottom"])
+
+	# extra shadows: cast one tile east of the column
+	var shadows: Array = []
+	if tx < map_w - 1:
+		if not (uur or ur or r):
+			if up and not uup:
+				shadows.append(ROCK_PIECES["up_shadow"])
+			elif up or uup:
+				shadows.append(ROCK_PIECES["mid_shadow"])
+		if not dn and not (ur or r or dr):
+			shadows.append(ROCK_PIECES["up_shadow" if not up else "mid_shadow"])
+		if not dn and not ddn and not (r or dr or ddr):
+			shadows.append(ROCK_PIECES["bottom_shadow"])
+	return {"body": body, "shadows": shadows}
 
 
 ## Vehicle grid: same as robots but water is impassable (zod PF_WATER).
@@ -210,11 +305,22 @@ static func _rock_piece(cell: Vector2i, rock_cells: Dictionary) -> Vector2i:
 static func _build_vehicle_grid(grid: AStarGrid2D, data: Dictionary, w: int, h: int) -> AStarGrid2D:
 	var vgrid := NavWorld.make_grid(grid.region)
 	var origin: Vector2i = grid.region.position
+	# water: stored mask, else the tileinfo tables — same fallback as the
+	# robot grid above. Without it the skirmish set had NO water at all
+	# and tanks forded every river.
+	var info := _tileinfo(String(data.get("terrain", "")))
+	var water: Array = data.water if _mask_ok(data.water, w, h) else []
+	var tiles: Array = data.get("tiles", [])
 	for y in h:
 		for x in w:
+			var i := y * w + x
 			var cell := origin + Vector2i(x, y)
-			if grid.is_point_solid(cell) \
-					or (data.water != null and bool(data.water[y * w + x])):
+			var is_water := false
+			if not water.is_empty():
+				is_water = bool(water[i])
+			elif not info.is_empty() and i < tiles.size():
+				is_water = bool(info.get(str(int(tiles[i])), [true, true])[0])
+			if grid.is_point_solid(cell) or is_water:
 				vgrid.set_point_solid(cell, true)
 	NavWorld.current.vehicle_grid = vgrid
 	return vgrid

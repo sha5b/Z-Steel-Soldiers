@@ -48,6 +48,12 @@ func _ready() -> void:
 		push_error("empty map")
 		return
 	MatchState.current.planet = String(data.get("terrain", "desert"))
+	# skirmish option: a chosen starting purse overrides the rules
+	# default for every seated team (the loader has run grant_ledger by
+	# now, so every fort team has an entry to override)
+	if GameState.pending_config and GameState.pending_config.starting_money > 0:
+		for t in MatchState.current.money.keys():
+			MatchState.current.set_money(t, GameState.pending_config.starting_money)
 	_spawn_ambient_life()
 	if not GameState.pending_load.is_empty():
 		_apply_load()
@@ -67,6 +73,8 @@ func _ready() -> void:
 		minimap.move_order.connect(func(world: Vector2, queued: bool):
 			SelectionManager.current.issue_order(world, queued))
 	MusicPlayer.play_battle(MatchState.current.planet)
+	# F3: the engine's own perf readout, hidden until asked for
+	$CanvasLayer.add_child(PerfOverlay.new())
 	var shot_args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	if SelfTests.should_run():
 		var terrain_cells := -1
@@ -299,10 +307,20 @@ func _cycle_map() -> void:
 	get_tree().reload_current_scene()
 
 
+## Seconds between the deciding blow and the verdict screen — the HQ's
+## collapse (debris, fire, the falling towers) plays out in full view
+## instead of being covered by the overlay on the same frame.
+const GAME_OVER_LINGER := 3.0
+
+
 func _on_game_over(winning_team: int) -> void:
-	var overlay: Control = preload("res://scenes/game_over.tscn").instantiate()
-	$CanvasLayer.add_child(overlay)
-	overlay.show_for(winning_team)
+	var timer := get_tree().create_timer(GAME_OVER_LINGER)
+	timer.timeout.connect(func():
+		if not is_inside_tree():
+			return
+		var overlay: Control = preload("res://scenes/game_over.tscn").instantiate()
+		$CanvasLayer.add_child(overlay)
+		overlay.show_for(winning_team))
 
 
 func _exit_tree() -> void:

@@ -48,6 +48,8 @@ func reset() -> void:
 	match_time = 0.0
 	upgrades = {}
 	_facilities.clear()
+	_owned_count.clear()
+	_owned_dirty = true
 
 
 func over_reset() -> void:
@@ -56,15 +58,15 @@ func over_reset() -> void:
 
 
 func _process(delta: float) -> void:
+	# the census is capture-driven, but the loader and the test harness
+	# also write zone owners directly — refresh it once per tick so even
+	# those writes land within a second
+	_owned_dirty = true
 	_accum += delta
 	while _accum >= TICK_SECONDS:
 		_accum -= TICK_SECONDS
 		for team in money:
-			var income := 0.0
-			for z in zones:
-				if z.owner_team == team:
-					income += ContentDB.rules.income_per_zone
-			money[team] += int(income)
+			money[team] += int(zones_owned_by(team) * ContentDB.rules.income_per_zone)
 			money_changed.emit(team, money[team])
 		_tech_tick()
 
@@ -157,9 +159,29 @@ func grant_ledger(team: int, start := -1) -> void:
 
 func register_zone(zone: Node) -> void:
 	zones.append(zone)
+	_owned_dirty = true
+
+
+## OWNED-ZONE COUNT, cached between captures. Production's
+## BuildTimeModified (and the income tick, and the pop cap) ask "how
+## many zones does this team hold" — the honest answer walked every zone
+## per ask, which for the producer meant per producer PER FRAME. Owners
+## only change on capture, so the census rebuilds once per capture.
+var _owned_count := {}
+var _owned_dirty := true
+
+
+func zones_owned_by(team_id: int) -> int:
+	if _owned_dirty:
+		_owned_count.clear()
+		for z in zones:
+			_owned_count[z.owner_team] = int(_owned_count.get(z.owner_team, 0)) + 1
+		_owned_dirty = false
+	return int(_owned_count.get(team_id, 0))
 
 
 func notify_zone_captured(team: int) -> void:
+	_owned_dirty = true
 	zone_captured.emit(team)
 
 
@@ -200,8 +222,4 @@ func unit_pop(team: int) -> int:
 
 func unit_cap(team: int) -> int:
 	# base 25 + one per owned zone (original zsettings)
-	var zones_owned := 0
-	for z in zones:
-		if z.owner_team == team:
-			zones_owned += 1
-	return 25 + zones_owned
+	return 25 + zones_owned_by(team)

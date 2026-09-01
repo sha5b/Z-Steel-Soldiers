@@ -142,6 +142,7 @@ func setup_vehicle(vkind: String, type_name: String, owner_team: int) -> void:
 	manned = owner_team != 0
 	if manned:
 		team = owner_team
+		_crew_pool_init()  # factory crew: driver_type unset = grunt pool
 	_asset_dir = ContentDB.def_for(vkind, type_name).asset_dir
 
 
@@ -193,6 +194,9 @@ func _build_layer() -> void:
 	_layer_hull_off = turret_hull_off
 	_layer_aim_off = turret_aim_off
 	_layer_scan = turret_scans and unit_name != "crane"
+	# random scan phase: a parade of idle turrets used to step their
+	# sectors in perfect unison (every _scan_timer started at 0)
+	_scan_timer = randf() * SCAN_STEP_SECONDS
 	_layer.sprite_frames = lset.frames
 	_layer.visible = manned
 	if unit_name == "crane":
@@ -292,6 +296,7 @@ func _process(delta: float) -> void:
 	_fire_flash = maxf(0.0, _fire_flash - delta)
 	_install_timer = maxf(0.0, _install_timer - delta)
 	_lid_timer = maxf(0.0, _lid_timer - delta)
+	_alert_timer = maxf(0.0, _alert_timer - delta)
 	if manned:
 		_combat()
 		_chase(delta)
@@ -403,13 +408,11 @@ func _find_target() -> Node2D:
 
 
 func _combat() -> void:
-	if attack_move and has_move_target() and manned:
-		var probe := _find_target()
-		if probe != null:
-			velocity = Vector2.ZERO
-			_target = probe
+	if manned:
+		_amove_probe()
 	if speed > 0.0 and velocity.length_squared() > 4.0:
-		_last_dir = _angle_to_dir(velocity.angle())
+		if _face_lock <= 0.0:  # a fresh shot pins the facing for a beat
+			_last_dir = _angle_to_dir(velocity.angle())
 		return
 	# _ordered_or_nearest, NOT _find_target: a crewed hull under an
 	# explicit ATTACK order has to shoot what it was told to shoot. This
@@ -434,7 +437,8 @@ func _combat() -> void:
 		var to_squad_target: Vector2 = reach_point(_target) - global_position
 		if to_squad_target.length() <= gdef.range_px * sprite_scale:
 			_last_dir = _angle_to_dir(to_squad_target.angle())
-			_fire_timer = gdef.cooldown
+			_face_lock = FACE_LOCK_SECONDS
+			_fire_timer = gdef.cooldown * randf_range(0.9, 1.1)
 			_fire_flash = 0.0  # no hull flash art for the APC
 			Combat.fire(self, gdef,
 				global_position + to_squad_target.normalized() * 10.0,
@@ -464,7 +468,10 @@ func _combat() -> void:
 		var to_target: Vector2 = reach_point(_target) - global_position
 		if to_target.length() <= range_px * sprite_scale:
 			_last_dir = _angle_to_dir(to_target.angle())
-			_fire_timer = cooldown
+			_face_lock = FACE_LOCK_SECONDS
+			# ±10% reload jitter — see Unit2D._combat: a flat cooldown
+			# fires a battery in lockstep volleys
+			_fire_timer = cooldown * randf_range(0.9, 1.1)
 			_turret_fire = 0.25
 			_fire_flash = 0.3
 			_lid_timer = 1.2  # hatch open: snipers take note
@@ -602,6 +609,7 @@ func to_dict() -> Dictionary:
 	var out := super.to_dict()
 	out["manned"] = manned
 	out["driver"] = driver_type
+	out["dhp"] = driver_hp
 	out["cargo"] = cargo_names
 	return out
 
@@ -614,6 +622,13 @@ func apply_dict(d: Dictionary) -> void:
 		team = int(d.get("team", team))
 		_build_frames()
 		_play_body()
+	if manned:
+		# the crew's wounds survive the save: a fresh pool only when the
+		# dict predates it or the spawn path never armed one
+		if d.has("dhp"):
+			driver_hp = int(d.dhp)
+		elif driver_hp <= 0:
+			_crew_pool_init()
 	var cargo_names: Array = d.get("cargo", [])
 	if not cargo_names.is_empty() and is_apc():
 		for name in cargo_names:
@@ -636,6 +651,34 @@ func issue_order(new_order: Order) -> void:
 	if not manned:
 		return
 	super.issue_order(new_order)
+
+
+## THE DRIVER IS A HEALTH POOL, NOT A FLAG (original DamageDriverHealth,
+## drivers spawn with a grunt's health). A rolled snipe hit wounds the
+## pool by the shooter's damage and leaves the hull untouched; only an
+## emptied pool ejects the crew. The .tres snipe chances are the
+## original's per-hit rolls (grunt 0.3, laser 0.6, sniper 0.8) — rolled
+## straight into eject_driver they stripped every crew on the field to
+## the first volley, which read as "units just stop mid-order".
+var driver_hp := 0
+
+
+func _crew_pool_init() -> void:
+	var def := ContentDB.def_for("robot",
+		driver_type if driver_type != "" else "grunt")
+	driver_hp = def.hp if def != null else 0
+
+
+## A snipe hit. True when it killed the driver (eject_driver ran: the
+## hull went neutral and dropped its orders).
+func damage_driver(amount: int) -> bool:
+	if not manned:
+		return false
+	driver_hp -= amount
+	if driver_hp > 0:
+		return false
+	eject_driver()
+	return true
 
 
 ## A sniper killed the crew: the hardware goes neutral again and a
@@ -661,18 +704,19 @@ func eject_driver() -> void:
 	manned = false
 	team = 0
 	driver_type = ""
+	driver_hp = 0
 	if _crew:
 		_crew.visible = false
 		_crew.sprite_frames = null  # rebuilt in the next crew's colours
 	# no crew, no orders: the hull stops where the driver died instead of
-	# finishing the last rally on its own
+	# finishing the last rally on its own. NO HEAL — the original leaves
+	# the hull at whatever damage it took (only repair shops repair); the
+	# old pop-to-half made sniped hardware read as "takes no damage".
 	order = null
 	clear_move_target()
 	waypoints = PackedVector2Array()
 	velocity = Vector2.ZERO
 	state = State.IDLE
-	hp = maxi(hp, int(max_hp / 2.0))
-	_damaged = hp < max_hp * 0.5
 	if is_apc():
 		unload()
 	_build_frames()
@@ -685,8 +729,10 @@ func enter(robot: Unit2D) -> void:
 	if _crew:
 		_crew.sprite_frames = null  # this crew's own team colours
 	driver_type = robot.unit_name
-	hp = maxi(hp, max_hp)  # fresh crew repairs
-	_damaged = false
+	_crew_pool_init()  # the new crew brings his own full health
+	# NO HULL REPAIR on manning (the old fresh-crew heal made hardware in
+	# a driver-snipe cycle undamageable): damage belongs to the hull and
+	# only a repair shop removes it. The art keeps matching the real hp.
 	_install_timer = 1.1  # gunner climbs aboard (place animation)
 	if _hook:
 		_hook.visible = true

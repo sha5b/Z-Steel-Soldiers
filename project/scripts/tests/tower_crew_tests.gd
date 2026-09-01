@@ -45,6 +45,7 @@ static func run(ctx: Node, rig: TestRig) -> void:
 		GameSettings.auto_idle = idle_was
 		rig.finish()
 		return
+	SelfTests.disarm_fort(fort)
 	var team: int = fort.team
 	var footprint := fort.world_footprint()
 

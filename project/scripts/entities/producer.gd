@@ -45,14 +45,13 @@ func produce_seconds(item := "") -> float:
 ## the share of the map's zones the owner holds (up to -50% at full
 ## control) and slows while the building is damaged (up to +125% near
 ## death). Building LEVEL only gates the roster, exactly like the
-## original — it never sped builds up.
+## original — it never sped builds up. Zone ownership comes from the
+## MatchState census (rebuilt once per capture), not a fresh walk — this
+## runs per producer PER FRAME.
 func build_time_mult() -> float:
 	var team_id := b.team if b.team != 0 else b.owner_team
-	var owned := 0
-	for z in MatchState.current.zones:
-		if z.owner_team == team_id:
-			owned += 1
-	var ownage := float(owned) / float(maxi(MatchState.current.zones.size(), 1))
+	var ownage := float(MatchState.current.zones_owned_by(team_id)) \
+		/ float(maxi(MatchState.current.zones.size(), 1))
 	var damage_penalty := 1.0 + 1.25 * (1.0 - float(b.hp) / float(b.max_hp))
 	return maxf((1.0 - 0.5 * ownage) * damage_penalty, 0.1)
 

@@ -123,6 +123,7 @@ static func power_of_all(units: Array) -> float:
 ## Rebuild the dynamic picture. Called once per think pass; the graph
 ## behind it is built on the first call and kept.
 func refresh() -> void:
+	_dist_cache.clear()  # walk distances are a per-pass memo
 	var zones: Array = MatchState.current.zones
 	if zones.size() != _graph_for:
 		graph = _build_graph(zones)
@@ -255,6 +256,63 @@ func _read_fronts(zones: Array) -> void:
 			if int((info[nb] as Dictionary).owner) != int(entry.owner):
 				entry.front = true
 				break
+
+
+# ---- terrain distance ---------------------------------------------------
+
+## WALK DISTANCE, not line distance. Every "who is nearest" the brain
+## asks used to be answered by straight-line range — across a river,
+## through a fort wall — and then the unit walked the long way round
+## while the brain believed the short one, arriving minutes after a
+## "further" squadmate. This measures over the robot nav grid (water,
+## walls and buildings respected), memoized per cell pair per think
+## pass; one A* hop count x CELL is the march length. Unreachable
+## targets answer INF, and every sort below ranks INF LAST: a squad
+## never again drafts the unit that cannot legally arrive. Positions
+## in solid cells (a zone centre in the river) snap to the nearest
+## open cell first.
+var _dist_cache := {}  # "ax,ay>bx,by" -> walk px (this pass)
+
+
+func walk_distance(from: Vector2, to: Vector2) -> float:
+	if from == Vector2.INF or to == Vector2.INF:
+		return INF
+	var grid: AStarGrid2D = NavWorld.current.nav_grid \
+		if NavWorld.current != null else null
+	if grid == null or home == Vector2.INF:
+		return from.distance_to(to)  # no grid / no fort: the old metric
+	var a := _open_cell_near(grid, NavWorld.cell_at(from))
+	var b := _open_cell_near(grid, NavWorld.cell_at(to))
+	if a.x < 0 or b.x < 0:
+		return INF
+	var key := "%d,%d>%d,%d" % [a.x, a.y, b.x, b.y]
+	if _dist_cache.has(key):
+		return float(_dist_cache[key])
+	var hops: Array[Vector2i] = grid.get_id_path(a, b, false)
+	var d := INF
+	if not hops.is_empty():
+		d = float(hops.size()) * NavWorld.CELL
+	_dist_cache[key] = d
+	return d
+
+
+## The cell itself, or the nearest walkable within 3 cells (INF cell on
+## failure). Positions the brain measures with are zone centres and unit
+## feet — the odd solid one is a centre in the river, not a wall.
+func _open_cell_near(grid: AStarGrid2D, cell: Vector2i) -> Vector2i:
+	if not grid.region.has_point(cell):
+		return Vector2i(-1, -1)
+	if not grid.is_point_solid(cell):
+		return cell
+	for r in range(1, 4):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue
+				var c := cell + Vector2i(dx, dy)
+				if grid.region.has_point(c) and not grid.is_point_solid(c):
+					return c
+	return Vector2i(-1, -1)
 
 
 # ---- questions the commander asks -------------------------------------

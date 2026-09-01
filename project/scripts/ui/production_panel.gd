@@ -45,11 +45,19 @@ const OBJECT_NAME := Rect2(6, 59, 45, 13)
 ## which we were leaving as bare plate.
 const LEVEL_BAR := Rect2(52, 19, 5, 38)
 const PROGRESS_BAR := Rect2(59, 19, 5, 38)
-const STATUS_PLATE := Rect2(66, 17, 47, 12)
+## `building_label`/`buildingless_label` are 47x12 native — the slot IS
+## the art size, anchored so the right edge lands on the window's own
+## right margin (x 112). The old (66,17) 47-wide rect hung 1px past the
+## chrome.
+const STATUS_PLATE := Rect2(65, 18, 47, 12)
 ## The window art PRINTS the word "Time" itself, at x 71..86 — so the
 ## value belongs in the 21px to its right, not centred over the whole
 ## slot (which is how it came out as "ime1:08").
-const TIME_SLOT := Rect2(87, 32, 21, 12)
+## 22 wide, not 21: "10:00" measures 23px in the 8px menu font and a
+## right-aligned Label grows RIGHTWARD past its box when the text is
+## wider — toward the window edge. One extra pixel keeps the common
+## case inside; over-10-minute builds overlap the printed word by 1px.
+const TIME_SLOT := Rect2(86, 32, 22, 12)
 const CANCEL_BUTTON := Rect2(68, 46, 40, 14)
 const OK_BUTTON := Rect2(68, 62, 40, 15)
 ## Roster flyout: object_button plates, four to a row, above the window.
@@ -60,8 +68,10 @@ const ROSTER_GAP := 2.0
 var _wired: Node = null
 var _title: TextureRect
 var _health: TextureRect
+var _health_clip: Control
 var _object: TextureRect
 var _object_name: TextureRect
+var _object_name_text: Label
 var _status: TextureRect
 var _time: Label
 var _health_pct: Label
@@ -86,13 +96,41 @@ func _ready() -> void:
 	add_child(frame)
 
 	_title = _plate(TITLE_PLATE)
-	# the health gauge is the fort HP bar art, cropped to what is left
-	_health = _plate(HEALTH_GAUGE)
-	_health.stretch_mode = TextureRect.STRETCH_KEEP
-	_health.clip_contents = true
+	# the factory label art is authored to sit LEFT in its slot at native
+	# 1:1 — centring put two of the four plates on a half-pixel x offset
+	# and scaled the fallback to 83%, which is what blurred the lettering
+	_title.stretch_mode = TextureRect.STRETCH_KEEP
+	_title.clip_contents = true
+	# the health gauge: the 62x16 bar art squashed to fill the whole slot
+	# (STRETCH_KEEP showed only its top-left 34x9 CORNER — a smear, not a
+	# gauge), inside a clipper whose width is the health fraction
+	_health_clip = Control.new()
+	_health_clip.position = HEALTH_GAUGE.position * SCALE
+	_health_clip.size = HEALTH_GAUGE.size * SCALE
+	_health_clip.clip_contents = true
+	_health_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_health_clip)
+	_health = TextureRect.new()
+	_health.size = HEALTH_GAUGE.size * SCALE
+	_health.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_health.stretch_mode = TextureRect.STRETCH_SCALE
+	_health.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_health.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_health_clip.add_child(_health)
 	_object = _plate(OBJECT_WINDOW)
+	# the name slot gets the art CUT FOR IT — object_name_button.png is
+	# exactly 45x13. The sidebar's 96x14 team plate squashed to 47% left
+	# red bands of the window's own painted slot showing above and below
+	# it ("name tags overlay the red background"); the name prints as
+	# text now, centred on its own plate.
 	_object_name = _plate(OBJECT_NAME)
+	_object_name.stretch_mode = TextureRect.STRETCH_KEEP
+	_object_name.texture = _tex("object_name_button")
+	_object_name.visible = false
+	_object_name_text = _label(OBJECT_NAME, HORIZONTAL_ALIGNMENT_CENTER)
+	_shadow(_object_name_text)
 	_status = _plate(STATUS_PLATE)
+	_status.stretch_mode = TextureRect.STRETCH_KEEP
 	# vertical gauges: filled from the BOTTOM, so they need their own
 	# backing plus a fill rect that grows upward
 	_level_fill = _bar(LEVEL_BAR, Color(0.95, 0.86, 0.25))
@@ -105,8 +143,13 @@ func _ready() -> void:
 	_health_pct = _label(Rect2(HEALTH_GAUGE.position.x, HEALTH_GAUGE.position.y - 1.0,
 			HEALTH_GAUGE.size.x, HEALTH_GAUGE.size.y + 2.0),
 			HORIZONTAL_ALIGNMENT_CENTER)
-	_queue_count = _label(Rect2(OBJECT_NAME.position.x, 2,
-			OBJECT_NAME.size.x, 10), HORIZONTAL_ALIGNMENT_LEFT)
+	# LOOP/WAIT is a badge on the object window's top edge now — its old
+	# rect (6,2,45,10) sat entirely INSIDE the title plate and printed
+	# straight across the factory's own painted name
+	_queue_count = _label(Rect2(OBJECT_WINDOW.position.x + 2.0,
+			OBJECT_WINDOW.position.y + 1.0,
+			OBJECT_WINDOW.size.x - 4.0, 10), HORIZONTAL_ALIGNMENT_LEFT)
+	_shadow(_queue_count)
 
 	# the object window is the picker: clicking it opens the roster
 	var pick := Button.new()
@@ -172,6 +215,14 @@ func _label(at: Rect2, align: int, font_size := READOUT_FONT) -> Label:
 		HudFrame._apply_hud_font(l, font_size)
 	add_child(l)
 	return l
+
+
+## Black drop shadow so a label printed over art stays readable on any
+## backing (the LOOP badge sits on the portrait, the name on its plate).
+static func _shadow(l: Label) -> void:
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	l.add_theme_constant_override("shadow_offset_x", 1)
+	l.add_theme_constant_override("shadow_offset_y", 1)
 
 
 ## A bottom-filling vertical gauge on a dark backing.
@@ -243,9 +294,13 @@ func _place_over(factory: Node) -> void:
 	var screen: Vector2 = canvas * (factory as Node2D).global_position
 	var view := HudFrame.view_rect()
 	var want := screen + Vector2(-size.x * 0.5, -size.y - 24.0)
+	# WHOLE PIXELS: this is a native-resolution window full of 8px bitmap
+	# glyphs; anchored to a fractional camera coordinate it resamples on
+	# every pan and the text shimmers ("sometimes the text is not
+	# perfectly there")
 	position = Vector2(
-		clampf(want.x, view.position.x + 4.0, view.end.x - size.x - 4.0),
-		clampf(want.y, view.position.y + 4.0, view.end.y - size.y - 4.0))
+		roundf(clampf(want.x, view.position.x + 4.0, view.end.x - size.x - 4.0)),
+		roundf(clampf(want.y, view.position.y + 4.0, view.end.y - size.y - 4.0)))
 
 
 func _on_line_changed() -> void:
@@ -297,13 +352,14 @@ func _sync_readouts() -> void:
 		var parts: PackedStringArray = head.split(":")
 		_object.texture = object_art(parts[0], parts[1],
 				MatchState.current.player_team)
-		# the red bar in the window art is the unit NAME plate ("Grunt"),
-		# not the weapon plate — those are two different slots
-		_object_name.texture = _load(SelectedObject.plate_path(parts[1],
-				MatchState.current.player_team))
+		# the unit's name, printed on the production art's OWN 45x13
+		# plate (the sidebar's 96x14 team plate never fit this slot)
+		_object_name.visible = true
+		_object_name_text.text = parts[1].capitalize()
 	else:
 		_object.texture = null
-		_object_name.texture = null
+		_object_name.visible = false
+		_object_name_text.text = ""
 	_status.texture = _tex("building_label" if head != "" else "buildingless_label")
 	_time.text = _time_left(head)
 	_sync_gauges(head)
@@ -349,7 +405,9 @@ func _sync_health() -> void:
 			_wired.owner_team)
 	_health.texture = _load(art)
 	var frac := clampf(float(_wired.hp) / float(maxi(_wired.max_hp, 1)), 0.0, 1.0)
-	_health.size.x = maxf(roundf(HEALTH_GAUGE.size.x * SCALE * frac), 1.0)
+	# the CLIPPER narrows with the fraction; the bar art itself stays
+	# full-slot, so what remains is the left part of a whole gauge
+	_health_clip.size.x = maxf(roundf(HEALTH_GAUGE.size.x * SCALE * frac), 1.0)
 	_health_pct.text = "%d%%" % roundi(frac * 100.0)
 
 

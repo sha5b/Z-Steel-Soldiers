@@ -29,6 +29,7 @@ func build(data: Dictionary, _tileset: Texture2D) -> void:
 	map_size = Vector2i(int(data.width), int(data.height))
 	_base = MapPreview.base_image(data)
 	_owners = []
+	_radar_ok = _player_has_radar()  # seed: a map starting with a radar
 	_rebuild_image()
 	_recompute_map_rect()
 	# zone tints rebake on the capture signal — this used to poll every
@@ -87,8 +88,27 @@ func _recompute_map_rect() -> void:
 	_map_rect = Rect2(inner.position + (inner.size - map_size_px) * 0.5, map_size_px)
 
 
-func _process(_delta: float) -> void:
-	queue_redraw()
+## Blips and the camera box move every frame, so the radar can never go
+## fully idle — but 60fps redraws of the whole blip pass buy nothing the
+## eye can see, and the radar-ownership check walked the player's whole
+## building list per frame. Redraw at ~30fps and re-check the radar on a
+## half-second cadence (it flips when a radar dies or changes hands).
+const REDRAW_INTERVAL := 1.0 / 30.0
+const RADAR_CHECK_INTERVAL := 0.5
+var _redraw_accum := 0.0
+var _radar_accum := 0.0
+var _radar_ok := false
+
+
+func _process(delta: float) -> void:
+	_radar_accum += delta
+	if _radar_accum >= RADAR_CHECK_INTERVAL:
+		_radar_accum = 0.0
+		_radar_ok = _player_has_radar()
+	_redraw_accum += delta
+	if _redraw_accum >= REDRAW_INTERVAL:
+		_redraw_accum = 0.0
+		queue_redraw()
 
 
 func _draw() -> void:
@@ -106,9 +126,8 @@ func _draw() -> void:
 			# blip the visual centre, which is where the structure is
 			_blip(b.visual_center(), Teams.minimap_color(b.team), 3.0)
 	# enemy intel needs a radar station (original Z) — own units always show
-	var radar = _player_has_radar()
 	for u in UnitRegistry.current.world_units():
-		if u.team != MatchState.current.player_team and not radar:
+		if u.team != MatchState.current.player_team and not _radar_ok:
 			continue
 		_blip(u.global_position, Teams.minimap_color(u.team), 2.0)
 	_draw_alerts()

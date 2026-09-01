@@ -13,6 +13,10 @@ extends Resource
 @export var map_path := ""
 @export var player_team := 1
 @export var save_data: Dictionary = {}  # non-empty = restore after spawn
+## 0 = the rules default (MatchRulesDef.starting_money). The skirmish
+## screen's generated-map settings set it; match.gd applies it to every
+## seated team after the map loads.
+@export var starting_money := 0
 
 
 static func make(src: String, map_path_value: String,

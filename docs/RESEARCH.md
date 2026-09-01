@@ -197,9 +197,11 @@ the radar in its own window, and the unit_amount_bar army gauges),
 robot portraits (SHEADBI, baked — see 2e), the build menu on the
 original's 112x80 window with its Time/Cancel/Ok readouts, distress
 barks under fire, auto-deselect on order, centre-on-select, and
-production changing hands on capture. Still missing (non-blocking):
-EXIT_C eject cursor, birds, unit-group formations, missile
-target-leading, and the per-file mapping of ROB23-75 (see 2e).
+production changing hands on capture, and missile target-leading
+(Combat.fire leads shells by the target's velocity, 0.8 factor —
+EstimateMissileTarget). Still missing (non-blocking):
+EXIT_C eject cursor, birds, unit-group formations, and the per-file
+mapping of ROB23-75 (see 2e).
 The list below is kept as the original reference.
 
 Full function-level sweep of the zod engine source (137 cpp files,

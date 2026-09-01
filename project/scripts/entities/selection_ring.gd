@@ -34,6 +34,64 @@ func _draw() -> void:
 	if unit.get("selected"):
 		_draw_brackets(unit)
 		_draw_rank(unit)
+		_draw_attack_radius(unit)
+
+
+func _process(delta: float) -> void:
+	# the range dots crawl one slot per second (zod radius_i += PI_shift
+	# * time_dif) — redraw comes free, the unit already queues it
+	_phase = fmod(_phase + PHASE_STEP * delta, PHASE_STEP)
+
+
+## THE ATTACK RANGE, SHOWN THE ORIGINAL WAY (zod ZObject::
+## RenderAttackRadius, drawn for every SELECTED unit): a dotted circle
+## in the owner's team colour at weapon range + 3px, ten 2px dots per
+## quadrant mirrored into all four, crawling one slot per second. A dot
+## is NOT drawn where another selected unit's radius already covers it
+## (zod WithinAttackRadiusOf) — a packed squad shows one merged envelope
+## instead of forty overlapping circles.
+const DOTS_PER_QUADRANT := 10
+const PHASE_STEP := (PI / 2.0) / float(DOTS_PER_QUADRANT)
+const DOT := 2.0
+const RANGE_PAD := 3.0
+var _phase := 0.0
+
+
+func _draw_attack_radius(unit: Node) -> void:
+	var reach: float = unit.get("range_px")
+	if reach == null or reach <= 0.0:
+		return  # unarmed hardware draws nothing (zod: !attack_radius)
+	var scale: float = unit.get("sprite_scale")
+	var radius := reach * scale + RANGE_PAD
+	var col: Color = TEAM_COLORS.get(int(unit.get("team")), Color.WHITE)
+	var avoid: Array = []
+	if SelectionManager.current != null:
+		avoid = SelectionManager.current.selected
+	var deg := _phase
+	while deg <= PI / 2.0:
+		var spoke := Vector2(sin(deg), cos(deg)) * radius
+		for corner in [
+			spoke, Vector2(-spoke.x, spoke.y),
+			Vector2(-spoke.x, -spoke.y), Vector2(spoke.x, -spoke.y),
+		]:
+			if _dot_covered(unit, corner, avoid):
+				continue
+			draw_rect(Rect2(corner - Vector2(DOT, DOT) * 0.5,
+				Vector2(DOT, DOT)), col)
+		deg += PHASE_STEP
+
+
+func _dot_covered(unit: Node, local_dot: Vector2, avoid: Array) -> bool:
+	var world_dot: Vector2 = unit.to_global(local_dot)
+	for other in avoid:
+		if other == unit or not is_instance_valid(other):
+			continue
+		var r: float = other.get("range_px")
+		if r == null or r <= 0.0:
+			continue
+		if world_dot.distance_to(other.global_position) <= r:
+			return true
+	return false
 	if unit.get("hp") != null and unit.get("max_hp") != null:
 		if unit.hp < unit.max_hp:
 			var r := _unit_rect(unit)

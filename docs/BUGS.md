@@ -17,9 +17,10 @@ They are listed in the order I would tackle them.
    2026-08-23 are derived from `cooldown / seconds-to-raze`, which does
    account for it; bringing small arms onto the same rule means departing
    from a transcribed number, so it is left as a decision rather than
-   silently changed. Also open in the same area: every explosive weapon
-   carries `hit_chance = 1.00` and literally cannot miss, which is what
-   makes tank shells feel absolute against infantry.
+   silently changed. UPDATE 2026-09-01: the "cannot miss" half of this
+   item is FIXED — blast projectiles now scatter their impact around the
+   led aim (see the fixed log); the `building_frac` rate question above
+   remains the open decision.
 
 1. **The retail campaign's STARTING ARMIES are not in the release.**
    Every `levels.dat` record names `preset1.wal` / `preset2.wal` and
@@ -109,6 +110,112 @@ They are listed in the order I would tackle them.
     (destructible, firing scenery), so it needs a scope decision.
 
 ## Fixed
+- 2026-09-01 — **fort tower guns floated beside the fort, four of them,
+  and could not cover their own gate.** Three defects in one report:
+  (1) the mount table's outer pair sat at the art EDGES (x 10/150) —
+  the real tower platforms centre at (25,16)/(135,16) and
+  (26,63)/(134,63), measured off the art at 3x, identical on both fort
+  variants; (2) map forts armed ALL FOUR towers at load, which turned
+  the opening game into a siege — `STARTING_TOWER_GUNS = 1` now, the
+  rest are the build-up; (3) a stock gatling reaches 120px and the fort
+  art is 160 ACROSS, so a tower gun could not touch an enemy at its own
+  gate — mounted guns get `TOWER_RANGE_SCALE = 1.8` (elevation pays in
+  reach), applied in `mount_product` for built guns too.
+- 2026-09-01 — **units watched their squadmates get shot** ("when one
+  gets hit the others don't go attack it"). Nothing propagated a hit:
+  a sniper outranging a grunt's return reach was ignored by everyone
+  he was not currently hitting. `Unit2D.notify_attacked` (called from
+  `Combat._land` on direct-fire hits) makes the victim retaliate and
+  raises every idle friend inside 120px; a unit under real orders, on
+  a DEFEND post, or already fighting is never diverted, and it is
+  team-agnostic so the AI's squads answer fire too. A freshly-shot
+  standing robot also holds its weapon-up stance for 3s
+  (`_alert_timer` -> the fire pose in `_play_idle`).
+- 2026-09-01 — **the verdict screen slammed down on the same frame as
+  the deciding blow.** `GAME_OVER_LINGER = 3.0` — the losing HQ's
+  collapse (debris, fire) plays in full view before the game-over
+  overlay arrives.
+- 2026-09-01 — **a fresh AI brain sat through one whole think interval
+  (4-6s) before its opening move** — `_accum` now starts full, so the
+  first think fires on the first frame ("the AI needs a long time till
+  it does something"; the retaliation fix above covers the other half,
+  AI units answering fire between think passes).
+- 2026-09-01 — **the dotted route redrew itself whenever an attacked
+  target moved** ("the path newly generates all the time — looks
+  buggy"). `_chase_repath` funnels into `Unit2D._begin_move`, which
+  unconditionally re-showed the PathIndicator for player units, so a
+  chase re-plan every 28px of target drift spawned a fresh full route
+  with marker each time. `_begin_move(announce)` now draws the route
+  only for the player's own fresh order; chase upkeep, the stuck-unjam
+  and self-issued orders (smart idle, return-to-post — which also
+  played the acknowledgement bark nobody asked for) are silent.
+- 2026-09-01 — **units ground themselves into parked units** ("units
+  get stuck in the other units — other units also need to be considered
+  when finding the path"). The nav grids know terrain and buildings
+  only, so a walker wedged against a standing crowd re-planned the
+  exact route it was stuck on — through the bodies — and burned its
+  repath budget in place. `NavWorld.request_path_avoiding` stamps the
+  cells of nearby STATIONARY units solid for the duration of one query
+  (start-adjacent cells never stamped; plain-route fallback when the
+  crowd seals the way), and `_unjam` routes with it. Moving units are
+  not stamped — they clear the cell before the walker gets there.
+- 2026-09-01 — **the jeep "spasm": firing units flicked between the
+  shoot facing and the travel facing every shot.** Two causes, two
+  fixes: a shot snaps `_last_dir` at the target but the next steering
+  tick snapped it back to the velocity angle — `_face_lock` (0.35s,
+  armed by every fire path) pins the facing across that boundary; and
+  the chase stop-at-range had no hysteresis, so a target hovering ON
+  the range line yo-yoed the chassis between hold and pursuit —
+  `CHASE_RESUME = 1.15` keeps the stance until the target is genuinely
+  clear. Idle turrets also all stepped their scan sectors in unison
+  (every `_scan_timer` started at 0); they start at a random phase now.
+- 2026-09-01 — **hitscan fire was a drawn yellow LINE, pinned to a
+  firing position the unit had already left.** The original draws no
+  tracer at all: the directional muzzle-flash art on the shooter is the
+  gun, and the shot reads from where it LANDS. `Fx.bullet` now plays
+  the `impact` spark on a hit and the pack's `ground_spark` ricochet
+  puff (converted art, previously referenced by nothing) on a miss,
+  each with a ±3px landing jitter; hitscan hits on UNITS therefore
+  show an impact for the first time (only buildings ever sparked). The
+  laser keeps its beam — that is the original's weapon sprite — and
+  gains the same landing spark.
+- 2026-09-01 — **lockstep volleys: every unit of a type fired on an
+  identical clock** (the "we don't randomize" sweep). Reload gets ±10%
+  jitter at every fire site (robots, vehicles/cannons, the APC port
+  gunner), which desynchronises a battle line within a few shots
+  without changing the average rate of fire.
+- 2026-09-01 — **production-panel name tag: the sidebar's 96x14 team
+  plate was squashed into the 45x13 name slot** at 47% scale, leaving
+  bands of the window's own red painted slot showing above and below
+  it ("name tags overlay the red background, not aligned"). The slot
+  now shows the art cut FOR it — `object_name_button.png`, exactly
+  45x13, previously referenced by nothing — with the unit name printed
+  as text. More of the same sweep: the LOOP/WAIT badge printed
+  straight over the factory title plate's own lettering (moved onto
+  the object window with a drop shadow); the title plate was centred
+  onto half-pixel offsets (left-aligned native now); the health gauge
+  showed the top-left CORNER crop of the 62x16 bar art (now squashed
+  to the slot inside a width-clipping wrapper); the whole panel was
+  positioned at fractional camera coordinates every frame, shimmering
+  its 8px glyphs (roundf); the status plate hung 1px past the window;
+  the time slot was 1px too narrow for "10:00". Sidebar: the green
+  health span and the bottom-bar army gauges could never render
+  NARROWER than their own art (TextureRect minimum size — both were
+  stuck at full width; EXPAND_IGNORE_SIZE), the health bar drew 3px
+  above the frame's window cut, and the clock box was 2px too narrow
+  for "0:00:00".
+- 2026-09-01 — **GENERATED SKIRMISH MAPS** (new feature, not a bug):
+  the skirmish list leads with a RANDOM MAP entry — players (2-8),
+  starting money, size (96/128/176) and theme (5 planets or random),
+  previewing the ACTUAL map the current seed builds; START plays
+  exactly what is previewed. `MapGen` emits the shipped JSON schema
+  (plain-ground sheet, ORock-assembled rock ridges kept out of
+  guaranteed fort-to-fort corridors, a fort + two factories per team
+  on an ellipse, zones tiling the map, a neutral flag per fortless
+  zone, `passable`/`water` derived from tileinfo) to
+  `user://generated_map.json`, so the loader, minimap, AI and saves
+  treat it like any shipped map. `MatchConfig.starting_money`
+  overrides every seated team's purse after load.
 - 2026-08-20 — **an EXPORTED BUILD loaded none of its content, and nothing
   could see it.** Godot packs an imported file as a `.import` sidecar and
   renames the real texture under `.godot/imported/`; text resources are
@@ -597,3 +704,128 @@ They are listed in the order I would tackle them.
   d842009 / 5a5c599 / d7ce62a: driverless rallies, placement teleports
   + corner pockets, unkillable forts).
 - 2026-08-20, `131b64e` — the consolidated 35-item sweep.
+- 2026-09-01 — **attack-move "just stops after a time"** — two root
+  causes. (1) `Unit2D._shoot` rolled the per-hit snipe chances (grunt
+  0.3, laser 0.6, sniper 0.8 — the original zsettings numbers) straight
+  into `target.eject_driver()`: the FIRST enemy volley in any firefight
+  had ~30% per grunt per shot to kill the crew, and `eject_driver`
+  drops every order and neutralizes the hull. Crewed hardware on amove
+  halted to trade fire and immediately sat down empty. The original
+  applies the roll to a driver HEALTH POOL (`DamageDriverHealth`, pool
+  = a grunt's health, hit = the shooter's damage, hull untouched);
+  `Vehicle2D.damage_driver` now does exactly that and only an emptied
+  pool ejects. Pool persists through saves (`dhp` in the vehicle dict).
+  (2) The amove HALT itself was dead code: `_combat` (in `_process`)
+  zeroed `velocity`, but `_steer` (the next physics tick) overwrote it
+  from the waypoint, so attack-move fired on the move and never held.
+  `_amove_probe` now carries the halt across the tick boundary via
+  `_amove_hold`, which `_steer` respects. Guarded by `--amove-test`
+  (driver pool soak, halt+resume for robots and hardware, on real
+  engine frames).
+- 2026-09-01 — **cliffs rendered as blobby pillars** ("the cliffs look
+  still wrong"). Our rock assembly inferred a piece per CELL from
+  left/right neighbours and a depth-below rule — a rule that exists in
+  no original engine. The original (zod `ORock`, ported line for line
+  now) stores one object per 16px rock COLUMN rendering up to three
+  tiles: a TOP piece from a 16-shape vocabulary picked by the exact
+  four-neighbour if-chain, up to two UNDER (cliff-face) pieces wherever
+  no rock continues below, and a cast SHADOW column drawn one tile EAST
+  as a ground prerender. Only the BASE tile is impassable — cliffs
+  overhang, units walk behind the face and the Y-sort covers them (the
+  old build made every rock cell solid). Blasting a column now measures
+  and clears its base and perm-stamps one of the six `rock_destroyed`
+  rubble pieces on the base tile (`Decals.rock_rubble`), which the old
+  path never left behind. Verified by rendering the ported table in
+  isolation against the original sheet; asserted by the `--combat2-test`
+  rubble check and the `--cliffshot-test` camera diagnostic.
+- 2026-09-01 — **"attack order just rolls instead of attacking in
+  range"** — the click tolerance. `Pick.at` tested a flat 8px radius
+  around a unit's origin; the original (zod `ZObject::UnderCursor` /
+  `WithinSelection`) tests the object's whole RENDERED BOX
+  (`width_pix x height_pix`). Clicking a tank's hull edge or a walking
+  robot's fringe missed the unit, the attack order fell through to a
+  plain move, and the squad "just rolled" to the spot. Pick now uses a
+  per-kind art-box hit test (`Pick.PICK_BOX`: robots 24x28, hardware
+  32x32 half-extents), shared by the cursor, click selection, the
+  vehicle/APC finders and order dispatch. The attack chase itself was
+  verified sound against the original contract (stop at
+  `range_px * sprite_scale`, fire immediately, follow a moving target —
+  asserted by `--attack-click-test`, static and moving targets).
+- 2026-09-01 — **the per-unit range display** — ported (zod
+  `ZObject::RenderAttackRadius`): every SELECTED unit draws a dotted
+  circle at its weapon range (`range_px * sprite_scale + 3`, the same
+  expression the fire gate uses) in the owner's team colour — ten 2px
+  dots per quadrant, mirrored into all four, crawling one slot per
+  second (zod `radius_i`). A dot is suppressed where another selected
+  unit's radius already covers it (`WithinAttackRadiusOf`), so a packed
+  squad shows one merged envelope. Unarmed hardware draws nothing.
+  Visible in the `--cliffshot-test` screenshot.
+- 2026-09-01 — **"vehicles take no damage, the fight never ends"** —
+  two hidden HEALS made hardware in a driver-snipe cycle undamageable.
+  `eject_driver` popped the hull back to half HP when the crew died, and
+  `enter` full-repaired it when anyone re-crewed — so a jeep whose
+  driver got shot out healed to 50%, sat neutral until the AI re-crewed
+  it, came back at 100%, and the fight restarted from scratch, forever.
+  The original never heals either way (only repair shops / crane work
+  do — zod `DamageDriverHealth` just clears the driver and flips the
+  owner). Both heals removed; hull damage now persists and the damaged
+  art stays honest. Also moved the driver-snipe roll from `Unit2D._shoot`
+  into `Combat.fire` — zod rolls it in the generic damage path for every
+  armed attacker, so JEEPS and GATLINGS now snipe crews too (they fired
+  through their own `Combat.fire` block and never could). Snipes remain
+  hit-gated (roll only on shots that pass hit chance, zod order) and
+  wound the driver pool instead of the hull. Asserted by the extended
+  `--jeepduel-test` (ordered duel + opportunistic fire + snipe pool).
+- 2026-09-01 — **skirmish maps shipped NO terrain nav at all** — "vehicles
+  can cross rivers" + "on some maps the AI does nothing". The zod
+  multiplayer set (`bb_orig*`, `p03*`, `p04*`, `p08` — the whole skirmish
+  pool) carries neither `passable` nor `water` arrays; the loader read a
+  missing mask as "everything walkable", so ~5000 water cells (p08:
+  5087) and thousands of cliff cells were open ground for every unit —
+  tanks forded rivers, and the AI's zone/route reasoning ran on a flat
+  world. Fix: when a map does not ship a mask (or ships a short one),
+  the loader derives passability and water from the per-planet
+  `tileinfo_<planet>.json` tables — validated 0 mismatches against the
+  stored masks on all 27 maps that ship them. The AI-brain lane
+  (`--brain-test --map=<any map>`) audits any map for adaptive
+  behaviour: production, zone expansion, attack posture, plus the nav
+  contract (water must block wheels somewhere).
+- 2026-09-01 — **the player was eliminated 16 seconds into some
+  skirmish maps** — two compounding causes. (1) Map forts spawned
+  DEFENCELESS: the tower-gun design says "a fort defends itself with
+  its tower guns", but nothing mounted them until someone built
+  cannons, so the AI's opening squad razed an undefended fort (with the
+  known explosive-vs-`building_frac` balance, see open item 0) and the
+  elimination cascade ended the match. Map forts now spawn with their
+  four tower gatlings manned. (2) The AI's single-unit assignment
+  offered EVERY flag it did not own, so on first think the whole
+  starting squad marched into the nearest enemy's home sector — that is
+  squad work (the brain's own doctrine: held ground is squad ground);
+  held enemy flags are now only grabbed by squads, or by single units
+  once the posture goes all out. `--brain-test` on the 4-player map
+  went from "match over at t=16s" to a 145s war with real armies.
+- 2026-09-01 — **route legs grazed solid corners on cliff-heavy maps**.
+  AStarGrid2D's ONLY_IF_NO_OBSTACLES allows a diagonal whose other
+  shared neighbour is solid, and uniform-marching `segment_clear` could
+  straddle the thin corner chord — the `--path-test` audit caught a
+  walker's centre 1px inside a cliff. `request_path` now repairs
+  diagonal legs by inserting the open shared cell, and `segment_clear`
+  is an exact Amanatides-Woo cell walk with shrunk-rect intersection
+  tests. Residual separation-drift grazing is tolerated at
+  `KNOWN_CROSSING_BASELINE = 2`.
+- 2026-09-01 — **tank and artillery shells landed perfectly every
+  time** ("two tanks meet, they kill each other on a schedule").
+  Explosives shipped `hit_chance = 1.00` and skipped the miss roll, so
+  every shell hit the exact same led point and armour duels were
+  deterministic. Every weapon with a travelling shell now adds GUNNER
+  SCATTER: the impact spreads over a uniform disc sized by the weapon's
+  own blast (`splash_radius * 0.6`, floor 20px) around the led aim, the
+  crater lands where the shell lands, and damage resolves through the
+  existing splash falloff — near-misses hurt, direct hits punish. This
+  deliberately departs from zod (whose missiles reach their aim point
+  exactly and relied on dodging for variance) because our units do not
+  dodge area fire; the scatter is the replacement miss mechanic, and it
+  covers every projectile attacker — tanks, artillery, missile
+  launchers, emplaced cannons. Hitscan weapons keep their per-shot hit
+  chance and never scatter. Asserted by the `--natives-test` scatter
+  block (repeated fire at a fixed target must produce varying damage).

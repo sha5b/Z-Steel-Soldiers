@@ -30,6 +30,20 @@ static func _ai_units_of(tree: SceneTree, team: int, kind: String) -> Array[Node
 	return out
 
 
+## MAP FORTS STAND ARMED now (a manned tower gatling at load) — the mount
+## mechanics tests need a fort with FREE slots, so they strip it first.
+## Destroying the guns exercises the same free-the-slot path play uses.
+static func disarm_fort(fort: FortBuilding) -> void:
+	if fort == null:
+		return
+	for g in fort.slot_cannons:
+		if g != null and is_instance_valid(g) and g.alive:
+			g.take_damage(1000000)
+	await fort.get_tree().process_frame
+	fort.slot_cannons = fort.slot_cannons.map(
+		func(g): return g if g != null and is_instance_valid(g) and g.alive else null)
+
+
 static func should_run() -> bool:
 	var args := OS.get_cmdline_args() + OS.get_cmdline_user_args()
 	for flag in ["capture", "combat", "factory", "ai", "path", "dir", "near", "flag",
@@ -38,7 +52,8 @@ static func should_run() -> bool:
 			"layer", "vfx", "tactics", "pose", "level", "repair", "combat2",
 			"ui", "teams", "defs", "scenes", "orders", "balance", "cursor",
 			"mp", "rally", "placement", "fortkill", "parity", "art", "mpmatch",
-			"towercrew", "terrain", "group", "veteran", "retail", "qol"]:
+			"towercrew", "terrain", "group", "veteran", "retail", "qol",
+			"amove", "natives", "cliffshot", "attack-click", "jeepduel", "brain"]:
 		if "--%s-test" % flag in args:
 			return true
 	return false
@@ -1517,6 +1532,623 @@ static func run(ctx: Node) -> void:
 			if is_instance_valid(u):
 				u.queue_free()
 		crate.queue_free()
+	if "--amove-test" in args:
+		# ATTACK-MOVE contract, on the real engine loop: hardware trades
+		# fire and SURVIVES the trade (driver pool), robots halt en route
+		# and resume once it clears. Regression: snipe rolls ejected the
+		# crew on the first volley (hull neutral, order gone — "amove
+		# just stops"), and the amove halt never held (fired on the move).
+		GameState.over = true
+		GameSettings.auto_idle = false
+		var ar := TestRig.start("AMOVE")
+		# the driver is a pool: a roll wounds, an emptied pool ejects
+		var hull: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 1,
+			Vector2(600, 600), true) as Vehicle2D
+		if hull == null:
+			ar.check(false, "crew pool: spawn failed")
+		else:
+			var pool0: int = hull.driver_hp
+			ar.check(pool0 > 0, "crew spawned with no health pool")
+			ar.check(not hull.damage_driver(10),
+				"first snipe roll killed the driver outright")
+			ar.check(hull.manned and hull.driver_hp == pool0 - 10,
+				"snipe wound did not drain the driver pool")
+			ar.check(hull.damage_driver(100000),
+				"emptied driver pool did not eject the crew")
+			ar.check(not hull.manned and hull.team == 0,
+				"a dead driver left his hull owned")
+			hull.queue_free()
+		# hardware on amove: engage the cluster, live through it, arrive
+		var tank: Vehicle2D = Spawner.spawn(ctx, "vehicle", "heavy", 1,
+			Vector2(600, 600), true) as Vehicle2D
+		tank.hp = 1000000
+		tank.max_hp = 1000000
+		var foes: Array[Unit2D] = []
+		for k in 8:
+			var f: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 2,
+				Vector2(600 + (k % 4) * 16 - 24, 700 + (k / 4) * 16))
+			f.hp = 1000000
+			f.max_hp = 1000000
+			f.damage = 0  # isolate the snipe path: no hull damage at all
+			foes.append(f)
+		await ctx.get_tree().physics_frame
+		tank.issue_order(Order.move_attack(Vector2(600, 900)))
+		var fought := false
+		for i in 300:
+			await ctx.get_tree().physics_frame
+			if tank._target != null and is_instance_valid(tank._target):
+				fought = true
+			if not tank.alive or not tank.manned or tank.team != 1:
+				break
+		ar.check(tank.alive and tank.manned and tank.team == 1,
+			"amove into a firefight stripped the crew to the first volley")
+		ar.check(fought, "tank never engaged anything on the amove")
+		for f in foes:
+			if is_instance_valid(f):
+				f.queue_free()
+		var arrived := false
+		for i in 900:
+			await ctx.get_tree().physics_frame
+			if tank.is_idle() and not tank.has_move_target():
+				arrived = true
+				break
+		ar.check(arrived, "tank never finished the amove after the field cleared")
+		tank.queue_free()
+		# robots: halt en route at engagement range, resume when it clears
+		var walker: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+			Vector2(600, 600))
+		walker.hp = 1000000
+		walker.max_hp = 1000000
+		var guard: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 2,
+			Vector2(600, 780))
+		guard.hp = 1000000
+		guard.max_hp = 1000000
+		guard.damage = 0
+		await ctx.get_tree().physics_frame
+		walker.issue_order(Order.move_attack(Vector2(600, 900)))
+		for i in 400:
+			await ctx.get_tree().physics_frame
+			if walker.is_idle():
+				break
+		ar.check(walker.global_position.distance_to(Vector2(600, 900)) > 60.0,
+			"walker walked straight THROUGH a live enemy on amove")
+		var halt_pos := walker.global_position
+		var drifted := 0.0
+		for i in 60:
+			await ctx.get_tree().physics_frame
+			drifted = maxf(drifted, halt_pos.distance_to(walker.global_position))
+		ar.check(drifted < 25.0,
+			"engaged amove unit kept moving (%.0fpx in the halt window)" % drifted)
+		if is_instance_valid(guard):
+			guard.queue_free()
+		var resumed := false
+		for i in 900:
+			await ctx.get_tree().physics_frame
+			if walker.is_idle() and not walker.has_move_target():
+				resumed = true
+				break
+		ar.check(resumed, "amove never resumed after the engagement ended")
+		walker.queue_free()
+		ar.finish("driver pool, halt+resume")
+	if "--natives-test" in args:
+		# THE NATIVE-ENGINE CONTRACTS: the shared SpriteFrames cache, the
+		# polyphonic one-shot mixer, the AI's nav-grid walk distances,
+		# physics-broadphase picking, the RVO avoidance pilot and the
+		# seeded per-team brain dice.
+		GameState.over = true
+		GameSettings.auto_idle = false
+		var nv := TestRig.start("NATIVES")
+		# SpriteFrames are shared, cached resources: same call, same object
+		var frames_a := AnimLibrary.robot_frames("grunt", 1)
+		var frames_b := AnimLibrary.robot_frames("grunt", 1)
+		nv.check(frames_a == frames_b and frames_a.get_animation_names().size() > 0,
+			"robot frames are rebuilt per call or empty")
+		# one polyphonic mixer; a played wav lands in the stream cache
+		nv.check(Fx._poly_player != null, "polyphonic mixer never built")
+		Fx.gunfire("RIFLE3")
+		nv.check(Fx._streams.has("RIFLE3"), "gunshot did not reach the mixer")
+		# walk distances: over the nav grid, not the crow line
+		var aim: AiMap = AiMap.new(MatchState.current.player_team)
+		aim.refresh()
+		var fort: Building2D = null
+		for b in BuildingRegistry.all():
+			if b is FortBuilding and b.alive \
+					and b.team == MatchState.current.player_team:
+				fort = b
+				break
+		if fort == null:
+			nv.check(false, "no player fort for the distance field")
+		else:
+			var from := fort.visual_center()
+			var near := from + Vector2(96, 0)
+			var d_near := aim.walk_distance(from, near)
+			var d_euclid := from.distance_to(near)
+			nv.check(d_near >= d_euclid * 0.9 and d_near < INF,
+				"walk distance below straight line or infinite (%.0f vs %.0f)"
+					% [d_near, d_euclid])
+			var d_far := aim.walk_distance(from, from + Vector2(600, 400))
+			nv.check(d_far >= d_near,
+				"walk distance is not monotone with range")
+		# picking: the harness group path AND the real physics broadphase
+		var pick_bot: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+			Vector2(760, 600))
+		if pick_bot == null:
+			nv.check(false, "pick spawn failed")
+		else:
+			nv.check(Pick.at(pick_bot.global_position) == pick_bot,
+				"Pick.at missed a unit under the harness path")
+			TestLevers.direct_step = false
+			for i in 3:
+				await ctx.get_tree().physics_frame
+			nv.check(Pick.at(pick_bot.global_position + Vector2(2, 2)) == pick_bot,
+				"physics broadphase missed a unit under the cursor")
+			nv.check(not Pick.box_candidates(
+				Rect2(pick_bot.global_position - Vector2(20, 20),
+					Vector2(40, 40)), 1).is_empty(),
+				"box candidates empty under the physics broadphase")
+			TestLevers.direct_step = true
+			pick_bot.queue_free()
+		# RVO pilot: agents answer, marchers make progress through each
+		# other's way, and the default-off contract holds
+		GameSettings.rvo_avoidance = true
+		var rvo_a: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+			Vector2(600, 600))
+		var rvo_b: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+			Vector2(600, 880))
+		if rvo_a == null or rvo_b == null:
+			nv.check(false, "rvo spawn failed")
+		else:
+			rvo_a.hp = 1000000
+			rvo_b.hp = 1000000
+			rvo_a.issue_order(Order.move(Vector2(600, 860)))
+			rvo_b.issue_order(Order.move(Vector2(600, 620)))
+			var saw_answer := false
+			var moved_a := 0.0
+			var moved_b := 0.0
+			var start_a := rvo_a.global_position
+			var start_b := rvo_b.global_position
+			for i in 300:
+				await ctx.get_tree().physics_frame
+				saw_answer = saw_answer or rvo_a._rvo_has or rvo_b._rvo_has
+				moved_a = start_a.distance_to(rvo_a.global_position)
+				moved_b = start_b.distance_to(rvo_b.global_position)
+				if moved_a > 120.0 and moved_b > 120.0:
+					break
+			nv.check(saw_answer,
+				"RVO agents never answered with a safe velocity")
+			nv.check(moved_a > 100.0 and moved_b > 100.0,
+				"RVO marchers stalled (%.0f / %.0f px of 120)"
+					% [moved_a, moved_b])
+			rvo_a.queue_free()
+			rvo_b.queue_free()
+		GameSettings.rvo_avoidance = false
+		# SHELLS SCATTER: repeated fire at a fixed target must produce
+		# varying damage (falloff around a scattered impact), not the
+		# same perfect shell every time
+		var gun: Vehicle2D = Spawner.spawn(ctx, "vehicle", "heavy", 1,
+			Vector2(600, 600), true) as Vehicle2D
+		var plate: Vehicle2D = Spawner.spawn(ctx, "vehicle", "heavy", 2,
+			Vector2(600, 740), true) as Vehicle2D
+		if gun == null or plate == null:
+			nv.check(false, "scatter: spawn failed")
+		else:
+			plate.hp = 1000000
+			plate.max_hp = 1000000
+			var gdef := ContentDB.def_for("vehicle", "heavy")
+			var last_hp := plate.hp
+			var damages: Array[int] = []
+			for i in 10:
+				Combat.fire(gun, gdef,
+					gun.global_position + Vector2(0, -12), plate, gun.damage)
+				for j in 120:
+					await ctx.get_tree().physics_frame
+					if plate.hp != last_hp:
+						break
+				damages.append(last_hp - plate.hp)
+				last_hp = plate.hp
+			var distinct := {}
+			for d in damages:
+				distinct[d] = true
+			nv.check(distinct.size() >= 3,
+				"shells landed identical %d times (no scatter): %s"
+					% [damages.size(), damages])
+			nv.check(damages.max() > damages.min(),
+				"scatter produced no damage spread")
+			gun.queue_free()
+			plate.queue_free()
+		# brain dice: seeded per team, same stream for the same seed
+		var brain_a := CpuAi.new(2)
+		var brain_b := CpuAi.new(2)
+		var brain_c := CpuAi.new(3)
+		nv.check(brain_a.rng.seed == brain_b.rng.seed,
+			"same team, same map: dice disagree")
+		nv.check(brain_a.rng.seed != brain_c.rng.seed,
+			"different teams share one dice stream")
+		nv.check(brain_a.rng.randi() == brain_b.rng.randi(),
+			"seeded streams diverged on the first roll")
+		# the F3 overlay: wired, hidden by default
+		var overlay_found := false
+		for c in ctx.get_node("CanvasLayer").get_children():
+			if c is PerfOverlay:
+				overlay_found = true
+				nv.check(not c.visible, "perf overlay visible by default")
+		nv.check(overlay_found, "perf overlay not wired into the match")
+		nv.finish("cache, mixer, distances, picking, rvo, dice")
+	if "--cliffshot-test" in args:
+		# TEMP diagnostic: park the camera on a big rock formation and
+		# screenshot it
+		var best_cell := Vector2i.ZERO
+		var best := -1
+		var rock_cells := {}
+		for rnode in ctx.get_tree().get_nodes_in_group(Groups.ROCKS):
+			var c: Vector2i = rnode.get_meta("base_cell")
+			rock_cells[c] = true
+		for c0 in rock_cells:
+			var run := 0
+			for k in 6:
+				var n := 0
+				for m in 8:
+					if rock_cells.has(c0 + Vector2i(m, k)):
+						n += 1
+				if n >= 3:
+					run += 1
+			if run > best:
+				best = run
+				best_cell = c0
+		print("CLIFFSHOT biggest formation at ", best_cell, " columns=", rock_cells.size())
+		# WITH A UNIT SELECTED the shot also shows the selection brackets
+		# and the attack-radius dots — the camera already sits on the
+		# player's fort, so pick the unit nearest IT (panning raced the
+		# screenshot and framed empty ground)
+		var fort_at := Vector2.ZERO
+		for b in ctx.get_tree().get_nodes_in_group(Groups.BUILDINGS):
+			if b is FortBuilding and b.team == MatchState.current.player_team:
+				fort_at = (b as Building2D).visual_center()
+				break
+		var nearest: Unit2D = null
+		for u in ctx.get_tree().get_nodes_in_group(Groups.UNITS):
+			if u is Unit2D and u.alive and u.team == MatchState.current.player_team:
+				if nearest == null or u.global_position.distance_to(fort_at) \
+						< nearest.global_position.distance_to(fort_at):
+					nearest = u
+		if nearest != null:
+			SelectionManager.current.select_single(nearest)
+			var cam := ctx.get_viewport().get_camera_2d()
+			if cam is RtsCamera2D:
+				(cam as RtsCamera2D).pan_to(nearest.global_position)
+			await ctx.get_tree().process_frame
+			print("RANGESHOT unit=", nearest.unit_name, " at ", nearest.global_position,
+				" range=", nearest.range_px, " selected=", nearest.selected,
+				" ring_visible=", nearest.ring.visible)
+		await ctx.get_tree().create_timer(0.5).timeout
+		SelfTests.maybe_screenshot(ctx, "cliffshot.png")
+	if "--attack-click-test" in args:
+		# TEMP REPRO: right-click attack on the real engine loop — the
+		# full click path (selection -> Commands.dispatch -> Pick) plus
+		# the chase: stop at range, open fire immediately
+		GameState.over = true
+		GameSettings.auto_idle = false
+		TestLevers.direct_step = false  # the REAL game config
+		var atk_problems: Array[String] = []
+		var shooter: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+			Vector2(600, 600))
+		shooter.hp = 1000000
+		var victim: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 2,
+			Vector2(600, 900))
+		victim.hp = 1000000
+		victim.max_hp = 1000000
+		victim.damage = 0
+		await ctx.get_tree().physics_frame
+		SelectionManager.current.clear_selection()
+		SelectionManager.current.select_single(shooter)
+		var click_at := victim.global_position
+		Commands.dispatch(click_at)
+		print("ATK order=", shooter.order != null, " target=",
+			shooter.attack_target == victim, " move=", shooter.move_target)
+		var reach: float = shooter.range_px * shooter.sprite_scale
+		var closest := INF
+		var fired_at := INF
+		var victim_hp := victim.hp
+		for i in 900:
+			await ctx.get_tree().physics_frame
+			var d: float = shooter.global_position.distance_to(victim.global_position)
+			closest = minf(closest, d)
+			if victim.hp < victim_hp:
+				fired_at = minf(fired_at, d)
+				victim_hp = victim.hp
+			if i % 60 == 0:
+				print("t=%03d d=%.0f (reach %.0f) vel=%s tgt=%s" % [
+					i, d, reach, shooter.velocity,
+					shooter._target != null and is_instance_valid(shooter._target)])
+			if fired_at < INF and i > 30:
+				break
+		print("ATK closest=%.0f reach=%.0f first_hit_at=%.0f vel_end=%s" % [
+			closest, reach, fired_at, shooter.velocity])
+		if is_instance_valid(victim):
+			victim.queue_free()
+		shooter.queue_free()
+		# MOVING target: the quarry patrols; the hunter must stop and
+		# fire whenever it is in reach, not roll past firing nothing
+		var hunter: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 1,
+			Vector2(600, 600))
+		hunter.hp = 1000000
+		var runner: Unit2D = Spawner.spawn(ctx, "robot", "grunt", 2,
+			Vector2(600, 860))
+		runner.hp = 1000000
+		runner.max_hp = 1000000
+		runner.damage = 0
+		runner.issue_order(Order.move(Vector2(700, 860)))
+		await ctx.get_tree().physics_frame
+		hunter.issue_order(Order.attack(runner))
+		var reach2: float = hunter.range_px * hunter.sprite_scale
+		var roll_in_range := 0
+		var stop_in_range := 0
+		var hits := 0
+		var last_hp := runner.hp
+		for i in 600:
+			await ctx.get_tree().physics_frame
+			if not is_instance_valid(runner) or not runner.alive:
+				break
+			var d: float = hunter.global_position.distance_to(runner.global_position)
+			var moving: bool = hunter.velocity.length_squared() > 4.0
+			if d <= reach2:
+				if moving: roll_in_range += 1
+				else: stop_in_range += 1
+			if runner.hp != last_hp:
+				hits += 1
+				last_hp = runner.hp
+			# keep the runner walking a patrol so the chase stays live
+			if i == 200:
+				runner.issue_order(Order.move(Vector2(600, 860)))
+		print("ATK2 moving-target: roll_in_range=%d stop_in_range=%d hit_frames=%d" % [
+			roll_in_range, stop_in_range, hits])
+		if roll_in_range > stop_in_range / 4:
+			atk_problems.append("hunter rolls in range without firing (rolling=%d stopped=%d)" % [roll_in_range, stop_in_range])
+		if is_instance_valid(runner):
+			runner.queue_free()
+		if is_instance_valid(hunter):
+			hunter.queue_free()
+		print("ATK REPRO COMPLETE")
+		var ar := TestRig.start("ATTACKCLICK")
+		ar.check(atk_problems.is_empty(), ", ".join(atk_problems))
+		ar.finish("static+moving target")
+	if "--jeepduel-test" in args:
+		# TEMP REPRO: two manned jeeps ordered to kill each other — both
+		# hulls must take damage and one must die
+		GameState.over = true
+		GameSettings.auto_idle = false
+		var jd := TestRig.start("JEEPDUEL")
+		var j1: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 1,
+			Vector2(600, 600), true) as Vehicle2D
+		var j2: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 2,
+			Vector2(600, 700), true) as Vehicle2D
+		if j1 == null or j2 == null:
+			jd.check(false, "spawn failed")
+		else:
+			j1.issue_order(Order.attack(j2))
+			j2.issue_order(Order.attack(j1))
+			print("DUEL hp1=%d hp2=%d" % [j1.hp, j2.hp])
+			var hp1 := j1.hp
+			var hp2 := j2.hp
+			var dmg1 := 0
+			var dmg2 := 0
+			for i in 1200:
+				await ctx.get_tree().physics_frame
+				if not is_instance_valid(j1) or not is_instance_valid(j2) \
+						or not j1.alive or not j2.alive:
+					break
+				dmg1 = hp1 - j1.hp
+				dmg2 = hp2 - j2.hp
+				if i % 150 == 0:
+					print("t=%03d hp1=%d/%d hp2=%d/%d tgt1=%s tgt2=%s fire_t1=%.2f" % [
+						i, j1.hp, j1.max_hp, j2.hp, j2.max_hp,
+						j1._target != null and is_instance_valid(j1._target),
+						j2._target != null and is_instance_valid(j2._target),
+						j1._fire_timer])
+			jd.check(dmg1 > 0, "jeep 1 took no damage at all")
+			jd.check(dmg2 > 0, "jeep 2 took no damage at all")
+			jd.check(not j1.alive or not j2.alive \
+					or dmg1 >= hp1 / 4 or dmg2 >= hp2 / 4,
+				"duel stalled: both jeels barely scratched (dmg %d/%d of %d)" % [dmg1, dmg2, hp1])
+			print("DUEL end: alive1=%s alive2=%s dmg1=%d dmg2=%d" % [
+				is_instance_valid(j1) and j1.alive,
+				is_instance_valid(j2) and j2.alive, dmg1, dmg2])
+		# opportunistic: two enemy jeeps parked in range, NO orders
+		var o1: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 1,
+			Vector2(600, 600), true) as Vehicle2D
+		var o2: Vehicle2D = Spawner.spawn(ctx, "vehicle", "jeep", 2,
+			Vector2(600, 700), true) as Vehicle2D
+		if o1 == null or o2 == null:
+			jd.check(false, "opportunistic spawn failed")
+		else:
+			var ohp2 := o2.hp
+			var hits := 0
+			for i in 300:
+				await ctx.get_tree().physics_frame
+				if not is_instance_valid(o1) or not is_instance_valid(o2) \
+						or not o1.alive or not o2.alive:
+					break
+				if o2.hp < ohp2:
+					hits += 1
+					ohp2 = o2.hp
+			jd.check(o2.max_hp - o2.hp > 0 or not is_instance_valid(o2),
+				"opportunistic fire: parked jeep took no damage in 15s")
+			print("OPPOR end: o2_dmg=%d (hp %d/%d) o1_alive=%s" % [
+				o2.max_hp - (o2.hp if is_instance_valid(o2) else 0),
+				o2.hp if is_instance_valid(o2) else 0, o2.max_hp,
+				is_instance_valid(o1) and o1.alive])
+		if is_instance_valid(o1):
+			o1.queue_free()
+		if is_instance_valid(o2):
+			o2.queue_free()
+		if is_instance_valid(j1):
+			j1.queue_free()
+		if is_instance_valid(j2):
+			j2.queue_free()
+		jd.finish("jeep duel")
+	if "--brain-test" in args:
+		# THE AI IS ALIVE ON ANY MAP: every CPU brain must produce, and
+		# the team must expand past its starting ground within 90 game
+		# seconds. Run with --map=res://assets/maps/<x>.json to audit a
+		# specific map — the skirmish terrain-nav fix (water/cliff masks
+		# derived from tileinfo) exists exactly so no map paralyzes this.
+		var brains: Array[CpuAi] = []
+		for c in ctx.get_children():
+			if c is CpuAi:
+				brains.append(c)
+				c.set_process(true)  # run() disabled them for isolation
+		var bt := TestRig.start("BRAIN")
+		var world_units_start := ctx.get_tree().get_nodes_in_group(Groups.UNITS).size()
+		print("BRAIN map units=%d brains=%d" % [world_units_start, brains.size()])
+		bt.check(brains.size() > 0, "no CPU brains on this map")
+		var start_zones := {}
+		for z in MatchState.current.zones:
+			start_zones[z] = int(z.owner_team)
+		var start_army := {}
+		var start_team_zero := ctx.get_tree().get_nodes_in_group(Groups.UNITS) \
+			.filter(func(u): return u is Unit2D and u.alive and u.team == 0).size()
+		for brain in brains:
+			start_army[brain] = ctx.get_tree().get_nodes_in_group(Groups.UNITS) \
+				.filter(func(u): return u is Unit2D and u.alive and u.team == brain.team).size()
+		var peak_army := {}
+		for brain in brains:
+			peak_army[brain] = int(start_army.get(brain, 0))
+		# who is killing whom: report the first few deaths with context
+		var death_log: Array[String] = []
+		var death_clock := Time.get_ticks_msec()
+		for u in ctx.get_tree().get_nodes_in_group(Groups.UNITS):
+			if u is Unit2D:
+				u.died.connect(func(unit):
+					if death_log.size() < 14:
+						death_log.append("t=%.0fs %s T%d at %s damaged=%s" % [
+							float(Time.get_ticks_msec() - death_clock) / 1000.0,
+							unit.unit_name, unit.team,
+							unit.global_position.snapped(Vector2(4, 4)),
+							unit.hp < unit.max_hp]))
+		var frame0 := Engine.get_physics_frames()
+		var probed := false
+		var match_over_at := -1.0
+		while Engine.get_physics_frames() - frame0 < 150 * 60:
+			await ctx.get_tree().physics_frame
+			# a match that CONCLUDES (the AI crushed a team — elimination
+			# cascade) freezes every system by design: that is a pass, not
+			# a stall
+			if match_over_at < 0.0 and GameState.over:
+				match_over_at = (Engine.get_physics_frames() - frame0) / 60.0
+				for t in [1, 2, 3, 4, 5, 6, 7, 8]:
+					var n := ctx.get_tree().get_nodes_in_group(Groups.UNITS) \
+						.filter(func(u): return u is Unit2D and u.alive and u.team == t).size()
+					var forts := 0
+					for b in BuildingRegistry.all():
+						if b is Building2D and b.alive and b.is_fort and b.team == t:
+							forts += 1
+					if n > 0 or forts > 0:
+						print("BRAIN at over: T%d alive=%d forts=%d" % [t, n, forts])
+				print("BRAIN match concluded at t=%.0fs" % match_over_at)
+				for line in death_log:
+					print("BRAIN death: ", line)
+				break
+			if Engine.get_physics_frames() % 30 == 0 and match_over_at < 0.0:
+				for brain in brains:
+					if not is_instance_valid(brain):
+						continue
+					var n := ctx.get_tree().get_nodes_in_group(Groups.UNITS) \
+						.filter(func(u): return u is Unit2D and u.alive and u.team == brain.team).size()
+					peak_army[brain] = maxi(int(peak_army.get(brain, 0)), n)
+			if not probed and Engine.get_physics_frames() - frame0 > 45 * 60:
+				probed = true
+				for brain in brains:
+					if not is_instance_valid(brain):
+						continue
+					var facs := ctx.get_tree().get_nodes_in_group(Groups.FACILITIES) \
+						.filter(func(f): return f.team == brain.team)
+					var lines := []
+					for f2 in facs:
+						lines.append("id%d '%s' %.0f/%.0fs paid=%s" % [f2.building_id,
+							f2.selected_product(), f2.progress() * f2.produce_seconds(),
+							f2.produce_seconds(), f2.line.paid])
+					print("BRAIN PROBE T%d money=%d facs=%d lines=%s" % [
+						brain.team, MatchState.current.money.get(brain.team, -1),
+						facs.size(), lines])
+		var produced_total := 0
+		var expanded := 0
+		var attacking := 0
+		# NAV CONTRACT: water must block wheels somewhere on this map
+		# (the skirmish set ships no water mask — it is derived now), and
+		# terrain impassability must exist for boots too
+		var vwater := 0
+		var terrain_cells := 0
+		if NavWorld.current != null and NavWorld.current.vehicle_grid != null:
+			for y in range(NavWorld.current.vehicle_grid.region.position.y,
+					NavWorld.current.vehicle_grid.region.end.y):
+				for x in range(NavWorld.current.vehicle_grid.region.position.x,
+						NavWorld.current.vehicle_grid.region.end.x):
+					var c := Vector2i(x, y)
+					if NavWorld.current.vehicle_grid.is_point_solid(c) \
+							and NavWorld.current.nav_grid != null \
+							and not NavWorld.current.nav_grid.is_point_solid(c):
+						vwater += 1
+					if NavWorld.current.nav_grid != null \
+							and NavWorld.current.nav_grid.is_point_solid(c):
+						terrain_cells += 1
+		print("BRAIN NAV vehicle-only solids=%d total solids=%d" % [vwater, terrain_cells])
+		for brain in brains:
+			if not is_instance_valid(brain):
+				continue
+			var army := ctx.get_tree().get_nodes_in_group(Groups.UNITS) \
+				.filter(func(u): return u is Unit2D and u.alive and u.team == brain.team).size()
+			var grew := int(peak_army.get(brain, 0)) - int(start_army.get(brain, 0))
+			produced_total += maxi(grew, 0)
+			var zones_now := 0
+			for z in MatchState.current.zones:
+				if z.owner_team == brain.team:
+					zones_now += 1
+			var zones_start := 0
+			for z in start_zones:
+				if int(start_zones[z]) == brain.team:
+					zones_start += 1
+			if zones_now > zones_start:
+				expanded += 1
+			if brain._attack_mode:
+				attacking += 1
+			print("BRAIN T%d: army %d->%d zones %d->%d attack=%s stance=%s" % [
+				brain.team, int(start_army.get(brain, 0)), army,
+				zones_start, zones_now, brain._attack_mode, brain._stance])
+			# a brain at war may spend its replacements as fast as they
+			# land, and a brain can legitimately be CONQUERED — teams get
+			# wiped in an 8-team FFA. What this test guards is the
+			# contract, not the scoreline: brains think, expand, and the
+			# terrain nav (water/cliffs) is real on this map.
+		if match_over_at < 0.0 and produced_total <= 0:
+			bt.check(false, "no brain grew its army in 150s")
+		for brain in brains:
+			if not is_instance_valid(brain):
+				continue
+			var facs2 := ctx.get_tree().get_nodes_in_group(Groups.FACILITIES) \
+				.filter(func(f): return f.team == brain.team)
+			var lines2 := []
+			for f2 in facs2:
+				lines2.append("id%d '%s' %.0f/%.0fs paid=%s" % [f2.building_id,
+					f2.selected_product(), f2.progress() * f2.produce_seconds(),
+					f2.produce_seconds(), f2.line.paid])
+			var team_units := ctx.get_tree().get_nodes_in_group(Groups.UNITS) \
+				.filter(func(u): return u is Unit2D and u.alive and u.team == brain.team)
+			var team_zero := ctx.get_tree().get_nodes_in_group(Groups.UNITS) \
+				.filter(func(u): return u is Unit2D and u.alive and u.team == 0)
+			# an UNMANNED spawn counts as production too: hardware rolls off
+			# the line team 0 and waits for a crew (Z-style)
+			produced_total += maxi(team_zero.size() - start_team_zero, 0) \
+				/ maxi(brains.size(), 1)
+			print("BRAIN END T%d money=%s army=%d team0_units=%d lines=%s" % [
+				brain.team, MatchState.current.money.get(brain.team, -1),
+				team_units.size(), team_zero.size(), lines2])
+		bt.check(expanded > 0,
+			"no brain expanded past its starting zones in 90s")
+		if match_over_at >= 0.0:
+			bt.finish("match concluded at %.0fs — AI adaptive on this map" % match_over_at)
+		else:
+			bt.finish("%d brains, %d expanded, %d attacking" % [
+				brains.size(), expanded, attacking])
 	if "--orders-test" in args:
 		# the single order intake: state, targets and flags come out of
 		# the Order, never from field writes
@@ -2869,13 +3501,23 @@ static func run(ctx: Node) -> void:
 		if not rocks.is_empty():
 			rock_found = true
 			var rock: Node2D = rocks[0]
-			var cell := Vector2i(((rock.global_position - Vector2(8, 8)) / 16.0).floor())
-			Combat.area_damage(rock.global_position, 40.0, 99, 0)
+			var cell: Vector2i = rock.get_meta("base_cell")
+			var base_pos: Vector2 = Vector2(cell * 16) + Vector2(8, 8)
+			Combat.area_damage(base_pos, 40.0, 99, 0)
 			await Engine.get_main_loop().process_frame
 			rock_cleared = not is_instance_valid(rock) and \
 				(not NavWorld.current.nav_grid or not NavWorld.current.nav_grid.is_point_solid(cell))
 			if not rock_cleared:
 				cproblems.append("rock not destroyed/cleared by blast")
+			# the original perm-stamps rubble on the fallen column's base
+			var rubble := tree.get_nodes_in_group("rock_rubble")
+			var rubble_at := false
+			for rdec in rubble:
+				if rdec is Node2D and \
+						((rdec as Node2D).global_position - Vector2(cell * 16)).length() < 2.0:
+					rubble_at = true
+			if not rubble_at:
+				cproblems.append("destroyed rock left no rubble stamp")
 		# --- the fort's TOWER GUNS are its defence ---
 		# The garrison used to be here: robots walked inside and crewed a
 		# missile battery. Nothing enters a building any more, so what has
@@ -2888,6 +3530,7 @@ static func run(ctx: Node) -> void:
 				fort_g = c6
 				break
 		if fort_g:
+			await SelfTests.disarm_fort(fort_g)
 			var free_before: int = fort_g.free_cannon_slots()
 			if not fort_g.mount_product("cannon", "gatling"):
 				cproblems.append("fort refused to mount a tower gun")
@@ -3393,6 +4036,7 @@ static func run(ctx: Node) -> void:
 				break
 		if fort2:
 			MatchState.current.set_money(1, 5000)
+			await SelfTests.disarm_fort(fort2)  # fill test needs free mounts
 			var fp_rig := TestRig.start("FORTPROD")
 			# RE-POINTING REPLACES, it does not stack. Eight presses on
 			# the roster used to leave a five-deep queue; now the last one

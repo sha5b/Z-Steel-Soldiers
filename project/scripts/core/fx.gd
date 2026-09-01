@@ -239,22 +239,27 @@ func distress() -> void:
 	_bark("bark_%02d" % (randi_range(CHATTER_FIRST, CHATTER_LAST)), -6.0)
 
 
-## Robot small-arms fire: instant hit, visual tracer only.
-func bullet(from: Vector2, to: Vector2) -> void:
-	var line := Line2D.new()
-	line.points = PackedVector2Array([from, to])
-	line.width = 1.5
-	line.default_color = Color(1.0, 0.9, 0.4, 0.9)
-	line.z_index = 5
-	add_child(line)
-	var tween := line.create_tween()
-	tween.tween_property(line, "modulate:a", 0.0, 0.12)
-	tween.tween_callback(line.queue_free)
+## Small-arms fire — SPRITES, not lines. The original draws NO tracer
+## for machine-gun class weapons: the directional muzzle-flash art on
+## the shooter is the gun, and the shot reads from where it LANDS. The
+## remake's Line2D tracer was an invention, and it aged badly — the
+## solid beam pinned to a firing position the unit had already left is
+## the "jeep line doesn't look right" report. A hit sparks on the
+## victim (`spark` art via the `impact` def); a miss kicks up the
+## pack's `ground_spark` ricochet puff where the round buries — art
+## that shipped converted and was referenced by nothing. The landing
+## point is jittered a pixel or two so a burst doesn't stamp seven
+## identical sparks on the same spot.
+func bullet(_from: Vector2, to: Vector2, hit := true) -> void:
+	var jitter := Vector2(randf_range(-3.0, 3.0), randf_range(-3.0, 3.0))
+	play("impact" if hit else "ground_spark", to + jitter)
 
 
 ## Laser fire: instant hit, thick beam flash (no tracer art in the
-## original — the beam itself is the weapon sprite).
+## original — the beam itself is the weapon sprite). The beam now ends
+## in a spark where it lands, so the hit reads at the victim too.
 func laser(from: Vector2, to: Vector2) -> void:
+	play("impact", to)
 	var line := Line2D.new()
 	line.points = PackedVector2Array([from, to])
 	line.width = 2.5
@@ -449,37 +454,43 @@ func play_set(set_name: String, volume_db := 0.0) -> void:
 ## Returns the stream that started playing (null when the sound was
 ## gated, missing or muted) so a caller that has to match the CLIP LENGTH
 ## — the talking portrait — can ask for it here instead of guessing.
+##
+## ALL one-shots ride ONE polyphonic stream (the native voice mixer):
+## the old path created an AudioStreamPlayer node per gunshot, walked
+## the children to cap voices, and freed the node on `finished` —
+## dozens of nodes and frees a second under sustained fire, with a
+## pile-up bug whenever a capped voice never emitted `finished`.
+## `polyphony` IS the voice cap now: beyond it the mixer steals the
+## oldest voice, which is the same audible result the manual cap had.
+var _poly_player: AudioStreamPlayer = null
+var _streams := {}  # wav name -> AudioStream (load() caches by path; this skips the lookup)
+
+
+func _ready() -> void:
+	# built in _ready so the playback object exists before the first shot
+	_poly_player = AudioStreamPlayer.new()
+	_poly_player.bus = GameSettings.SFX_BUS  # volume slider lives on the bus
+	var poly := AudioStreamPolyphonic.new()
+	poly.polyphony = MAX_VOICES
+	_poly_player.stream = poly
+	add_child(_poly_player)
+	_poly_player.play()
+
+
 func _play_wav(name: String, volume_db: float) -> AudioStream:
 	if not _gate_allows(name):
 		return null
-	var path := "%s/%s.wav" % [SOUNDS_DIR, name]
-	if not ResourceLoader.exists(path):
-		return null
-	_enforce_voice_cap()
-	var player := AudioStreamPlayer.new()
-	player.bus = GameSettings.SFX_BUS  # volume slider lives on the bus
-	player.stream = load(path)
-	player.volume_db = volume_db
-	add_child(player)
-	player.finished.connect(player.queue_free)
-	player.play()
-	return player.stream
-
-## Too many simultaneous one-shots exhausts the audio server's slots
-## (the rare `slot >= slot_max` error under big firefights) — stop the
-## oldest voices beyond the cap.
-func _enforce_voice_cap() -> void:
-	var players: Array[AudioStreamPlayer] = []
-	for c in get_children():
-		if c is AudioStreamPlayer and c.playing:
-			players.append(c)
-	while players.size() >= MAX_VOICES:
-		# stop() does NOT emit `finished`, so the queue_free hook wired at
-		# the play site never fired for a capped voice and the stopped
-		# AudioStreamPlayer children piled up for the whole match
-		var oldest: AudioStreamPlayer = players.pop_front()
-		oldest.stop()
-		oldest.queue_free()
+	var stream: AudioStream = _streams.get(name)
+	if stream == null:
+		var path := "%s/%s.wav" % [SOUNDS_DIR, name]
+		if not ResourceLoader.exists(path):
+			return null
+		stream = load(path)
+		_streams[name] = stream
+	var pb := _poly_player.get_stream_playback() as AudioStreamPlaybackPolyphonic
+	if pb != null:
+		pb.play_stream(stream, 0.0, volume_db)
+	return stream
 
 
 func _gate_allows(name: String) -> bool:

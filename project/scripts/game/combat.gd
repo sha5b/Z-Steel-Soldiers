@@ -61,14 +61,42 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 	if def.projectile != null and target is Unit2D:
 		aim += (target as Unit2D).velocity \
 				* (muzzle.distance_to(aim) / maxf(def.projectile.speed, 1.0)) * 0.8
-	if randf() > hit_chance:
-		# missed: the shot flies past
+	# GUNNER SCATTER on every blast projectile. Explosives carried
+	# hit_chance = 1.00 and skipped the miss roll outright, so two tanks
+	# met, exchanged the same perfect shell, and died on a schedule. The
+	# original's shells always reached their AIM point too — the
+	# randomness lived in movement and dodging — so the variance here is
+	# the gunner, not the gun: the impact spreads over a uniform disc
+	# sized by the weapon's own blast (bigger boom, wilder aim), the
+	# crater lands where the shell lands, and damage resolves through
+	# splash falloff — near-misses hurt, direct hits punish. Hitscan
+	# weapons keep their per-shot hit chance; they never scatter.
+	var scattered := false
+	if weapon == "shell" and def.splash_radius > 0.0:
+		aim += Vector2.from_angle(randf() * TAU) \
+				* sqrt(randf()) * maxf(def.splash_radius * 0.6, 20.0)
+		scattered = true
+	if not scattered and randf() > hit_chance:
+		# missed: the round buries in the ground beside the target
 		var past: Vector2 = aim \
 				+ Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
 		if weapon == "laser":
 			Fx.laser(muzzle, past)
 		else:
-			Fx.bullet(muzzle, past)
+			Fx.bullet(muzzle, past, false)
+		return
+	# SNIPING (zod rolls this in the generic damage path, so EVERY armed
+	# attacker rolls — robots, jeeps, gatlings): a HIT on crewed hardware
+	# through the open hatch wounds the driver instead of the hull; an
+	# emptied pool ejects him (Vehicle2D.damage_driver)
+	if def.snipe_chance > 0.0 and target is Vehicle2D \
+			and (target as Vehicle2D).manned and (target as Vehicle2D).lid_open \
+			and randf() < def.snipe_chance:
+		if weapon == "laser":
+			Fx.laser(muzzle, aim)
+		else:
+			Fx.bullet(muzzle, aim)
+		(target as Vehicle2D).damage_driver(amount)
 		return
 	var shooter_id := shooter.get_instance_id() if shooter != null else 0
 	match weapon:
@@ -119,6 +147,9 @@ static func amount_against(target: Node2D, unit_amount: int,
 ## (0 = none, charge buildings the flat amount like everything else).
 static func area_damage(world_pos: Vector2, radius: float, amount: int,
 		shooter_team: int, crater := false, building_frac := 0.0) -> void:
+	if "--brain-test" in OS.get_cmdline_args():
+		print("SPLASH at %s r=%.0f by T%d" % [
+			world_pos.snapped(Vector2(4, 4)), radius, shooter_team])
 	if crater:
 		Decals.crater(world_pos, radius > 36.0)
 	# NEUTRAL objects are not immune. `team != 0` used to sit here on both
@@ -141,9 +172,18 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 		b.take_damage(_falloff(amount_against(b, amount, building_frac),
 			cp.distance_to(world_pos), radius), cp)
 	for rock in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.ROCKS):
-		if rock is Node2D and rock.global_position.distance_to(world_pos) <= radius:
-			NavWorld.current.clear_rock(rock.global_position)
-			Fx.rock_debris(rock.global_position)
+		if not (rock is Node2D):
+			continue
+		# a cliff column anchors at its TOP edge and blocks at its FOOT
+		# (ORock: width 1 x height 3, impassable base tile only) — the
+		# blast measures and clears the base, and leaves the permanent
+		# rubble stamp the original perm-stamps there
+		var base: Vector2 = rock.global_position + Vector2(8.0, 40.0)
+		if base.distance_to(world_pos) <= radius:
+			NavWorld.current.clear_rock(base)
+			Decals.rock_rubble(Vector2i((rock.global_position / 16.0).floor())
+				+ Vector2i(0, 2), MatchState.current.planet)
+			Fx.rock_debris(base)
 			rock.queue_free()
 
 
@@ -156,10 +196,24 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 static func _land(target: Node2D, amount: int, at: Vector2,
 		shooter_id := 0) -> void:
 	var was_alive: bool = target.get("alive") == true
+	if "--brain-test" in OS.get_cmdline_args() \
+			and target is Unit2D and (target as Unit2D).team == 1:
+		var shooter := instance_from_id(shooter_id)
+		print("HIT T1 %s at %s <- %s T%s for %d" % [
+			(target as Unit2D).unit_name, at.snapped(Vector2(4, 4)),
+			shooter.get("unit_name") if shooter != null else "?",
+			shooter.get("team") if shooter != null else "?", amount])
 	if target is Building2D:
 		(target as Building2D).take_damage(amount, at)
 	else:
 		target.take_damage(amount)
+		# RETALIATION: the victim answers and raises nearby idle friends
+		# (Unit2D.notify_attacked) — direct-fire hits only; splash has no
+		# shooter node to point at by the time the shell lands
+		if target is Unit2D and target.get("alive") == true and shooter_id != 0:
+			var striker := instance_from_id(shooter_id)
+			if striker is Node2D:
+				(target as Unit2D).notify_attacked(striker)
 	# VETERANCY: whoever fired the killing shot gets the credit
 	if not was_alive or shooter_id == 0 or target.get("alive") == true:
 		return

@@ -170,7 +170,7 @@ static func _find_pickup(world_position: Vector2) -> Node2D:
 static func _find_apc(world_position: Vector2) -> Vehicle2D:
 	for v in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.UNITS):
 		if v is Vehicle2D and v.is_apc() and v.manned and v.alive and v.team != 0 \
-				and v.global_position.distance_to(world_position) < 24.0:
+				and Pick.in_pick_box(v, world_position):
 			return v
 	return null
 
@@ -178,7 +178,7 @@ static func _find_apc(world_position: Vector2) -> Vehicle2D:
 static func _find_empty_vehicle(world_position: Vector2) -> Node2D:
 	for v in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.UNITS):
 		if v is Vehicle2D and not v.manned and v.alive \
-				and v.global_position.distance_to(world_position) < 24.0:
+				and Pick.in_pick_box(v, world_position):
 			return v
 	return null
 

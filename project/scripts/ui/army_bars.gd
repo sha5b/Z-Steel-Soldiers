@@ -70,6 +70,9 @@ func _rebuild() -> void:
 		# stretched 62px plate would just squash its bevel
 		bar.stretch_mode = TextureRect.STRETCH_KEEP
 		bar.clip_contents = true
+		# IGNORE_SIZE, or the 62px art is the bar's MINIMUM width and it
+		# can never shrink below ~50% share — the gauge read as frozen
+		bar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var path := "%s/unit_amount_bar_%s.png" % [HUD_DIR,
 				AnimLibrary.team_name(team)]

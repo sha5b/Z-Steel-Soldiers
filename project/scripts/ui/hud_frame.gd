@@ -31,13 +31,17 @@ const DESIGN := Vector2(648.0, 484.0)
 
 # --- sidebar slots (local to the sidebar's top-left) --------------------
 const A_BUTTON := Rect2(8, 8, 24, 20)
-const CLOCK := Rect2(34, 8, 62, 20)
+## 64 wide: "0:00:00" measures 64px in the big HUD font, and a Label
+## grows past a narrower box instead of respecting it.
+const CLOCK := Rect2(32, 8, 64, 20)
 const PORTRAIT := Rect2(8, 44, 86, 74)
 const NAME_PLATE := Rect2(2, 124, 96, 18)
 const EQUIPMENT := Rect2(6, 144, 88, 63)
 const GRENADE := Rect2(10, 180, 28, 24)
 const GRENADE_COUNT := Rect2(42, 182, 48, 20)
-const HEALTH := Rect2(14, 210, 74, 14)
+## The bar art is 74x8; the old 14-tall rect anchored it (STRETCH_KEEP,
+## top-left) 3px above the window cut into the frame art.
+const HEALTH := Rect2(14, 213, 74, 8)
 const WEAPON_PLATE := Rect2(2, 226, 96, 18)
 const MODE_BUTTONS := [Vector2(8, 264), Vector2(38, 264), Vector2(68, 264)]
 const BUTTON_SIZE := Vector2(24, 20)

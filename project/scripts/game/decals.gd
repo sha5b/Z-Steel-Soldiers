@@ -61,6 +61,43 @@ static func crater(pos: Vector2, big := true) -> void:
 		0.0, "craters", MAX_CRATERS)
 
 
+## RUBBLE WHERE A CLIFF STOOD (zod DeathMapEffects -> PermStamp): one of
+## six rock_destroyed pieces from the planet's own rock sheet, stamped
+## into the ground at the fallen column's base tile. Permanent like a
+## crater, capped like one too.
+const MAX_RUBBLE := 120
+
+
+static func rock_rubble(base_tile: Vector2i, planet: String) -> void:
+	var map := MatchState.current.map_root
+	if map == null:
+		return
+	var path := "res://assets/z/planets/rocks_%s.png" % planet
+	if not ResourceLoader.exists(path):
+		return
+	var sheet: Texture2D = load(path)
+	var cells := [Vector2i(3, 5), Vector2i(4, 5), Vector2i(5, 5),
+		Vector2i(5, 2), Vector2i(5, 3), Vector2i(5, 4)]
+	var atlas := AtlasTexture.new()
+	atlas.atlas = sheet
+	atlas.region = Rect2(Vector2(cells[randi() % cells.size()]) * 16.0,
+		Vector2(16, 16))
+	var layer := map.get_node_or_null("GroundDecals") as Node2D
+	if layer == null:
+		layer = Node2D.new()
+		layer.name = "GroundDecals"
+		layer.z_index = -1
+		map.add_child(layer)
+	_enforce_cap(layer, "rock_rubble", MAX_RUBBLE)
+	var decal := Sprite2D.new()
+	decal.texture = atlas
+	decal.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	decal.centered = false
+	decal.position = Vector2(base_tile * 16)
+	decal.add_to_group("rock_rubble")
+	layer.add_child(decal)
+
+
 static func _spawn(map: Node2D, tex: Texture2D, pos: Vector2,
 		fade_after: float, group: String, cap: int) -> void:
 	if tex == null:

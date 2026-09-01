@@ -24,6 +24,11 @@ var auto_idle := true    # smart idle (grab-hand): robots auto-man empty hardwar
 var auto_deselect := true
 var centre_on_select := true
 var player_name := "COMMANDER"  # shown in the multiplayer lobby
+## RVO AVOIDANCE PILOT (NavigationServer2D agents). Experimental crowd
+## flow beside the hand-rolled separation — OFF unless turned on in
+## code/tests; deliberately absent from read()/save() so it never
+## sticks to a player's settings file.
+var rvo_avoidance := false
 
 signal auto_idle_changed(on: bool)
 
