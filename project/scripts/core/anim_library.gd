@@ -145,7 +145,13 @@ static var _frames_cache := {}
 ## celebration. Missing art is skipped silently.
 static func robot_frames(unit_type: String, team: int) -> SpriteFrames:
 	var tn := team_name(team)
-	var key := "robot:%s:%s" % [unit_type, tn]
+	# THE DEATH VARIANT IS PART OF THE KEY. Rolled inside a shared cache
+	# entry, the first robot of a type+team froze the roll for every
+	# later one — the whole army played the identical death animation
+	# for the session. Rolling it here keeps one cache entry per variant
+	# (six per type+team) and every SPAWN still gets its own random pick.
+	var variant: String = DEATH_VARIANTS.pick_random()
+	var key := "robot:%s:%s:%s" % [unit_type, tn, variant]
 	if _frames_cache.has(key):
 		return _frames_cache[key]
 	var frames := SpriteFrames.new()
@@ -187,8 +193,8 @@ static func robot_frames(unit_type: String, team: int) -> SpriteFrames:
 			frame += 1
 		if frame == 0:
 			frames.remove_animation(name)
-	# one random death variant per unit (original ships five)
-	_add_numbered(frames, DEATH_VARIANTS.pick_random(), tn, "die", 8.0, false)
+	# the death variant rolled above (part of the cache key)
+	_add_numbered(frames, variant, tn, "die", 8.0, false)
 	# idle humor flavors: some have directional art, some are plain
 	for flavor in IDLE_FLAVORS:
 		_add_directional_or_numbered(frames, flavor, tn)

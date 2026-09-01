@@ -830,6 +830,11 @@ var _alert_timer := 0.0
 func notify_attacked(shooter: Node2D) -> void:
 	if not alive or carried:
 		return
+	# an already-alerted unit does not re-broadcast: a 0.1s-cooldown
+	# burst would otherwise walk the whole roster on every hit
+	if _alert_timer > 0.0:
+		_alert_timer = ALERT_SECONDS
+		return
 	_retaliate(shooter)
 	for u in UnitRegistry.current.world_units():
 		if u != self and u is Unit2D and u.alive and not u.carried \
@@ -1056,6 +1061,7 @@ func _begin_order(new_order: Order) -> void:
 		attack_move = false
 		enter_target = null
 		attack_target = order.target
+		_chase_holding = false  # a fresh chase must not inherit the band
 		_chase_repath(true)
 		state = State.MOVING
 	elif order.type == Order.Type.DEFEND \
@@ -1173,6 +1179,7 @@ func _order_done() -> void:
 	enter_target = null
 	attack_target = null
 	_chase_anchor = Vector2.INF
+	_chase_holding = false
 	clear_move_target()
 	order = null
 	state = State.IDLE
@@ -1247,11 +1254,16 @@ const CHASE_REPATH := 28.0  # target drift that invalidates our route
 ## the line used to yo-yo the chassis between hold and pursuit every
 ## few frames (part of the jeep "spasm").
 const CHASE_RESUME := 1.15
+## The band absorbs JITTER, not a parked target: a foe that settles
+## just outside true range would be stared at forever, so after this
+## long out of reach the pursuit resumes regardless.
+const CHASE_BAND_PATIENCE := 0.6
 var _chase_anchor := Vector2.INF
 var _chase_holding := false
+var _chase_band_time := 0.0
 
 
-func _chase(_delta: float) -> void:
+func _chase(delta: float) -> void:
 	if attack_target == null:
 		_chase_holding = false
 		return
@@ -1271,10 +1283,14 @@ func _chase(_delta: float) -> void:
 		velocity = Vector2.ZERO
 		_chase_anchor = aim
 		_chase_holding = true
+		_chase_band_time = 0.0
 		return
 	if _chase_holding and dist <= reach * CHASE_RESUME:
-		return  # hysteresis band: hold the stance, the shot will connect again
+		_chase_band_time += delta
+		if _chase_band_time < CHASE_BAND_PATIENCE:
+			return  # hysteresis: hold the stance, the shot will connect again
 	_chase_holding = false
+	_chase_band_time = 0.0
 	if _chase_anchor == Vector2.INF or aim.distance_to(_chase_anchor) > CHASE_REPATH \
 			or not has_move_target():
 		_chase_repath()

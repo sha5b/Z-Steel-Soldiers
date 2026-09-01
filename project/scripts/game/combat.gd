@@ -6,6 +6,11 @@ extends Object
 ## means a travelling shell and everything else is a hitscan tracer.
 ## Visuals go through Fx (pure presentation); damage rules live here.
 
+## Diagnostic logging for the --brain-test lane, read ONCE — the hot
+## damage paths used to rebuild and scan the cmdline array per hit.
+static var _brain_log := "--brain-test" in OS.get_cmdline_args()
+
+
 ## Resolve the weapon behaviour for a def ("hitscan" | "laser" | "shell").
 static func weapon_of(def: UnitDef) -> String:
 	if def.weapon != "":
@@ -81,7 +86,7 @@ static func fire(shooter: Node2D, def: UnitDef, muzzle: Vector2,
 		var past: Vector2 = aim \
 				+ Vector2(randf_range(-16.0, 16.0), randf_range(-16.0, 16.0))
 		if weapon == "laser":
-			Fx.laser(muzzle, past)
+			Fx.laser(muzzle, past, false)
 		else:
 			Fx.bullet(muzzle, past, false)
 		return
@@ -147,7 +152,7 @@ static func amount_against(target: Node2D, unit_amount: int,
 ## (0 = none, charge buildings the flat amount like everything else).
 static func area_damage(world_pos: Vector2, radius: float, amount: int,
 		shooter_team: int, crater := false, building_frac := 0.0) -> void:
-	if "--brain-test" in OS.get_cmdline_args():
+	if _brain_log:
 		print("SPLASH at %s r=%.0f by T%d" % [
 			world_pos.snapped(Vector2(4, 4)), radius, shooter_team])
 	if crater:
@@ -177,12 +182,19 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 		# a cliff column anchors at its TOP edge and blocks at its FOOT
 		# (ORock: width 1 x height 3, impassable base tile only) — the
 		# blast measures and clears the base, and leaves the permanent
-		# rubble stamp the original perm-stamps there
-		var base: Vector2 = rock.global_position + Vector2(8.0, 40.0)
+		# rubble stamp the original perm-stamps there. The loader is the
+		# ONE owner of the column geometry (`base_cell` meta); deriving
+		# it here again from magic offsets is how the two drift apart.
+		# fallback = the rock's OWN cell: only legacy scene rocks lack
+		# the meta, and those are centre-anchored single sprites whose
+		# solid cell is the one they stand in (the old +(8,40) column
+		# offset cleared a cell one east/three south of those)
+		var base_cell: Vector2i = rock.get_meta("base_cell",
+			NavWorld.cell_at(rock.global_position))
+		var base: Vector2 = NavWorld.cell_center(base_cell)
 		if base.distance_to(world_pos) <= radius:
 			NavWorld.current.clear_rock(base)
-			Decals.rock_rubble(Vector2i((rock.global_position / 16.0).floor())
-				+ Vector2i(0, 2), MatchState.current.planet)
+			Decals.rock_rubble(base_cell, MatchState.current.planet)
 			Fx.rock_debris(base)
 			rock.queue_free()
 
@@ -196,8 +208,7 @@ static func area_damage(world_pos: Vector2, radius: float, amount: int,
 static func _land(target: Node2D, amount: int, at: Vector2,
 		shooter_id := 0) -> void:
 	var was_alive: bool = target.get("alive") == true
-	if "--brain-test" in OS.get_cmdline_args() \
-			and target is Unit2D and (target as Unit2D).team == 1:
+	if _brain_log and target is Unit2D and (target as Unit2D).team == 1:
 		var shooter := instance_from_id(shooter_id)
 		print("HIT T1 %s at %s <- %s T%s for %d" % [
 			(target as Unit2D).unit_name, at.snapped(Vector2(4, 4)),

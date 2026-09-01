@@ -293,6 +293,12 @@ func _apply_load() -> void:
 			var net_id := int(su.get("net", 0))
 			if net_id > 0 and UnitRegistry.current != null:
 				UnitRegistry.current.adopt(unit as Unit2D, net_id)
+	# the roster was replaced wholesale: forts re-link the tower guns now
+	# standing on their mounts (and re-apply the elevation range bonus,
+	# which the save contract does not carry)
+	for b in get_tree().get_nodes_in_group(Groups.BUILDINGS):
+		if b is FortBuilding:
+			b.relink_tower_guns()
 
 
 func _cycle_map() -> void:
@@ -316,7 +322,9 @@ const GAME_OVER_LINGER := 3.0
 func _on_game_over(winning_team: int) -> void:
 	var timer := get_tree().create_timer(GAME_OVER_LINGER)
 	timer.timeout.connect(func():
-		if not is_inside_tree():
+		# the timer outlives the scene: quitting to menu or a rematch
+		# inside the linger window frees this node first
+		if not is_instance_valid(self) or not is_inside_tree():
 			return
 		var overlay: Control = preload("res://scenes/game_over.tscn").instantiate()
 		$CanvasLayer.add_child(overlay)

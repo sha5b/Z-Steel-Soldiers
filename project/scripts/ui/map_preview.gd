@@ -25,14 +25,21 @@ static func texture(map_name: String) -> ImageTexture:
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(
 		"res://assets/maps/%s.json" % map_name))
 	if parsed is Dictionary and can_render(parsed):
-		var img := base_image(parsed)
-		for o in parsed.objects:
-			if String(o.get("type", "")) != "building":
-				continue
-			_mark_building(img, o)
-		out = ImageTexture.create_from_image(img)
+		out = texture_for_data(parsed)
 	_cache[map_name] = out
 	return out
+
+
+## The preview for an IN-MEMORY map dict (the generated-map screen) —
+## the same rendering the shipped maps get, so a preview tweak applies
+## to both.
+static func texture_for_data(data: Dictionary) -> ImageTexture:
+	var img := base_image(data)
+	for o in data.get("objects", []):
+		if String(o.get("type", "")) != "building":
+			continue
+		_mark_building(img, o)
+	return ImageTexture.create_from_image(img)
 
 
 ## Square, aspect-preserved thumbnail for LIST rows. `texture()` returns

@@ -32,7 +32,7 @@ static func _bodies_near(center: Vector2, radius: float) -> Array:
 	params.collision_mask = 1  # units; buildings sit on layer 2
 	params.collide_with_bodies = true
 	params.collide_with_areas = false
-	return space.intersect_shape(params, 64)
+	return space.intersect_shape(params, 256)
 
 
 ## Same broadphase for rect queries (box select, select-same-type).
@@ -53,7 +53,10 @@ static func _bodies_in_rect(rect: Rect2) -> Array:
 	params.collision_mask = 1
 	params.collide_with_bodies = true
 	params.collide_with_areas = false
-	return space.intersect_shape(params, 256)
+	# 1024, not 256: the mask matches EVERY team's units, so enemies
+	# in the box count against the budget and a big battle could leave
+	# the player's own units out of a drag-select
+	return space.intersect_shape(params, 1024)
 
 
 ## Harness fallback: every selectable as a query-shaped hit.

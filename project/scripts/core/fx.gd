@@ -256,10 +256,12 @@ func bullet(_from: Vector2, to: Vector2, hit := true) -> void:
 
 
 ## Laser fire: instant hit, thick beam flash (no tracer art in the
-## original — the beam itself is the weapon sprite). The beam now ends
-## in a spark where it lands, so the hit reads at the victim too.
-func laser(from: Vector2, to: Vector2) -> void:
-	play("impact", to)
+## original — the beam itself is the weapon sprite). The beam ends in a
+## spark ONLY when the shot connected — a missed beam stamping the
+## victim-hit spark on empty ground read as damage that never happened;
+## a miss scorches the dirt with the ricochet puff instead.
+func laser(from: Vector2, to: Vector2, hit := true) -> void:
+	play("impact" if hit else "ground_spark", to)
 	var line := Line2D.new()
 	line.points = PackedVector2Array([from, to])
 	line.width = 2.5

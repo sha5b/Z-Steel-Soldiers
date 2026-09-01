@@ -170,7 +170,7 @@ static func _find_pickup(world_position: Vector2) -> Node2D:
 static func _find_apc(world_position: Vector2) -> Vehicle2D:
 	for v in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.UNITS):
 		if v is Vehicle2D and v.is_apc() and v.manned and v.alive and v.team != 0 \
-				and Pick.in_pick_box(v, world_position):
+				and _board_click(v, world_position):
 			return v
 	return null
 
@@ -178,9 +178,18 @@ static func _find_apc(world_position: Vector2) -> Vehicle2D:
 static func _find_empty_vehicle(world_position: Vector2) -> Node2D:
 	for v in Engine.get_main_loop().root.get_tree().get_nodes_in_group(Groups.UNITS):
 		if v is Vehicle2D and not v.manned and v.alive \
-				and Pick.in_pick_box(v, world_position):
+				and _board_click(v, world_position):
 			return v
 	return null
+
+
+## Boarding keeps the OLD 24px generosity on top of the art-box test:
+## the pick-box migration narrowed enter/board clicks to the 16px hull
+## half-extent, and a click 17-24px off a hull fell through to a plain
+## move — the exact "order falls through" class it was fixing.
+static func _board_click(v: Node2D, world_position: Vector2) -> bool:
+	return Pick.in_pick_box(v, world_position) \
+			or v.global_position.distance_to(world_position) <= 24.0
 
 
 ## Buildings units can be ordered onto: own repair shop (damaged

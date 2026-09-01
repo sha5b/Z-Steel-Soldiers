@@ -23,9 +23,7 @@ extends Building2D
 # both variants; only the gate ramp below differs. The old table put
 # the outer pair at the art EDGES (x 10/150, between the towers and
 # thin air), which is why tower guns rendered floating beside the fort.
-const SLOTS_FRONT := [Vector2(26, 63), Vector2(134, 63),
-	Vector2(25, 16), Vector2(135, 16)]
-const SLOTS_BACK := [Vector2(26, 63), Vector2(134, 63),
+const TOWER_SLOTS := [Vector2(26, 63), Vector2(134, 63),
 	Vector2(25, 16), Vector2(135, 16)]
 
 ## Elevation pays in reach: a gun on a fort tower outranges its
@@ -48,14 +46,12 @@ func producer_key() -> String:
 	return "fort"
 
 
-## Tower mount points in WORLD px for this fort's art variant.
+## Tower mount points in WORLD px (same platform layout on both art
+## variants — only the gate ramp below the towers differs).
 func cannon_slots() -> Array:
-	var tex: String = ContentDB.building_def(building_id).tex \
-		if ContentDB.building_def(building_id) != null else "fort_front"
-	var art: Array = SLOTS_BACK if tex == "fort_back" else SLOTS_FRONT
 	var origin: Vector2 = art_world_rect().position
 	var out: Array = []
-	for off in art:
+	for off in TOWER_SLOTS:
 		out.append(origin + Vector2(off))
 	return out
 
@@ -70,6 +66,16 @@ func _ready() -> void:
 	# other towers are the build-up. A gun destroyed or sniped frees its
 	# slot exactly like a built one.
 	if Engine.is_editor_hint() or owner_team == 0:
+		return
+	# DEFERRED: on a .tscn map this _ready runs while the packed scene is
+	# still setting up its children, and get_parent().add_child() (inside
+	# Spawner.spawn) fails there — the orphan gun would then hold slot 0
+	# forever without ever entering the world
+	_arm_starting_guns.call_deferred()
+
+
+func _arm_starting_guns() -> void:
+	if not is_inside_tree() or not alive:
 		return
 	for i in STARTING_TOWER_GUNS:
 		if not mount_product("cannon", "gatling"):
@@ -148,6 +154,28 @@ func mount_product(kind: String, type_name: String) -> bool:
 		slot_cannons[i] = gun
 		return true
 	return false  # no free mount: the producer spawns it beside
+
+
+## AFTER A SAVE RESTORE the roster is respawned from scratch, so
+## slot_cannons holds freed references and the restored guns standing
+## on the towers are unlinked — free_cannon_slots() then over-reports
+## and a new cannon could be mounted stacked on an occupied tower. The
+## elevation bonus is also re-applied here: range_px is not in the save
+## contract, so a restored tower gun came back at stock reach.
+func relink_tower_guns() -> void:
+	var slots := cannon_slots()
+	slot_cannons.resize(slots.size())
+	for i in slots.size():
+		slot_cannons[i] = null
+		for u in UnitRegistry.current.world_units():
+			if u is Vehicle2D and u.kind == "cannon" and u.alive \
+					and not u.is_queued_for_deletion() \
+					and u.global_position.distance_to(slots[i]) < 16.0:
+				var def := ContentDB.def_for("cannon", u.unit_name)
+				if def != null:
+					u.range_px = def.range_px * TOWER_RANGE_SCALE
+				slot_cannons[i] = u
+				break
 
 
 ## The fort falling kills its tower guns with it.

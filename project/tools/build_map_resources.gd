@@ -117,27 +117,45 @@ func _build_scene(data: Dictionary) -> PackedScene:
 			node.name = "%s_%d_%d" % [node.name, int(o.x), int(o.y)]
 			root.add_child(node)
 			node.owner = root
-	# rocks last, as Y-sorted sprites from the planet sheet. The PIECE
-	# comes from the 4-neighbour mask through the one mapping the JSON
-	# loader uses (MapLoader._rock_piece) — this tool used to stamp the
-	# plateau INTERIOR fill on every clustered rock, which is the flat
-	# pale slab bug all over again, in the scene maps only.
+	# rocks last, THROUGH THE JSON LOADER'S OWN ORock ASSEMBLY
+	# (MapLoader._rock_column_pieces): a top-anchored column node with
+	# up-to-three body pieces, a `base_cell` meta for the nav/blast
+	# paths, and the cast-shadow column on a ground layer. The old
+	# single-sprite path called MapLoader._rock_piece, which the ORock
+	# port DELETED — this tool crashed at that line, and its old output
+	# (centre-anchored one-tile rocks) no longer matched what the JSON
+	# loader renders.
 	if not rock_cells.is_empty():
 		var sheet: Texture2D = load("res://assets/z/planets/rocks_%s.png" % planet)
-		for cell in rock_cells:
-			var atlas := AtlasTexture.new()
-			atlas.atlas = sheet
-			atlas.region = Rect2(
-				Vector2(MapLoader._rock_piece(cell, rock_cells)) * TILE,
-				Vector2(TILE, TILE))
-			var rock := Sprite2D.new()
+		var ground := Node2D.new()
+		ground.name = "GroundDecals"
+		ground.z_index = -1
+		root.add_child(ground)
+		ground.owner = root
+		var map_w: int = int(data.width)
+		var map_h: int = int(data.height)
+		for cell: Vector2i in rock_cells:
+			var built: Dictionary = MapLoader._rock_column_pieces(
+				cell, rock_cells, map_w, map_h)
+			var rock := Node2D.new()
 			rock.name = "Rock_%d_%d" % [cell.x, cell.y]
-			rock.texture = atlas
-			rock.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-			rock.position = Vector2(cell) * TILE + Vector2(8, 8)
-			rock.add_to_group("rocks")
+			rock.position = Vector2(cell) * TILE
+			for piece: Vector2i in built.body:
+				rock.add_child(MapLoader._rock_sprite(sheet, piece,
+					Vector2(0, rock.get_child_count() * TILE)))
 			root.add_child(rock)
 			rock.owner = root
+			for child in rock.get_children():
+				child.owner = root
+			# persistent=true: PackedScene only saves persistent groups —
+			# a plain add_to_group evaporates in the saved scene
+			rock.add_to_group("rocks", true)
+			rock.set_meta("base_cell", cell + Vector2i(0, 2))
+			for i in built.shadows.size():
+				var shadow := MapLoader._rock_sprite(sheet, built.shadows[i],
+					Vector2(cell.x * TILE + TILE, cell.y * TILE + i * TILE))
+				ground.add_child(shadow)
+				shadow.owner = root
 
 	var packed := PackedScene.new()
 	packed.pack(root)

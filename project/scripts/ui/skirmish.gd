@@ -169,11 +169,7 @@ func _refresh_generated() -> void:
 	var s := _gen_settings()
 	_gen_data = MapGen.generate(int(s.players), String(s.size),
 		String(s.theme), _gen_seed)
-	var img := MapPreview.base_image(_gen_data)
-	for o in _gen_data.objects:
-		if String(o.get("type", "")) == "building":
-			MapPreview._mark_building(img, o)
-	preview.texture = ImageTexture.create_from_image(img)
+	preview.texture = MapPreview.texture_for_data(_gen_data)
 	map_name_label.text = "GENERATED — %s  %dx%d  %dP" % [
 		String(_gen_data.terrain).to_upper(), int(_gen_data.width),
 		int(_gen_data.height), int(s.players)]

@@ -110,6 +110,31 @@ They are listed in the order I would tackle them.
     (destructible, firing scenery), so it needs a scope decision.
 
 ## Fixed
+- 2026-09-01 — **review-sweep batch** (the "last sweep for logical
+  mistakes"): (1) the in-world HEALTH BAR was dead code — the
+  attack-radius port stranded the `hp < max_hp` draw block after a
+  `return` inside `_dot_covered`, so no damaged unit showed a bar at
+  all; restored in `_draw`, for hurt units selected or not. (2) the
+  radius-dot CULL used raw `range_px` while the circle draws at
+  `range_px * sprite_scale + 3` — merged squad envelopes culled along
+  the wrong boundary. (3) the robot frames cache FROZE the random death
+  variant per type+team (the first grunt's roll served the whole army);
+  the variant is part of the cache key now, so every spawn rolls its
+  own. (4) save restore left `slot_cannons` full of freed refs and
+  restored tower guns unlinked at stock range — a new cannon could
+  mount STACKED on an occupied tower; `relink_tower_guns()` runs after
+  `_apply_load`. (5) box-select's physics query capped at 256 hits
+  WITH enemies counting against the budget — own units in a big battle
+  silently missed the drag box; 1024 now. (6) the pick-box migration
+  narrowed enter/board clicks to the 16px hull half-extent (was a 24px
+  radius) — boarding keeps the old generosity on top of the box test.
+  (7) `MatchState._owned_dirty` was set per FRAME above the income
+  loop, quietly turning the once-per-capture zone census back into a
+  per-frame rebuild; it invalidates once per income tick now. (8) the
+  combat hot paths rebuilt and scanned `OS.get_cmdline_args()` per hit
+  for the --brain-test flag — read once into a static. (9)
+  `Combat.area_damage` re-derived a rock column's base cell from magic
+  offsets beside the loader's own `base_cell` meta — one owner now.
 - 2026-09-01 — **fort tower guns floated beside the fort, four of them,
   and could not cover their own gate.** Three defects in one report:
   (1) the mount table's outer pair sat at the art EDGES (x 10/150) —

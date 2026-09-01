@@ -110,7 +110,9 @@ static func _build_nav_grid(data: Dictionary, w: int, h: int) -> AStarGrid2D:
 			var walkable := true
 			if not passable.is_empty():
 				walkable = bool(passable[i])
-			elif not info.is_empty():
+			elif not info.is_empty() and i < (data.tiles as Array).size():
+				# guarded like the vehicle grid below — a short tiles
+				# array must not crash the derivation
 				walkable = bool(info.get(str(int(data.tiles[i])), [true, true])[1])
 			if not walkable:
 				grid.set_point_solid(Vector2i(x, y), true)
@@ -498,9 +500,13 @@ static func load_map_scene(parent: Node, scene_path: String) -> Dictionary:
 			if not painted.has(cell) or not bool(info.get(str(painted[cell]), [true, false])[1]):
 				grid.set_point_solid(cell, true)
 
-	# rocks block movement (they are plain sprites in the scene)
+	# rocks block movement. New-format scene rocks carry the column's
+	# `base_cell` meta (only the FOOT tile is solid, like the JSON
+	# path); legacy scenes shipped centre-anchored single sprites whose
+	# own cell is the solid one.
 	for rock in _tree_children(parent, "rocks"):
-		var rock_cell := NavWorld.cell_at(rock.global_position)
+		var rock_cell: Vector2i = rock.get_meta("base_cell",
+			NavWorld.cell_at(rock.global_position))
 		if grid.region.has_point(rock_cell):
 			grid.set_point_solid(rock_cell, true)
 

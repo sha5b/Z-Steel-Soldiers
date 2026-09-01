@@ -58,13 +58,15 @@ func over_reset() -> void:
 
 
 func _process(delta: float) -> void:
-	# the census is capture-driven, but the loader and the test harness
-	# also write zone owners directly — refresh it once per tick so even
-	# those writes land within a second
-	_owned_dirty = true
 	_accum += delta
 	while _accum >= TICK_SECONDS:
 		_accum -= TICK_SECONDS
+		# the census is capture-driven, but the loader and the test
+		# harness also write zone owners directly — refresh once per
+		# INCOME TICK so those writes land within a second. (This sat
+		# above the loop, i.e. every frame, which silently turned the
+		# once-per-capture cache back into a per-frame rebuild.)
+		_owned_dirty = true
 		for team in money:
 			money[team] += int(zones_owned_by(team) * ContentDB.rules.income_per_zone)
 			money_changed.emit(team, money[team])

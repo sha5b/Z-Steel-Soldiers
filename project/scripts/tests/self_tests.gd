@@ -1638,11 +1638,19 @@ static func run(ctx: Node) -> void:
 		GameState.over = true
 		GameSettings.auto_idle = false
 		var nv := TestRig.start("NATIVES")
-		# SpriteFrames are shared, cached resources: same call, same object
-		var frames_a := AnimLibrary.robot_frames("grunt", 1)
-		var frames_b := AnimLibrary.robot_frames("grunt", 1)
-		nv.check(frames_a == frames_b and frames_a.get_animation_names().size() > 0,
-			"robot frames are rebuilt per call or empty")
+		# SpriteFrames are shared, cached resources — but the DEATH
+		# VARIANT is part of the cache key (a shared entry froze the
+		# per-spawn roll: every robot of a type played the same death).
+		# So: many calls, at most one instance PER VARIANT, never empty.
+		var seen := {}
+		for i in 32:
+			var fr := AnimLibrary.robot_frames("grunt", 1)
+			nv.check(fr != null and fr.get_animation_names().size() > 0,
+				"robot frames empty")
+			seen[fr] = true
+		nv.check(seen.size() <= AnimLibrary.DEATH_VARIANTS.size(),
+			"robot frames are rebuilt per call (%d instances for %d variants)"
+			% [seen.size(), AnimLibrary.DEATH_VARIANTS.size()])
 		# one polyphonic mixer; a played wav lands in the stream cache
 		nv.check(Fx._poly_player != null, "polyphonic mixer never built")
 		Fx.gunfire("RIFLE3")

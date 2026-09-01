@@ -147,7 +147,10 @@ func advance(delta: float) -> void:
 	_accum += delta
 	if _accum < _p().think_seconds:
 		return
-	_accum = 0.0
+	# a small random rebate DE-SYNCS sibling brains: they all think on
+	# frame one (see _accum's initializer) and a fixed reset would keep
+	# every brain's full A*-heavy pass landing on the same frame forever
+	_accum = randf() * _p().think_seconds * 0.25
 	_think()
 
 

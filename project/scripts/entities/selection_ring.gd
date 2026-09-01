@@ -35,6 +35,13 @@ func _draw() -> void:
 		_draw_brackets(unit)
 		_draw_rank(unit)
 		_draw_attack_radius(unit)
+	# the bar draws for any HURT unit, selected or not (set_selected keeps
+	# the ring visible while hp < max) — this block was stranded after a
+	# `return` inside _dot_covered by an earlier edit and never ran
+	if unit.get("hp") != null and unit.get("max_hp") != null \
+			and unit.hp < unit.max_hp:
+		var r := _unit_rect(unit)
+		_draw_health(unit.hp, unit.max_hp, r.position.y - PAD - 2.0)
 
 
 func _process(delta: float) -> void:
@@ -58,10 +65,14 @@ var _phase := 0.0
 
 
 func _draw_attack_radius(unit: Node) -> void:
-	var reach: float = unit.get("range_px")
-	if reach == null or reach <= 0.0:
+	# UNTYPED reads: `var r: float = get(...)` RAISES on null instead of
+	# reaching the null guard, and SelectionManager.selected legitimately
+	# holds buildings (the B-key factory cycle) that have no range_px
+	var reach_v = unit.get("range_px")
+	if reach_v == null or float(reach_v) <= 0.0:
 		return  # unarmed hardware draws nothing (zod: !attack_radius)
-	var scale: float = unit.get("sprite_scale")
+	var reach := float(reach_v)
+	var scale: float = float(unit.get("sprite_scale"))
 	var radius := reach * scale + RANGE_PAD
 	var col: Color = TEAM_COLORS.get(int(unit.get("team")), Color.WHITE)
 	var avoid: Array = []
@@ -86,16 +97,17 @@ func _dot_covered(unit: Node, local_dot: Vector2, avoid: Array) -> bool:
 	for other in avoid:
 		if other == unit or not is_instance_valid(other):
 			continue
-		var r: float = other.get("range_px")
-		if r == null or r <= 0.0:
+		var r_v = other.get("range_px")  # untyped: buildings have none
+		if r_v == null or float(r_v) <= 0.0:
 			continue
-		if world_dot.distance_to(other.global_position) <= r:
+		# the SAME radius expression the circle is drawn with — the raw
+		# range_px culled along the wrong boundary for any scaled sprite
+		var s_v = other.get("sprite_scale")
+		var s: float = float(s_v) if s_v != null else 1.0
+		if world_dot.distance_to(other.global_position) \
+				<= float(r_v) * s + RANGE_PAD:
 			return true
 	return false
-	if unit.get("hp") != null and unit.get("max_hp") != null:
-		if unit.hp < unit.max_hp:
-			var r := _unit_rect(unit)
-			_draw_health(unit.hp, unit.max_hp, r.position.y - PAD - 2.0)
 
 
 ## Four corner brackets in the owner's team colour around the unit's
