@@ -17,7 +17,9 @@ Brothers, rebuilt in Godot 4.
 
 The remake plays the original 20 campaign levels in the game's own
 order. A converter reads them out of the retail data. It also plays the
-57 Zod maps and 5 skirmish maps.
+57 Zod maps and 5 skirmish maps — and, since 0.2.8, GENERATED skirmish
+maps: pick players (2-8), starting money, size and theme, preview the
+exact map the seed builds, and play it.
 
 The game runs inside the original HUD frame, and uses the original
 sprites, sounds and voice lines.

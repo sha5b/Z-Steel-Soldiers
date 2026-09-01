@@ -16,7 +16,7 @@
 %global __requires_exclude_from ^%{_bindir}/z-remake$
 
 Name:           z-remake
-Version:        0.2.7
+Version:        0.2.8
 # BUILD STAMP. Without it every rebuild is the same NEVRA
 # (z-remake-0.1.0-1.fc44) with different contents, so dnf sees no reason
 # to replace what is installed and you cannot tell two builds apart --
@@ -77,7 +77,35 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
-* Sun Aug 23 2026 sha5b <cloud@fiber-elements.com> - 0.2.7-1
+* Tue Sep 01 2026 sha5b <ned.tabulov@gmail.com> - 0.2.8-1
+- Generated skirmish maps: the skirmish list leads with RANDOM MAP -
+  players (2-8), starting money, size and theme, with a live preview of
+  the exact map the seed builds. START plays what is previewed.
+- Fort tower guns sit on the measured tower platforms (two of four
+  floated beside the fort), forts start with ONE manned gun instead of
+  four, and mounted guns get 1.8x range - a stock gatling could not
+  cover its own fort's gate.
+- Units fight back: a hit unit retaliates and raises idle friends within
+  120px (the AI's squads too), and holds a weapon-up stance. The AI's
+  first think fires on frame one instead of after a 4-6s dead interval.
+- Hitscan fire reads the original way: muzzle flash on the shooter and
+  an impact spark where the shot LANDS (ground ricochet on a miss) -
+  the invented tracer line is gone. Reload timers carry +/-10% jitter,
+  so battle lines no longer volley in lockstep.
+- The jeep "spasm" is fixed (firing pins the facing; the chase has a
+  hysteresis band), the dotted route no longer redraws while chasing a
+  moving target, and stuck units re-route AROUND parked units.
+- Game over lingers 3s so the HQ's collapse plays before the verdict.
+- Production panel rebuilt on its own art: the name tag uses the 45x13
+  plate cut for the slot (no more red bands), the health gauge is a real
+  bar, and the window sits on whole pixels. The sidebar health bar and
+  the army gauges can shrink again (both were stuck at full width).
+- Review sweep: the in-world health bar was dead code, the death
+  animation variant was frozen per army, box-select silently dropped
+  units past 256 bodies, tower guns came back from a save unlinked, and
+  the scene-map build tool called a deleted function.
+
+* Sun Aug 23 2026 sha5b <ned.tabulov@gmail.com> - 0.2.7-1
 - Production is a LINE, not a queue: point a factory at one unit type and
   it turns that out indefinitely. Cancel stops it; switching keeps the
   build clock. Z has no build queue and never did.
@@ -101,7 +129,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 - Unit shadows are rasterised on the pixel grid instead of being smooth
   antialiased ellipses under 16px sprites.
 
-* Fri Aug 21 2026 sha5b <cloud@fiber-elements.com> - 0.2.0-1
+* Fri Aug 21 2026 sha5b <ned.tabulov@gmail.com> - 0.2.0-1
 - Fix an exported build loading none of its content: Godot packs an
   imported file as a .import sidecar, and every directory scan filtered
   on the source extension. PackFiles folds packed names back.
@@ -109,6 +137,6 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
   over to the match scene on a test flag, so a build is testable.
 - Carry a build stamp in Release, so a rebuild always upgrades in place.
 
-* Thu Aug 20 2026 sha5b <cloud@fiber-elements.com> - 0.1.0-1
+* Thu Aug 20 2026 sha5b <ned.tabulov@gmail.com> - 0.1.0-1
 - First packaged build: retail campaign, original HUD, tactical CPU
   opponent, adaptive AI posture ported from the Zod Engine bot.

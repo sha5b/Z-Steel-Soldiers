@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Z Remake (1996)"
 config/description="Fan remake of Z (The Bitmap Brothers, 1996). Graphics and sound are (c) The Bitmap Brothers, extracted locally from the Zod Engine pack and the GOG release; the code is original. Do not redistribute with assets."
-config/version="0.2.7"
+config/version="0.2.8"
 run/main_scene="res://scenes/title.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="res://assets/icon/icon.png"
