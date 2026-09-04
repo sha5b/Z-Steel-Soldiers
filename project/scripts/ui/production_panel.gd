@@ -60,6 +60,10 @@ const STATUS_PLATE := Rect2(65, 18, 47, 12)
 const TIME_SLOT := Rect2(86, 32, 22, 12)
 const CANCEL_BUTTON := Rect2(68, 46, 40, 14)
 const OK_BUTTON := Rect2(68, 62, 40, 15)
+## Tutorial page 7 shows these outside the portrait's left edge. The pack
+## only stores the down face; the upper control is that same art flipped.
+const UP_BUTTON := Rect2(-12, 20, 16, 8)
+const DOWN_BUTTON := Rect2(-12, 50, 16, 8)
 ## Roster flyout: object_button plates, four to a row, above the window.
 const ROSTER_SLOT := Vector2(45, 51)
 const ROSTER_COLUMNS := 4
@@ -164,6 +168,11 @@ func _ready() -> void:
 	pick.pressed.connect(_toggle_roster)
 	add_child(pick)
 
+	_arrow_button(UP_BUTTON, true, "Previous unit").pressed.connect(
+		_cycle_product.bind(-1))
+	_arrow_button(DOWN_BUTTON, false, "Next unit").pressed.connect(
+		_cycle_product.bind(1))
+
 	_art_button(CANCEL_BUTTON, "cancel_button",
 			"Stop production (the factory goes idle)").pressed.connect(_on_cancel)
 	_art_button(OK_BUTTON, "ok_button",
@@ -266,6 +275,32 @@ func _art_button(at: Rect2, art: String, tooltip: String) -> Button:
 	return btn
 
 
+func _arrow_button(at: Rect2, points_up: bool, tooltip: String) -> Button:
+	var btn := Button.new()
+	btn.name = "PreviousProduct" if points_up else "NextProduct"
+	btn.position = at.position * SCALE
+	btn.size = at.size * SCALE
+	btn.tooltip_text = tooltip
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.flat = true
+	for state in ["normal", "hover", "pressed", "focus"]:
+		btn.add_theme_stylebox_override(state, StyleBoxEmpty.new())
+	var face := TextureRect.new()
+	face.texture = _tex("down_button")
+	face.flip_v = points_up
+	face.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	face.set_anchors_preset(Control.PRESET_FULL_RECT)
+	btn.add_child(face)
+	btn.button_down.connect(func():
+		face.texture = _tex("down_button_pressed"))
+	btn.button_up.connect(func():
+		face.texture = _tex("down_button"))
+	add_child(btn)
+	return btn
+
+
 # ---- wiring -----------------------------------------------------------
 
 func _on_selection_changed(_units: Array) -> void:
@@ -294,12 +329,14 @@ func _place_over(factory: Node) -> void:
 	var screen: Vector2 = canvas * (factory as Node2D).global_position
 	var view := HudFrame.view_rect()
 	var want := screen + Vector2(-size.x * 0.5, -size.y - 24.0)
+	var left_inset := -minf(UP_BUTTON.position.x, 0.0) + 4.0
 	# WHOLE PIXELS: this is a native-resolution window full of 8px bitmap
 	# glyphs; anchored to a fractional camera coordinate it resamples on
 	# every pan and the text shimmers ("sometimes the text is not
 	# perfectly there")
 	position = Vector2(
-		roundf(clampf(want.x, view.position.x + 4.0, view.end.x - size.x - 4.0)),
+		roundf(clampf(want.x, view.position.x + left_inset,
+			view.end.x - size.x - 4.0)),
 		roundf(clampf(want.y, view.position.y + 4.0, view.end.y - size.y - 4.0)))
 
 
@@ -422,6 +459,25 @@ func _on_cancel() -> void:
 		Net.relay_stop_line(_wired)
 	else:
 		Fx.cap_denied()
+
+
+## Original production navigation: page through the level-gated roster
+## in the portrait slot. Choosing an entry immediately points the factory's
+## continuous production line at it, matching every other picker path.
+func _cycle_product(step: int) -> void:
+	if _wired == null or not is_instance_valid(_wired):
+		return
+	var options: Array = _wired.build_options()
+	if options.is_empty():
+		Fx.cap_denied()
+		return
+	var current := String(_wired.selected_product())
+	var index := options.find(current)
+	if index < 0:
+		index = 0 if step > 0 else options.size() - 1
+	else:
+		index = posmod(index + step, options.size())
+	_select(String(options[index]))
 
 
 func _selected_factory() -> Node:

@@ -169,11 +169,11 @@ per-type `Init`/`DoRender`) against the actual sprite pixels:
 
 ### Original art still without a consumer (future work)
 
-Ambient life (birds 228, hut_animals 734), planet impact art (craters
-65, rock_effects 256, bridge_effects 60), ground track marks
-(`track_effects/`, per planet), tank_dirt, the portrait GESTURE pieces
-(the 64x64/48x64 salute and thumbs-up hands — placement unknown, 2e.1),
-the factory_gui scrollbar set, `fort_old` BMPs, team palette BMPs.
+The remaining verified set is `tank_dirt`, jeep `tire_spin_*`, light-tank
+`initfire`, tough `mushroom`, the portrait GESTURE pieces (the 64x64/48x64
+salute and thumbs-up hands — placement unknown, 2e.1), `fort_old` BMPs and
+duplicate port atlases. Ambient life, craters, rock/bridge effects, ground
+tracks, scrollbars, oil and damage sparks are wired now.
 
 ## 2d. Original engine code sweep — features we have NOT rebuilt (2026-08-18)
 
@@ -341,10 +341,11 @@ to reach, fire, let the shell fly, and land the building's own number.
 
 ### Unwired effects (art exists in the original)
 
-bridge debris/repair effect, cannon-death anim (wasted sprite flying),
-crane cones, tank_dirt, per-planet ground track marks (`etrack`),
-tough mushroom/smoke, fort/map-object turret missiles, muzzle
-initfire effect, rock/bridge debris, craters.
+Still unwired because their placement/trigger is not verified: `tank_dirt`,
+jeep `tire_spin_*`, light-tank `initfire`, tough `mushroom`, and the firing
+behavior of destructible map-item turrets. Bridge/rock debris, crane cones,
+vehicle/cannon deaths, per-planet tracks, craters, damage smoke/oil/sparks
+and weapon muzzle/impact effects are wired.
 
 ### Unwired audio
 

@@ -36,6 +36,7 @@ func play(effect_name: String, world_pos: Vector2, extra_scale := 1.0) -> void:
 
 func explosion(world_pos: Vector2, big := false) -> void:
 	play("explosion_big" if big else "explosion", world_pos)
+	_shake_camera(world_pos, 7.0 if big else 3.5, 0.32 if big else 0.18)
 
 
 ## Destruction of a manned unit / building — big boom, flying debris and
@@ -44,11 +45,21 @@ func destroyed(world_pos: Vector2) -> void:
 	play("explosion_big", world_pos)
 	play("debris", world_pos + Vector2(0, -6))
 	play_set("destroyed")
+	_shake_camera(world_pos, 8.0, 0.38)
 	var timer := get_tree().create_timer(0.22)
 	timer.timeout.connect(func():
 		if is_instance_valid(self):
 			play("explosion", world_pos + Vector2(
 				randf_range(-14.0, 14.0), randf_range(-10.0, 6.0))))
+
+
+func _shake_camera(world_pos: Vector2, strength_px: float, duration: float) -> void:
+	var viewport := get_viewport()
+	if viewport == null:
+		return
+	var camera := viewport.get_camera_2d()
+	if camera is RtsCamera2D:
+		(camera as RtsCamera2D).shake(world_pos, strength_px, duration)
 
 
 func impact(world_pos: Vector2) -> void:

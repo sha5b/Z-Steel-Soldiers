@@ -232,28 +232,24 @@ from the extracted GOG release in `assets_original/gog/`:
 
 ## Available in the packs, not yet wired (candidates)
 
-- Ambient animals: `other/birds`, `other/hut_animals` (planet birds,
-  rabbits) — converted maps carry no animal objects.
-- Vehicle movement effects: track dust/sparks/oil/dirt frames, jeep
-  `tire_spin_*`, APC `open_*` door animation, medium-tank `cannon_r*`
-  barrel layer, `initfire` muzzle flashes.
-- Robot anims: dodge, jump-*, escape_tank, tank_fire, throw (combat
-  context), `exhaust_*` puffs.
-- 75 `ROB*.wav` robot barks, `COMP*` computer voice, losing taunts.
-- Original production/factory GUI sheets (`other/production_gui`,
-  `factory_gui`), full HUD set (`other/hud`), menu art, animated
-  contextual cursors, `planets_1-10-10` alt tileset.
+The broad effect/UI pass is wired: ambient animals, tracks, craters,
+damage smoke/oil/sparks, APC doors, crane cones, robot dodge/jump/throw,
+vehicle crew poses, voices, contextual cursors, production chrome and the
+full fixed HUD all have runtime consumers and regression coverage.
 
-## Missing original art (wanted)
+The remaining art with no verified consumer is narrower: jeep
+`tire_spin_*`, light-tank `initfire`, tough `mushroom`, `tank_dirt`, the
+portrait salute/thumbs-up pieces, and some duplicate GOG port atlases.
+Their exact placement or gameplay trigger is not documented, so do not
+guess it from filenames alone.
 
-- `cannons_missile/` is empty — missile cannons don't spawn.
-- No `missile_launcher`/`crane` vehicle folders.
-- `map_items/rockets.png` doesn't exist — rocket crates render blank.
-- Original HUD sheets (portraits frame, money counter) beyond `ui/splash.png`.
-- Explosion/projectile effect sprites — particle fallbacks cover these;
-  drop frames into `effects/` to upgrade (GOG has none as files either).
-- `en.lproj/` planet stingers (e_dtrav1, e_dwint1...) and cutscene audio
-  are copied nowhere yet — wire per-planet stingers when wanted.
+## Remaining source gaps
+
+- The semantic meaning of `ROB23`-`ROB75` is unknown; they are safe as
+  chatter but cannot yet carry specific tactical messages.
+- True portrait gesture placement and phoneme timing still need original
+  engine data or a verified visual reference.
+- GOG cutscene containers and their per-planet stingers are not decoded.
 
 ## Generating assets
 

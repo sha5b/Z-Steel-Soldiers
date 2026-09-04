@@ -98,6 +98,9 @@ func _rebuild_slots() -> void:
 		var seat := Button.new()
 		seat.custom_minimum_size = Vector2(0, 26)
 		seat.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# Player names and host markers must not become the minimum width of
+		# the entire two-column room at 640x480.
+		seat.clip_text = true
 		if controller is int:
 			seat.text = _occupied_label(team, int(controller), my_id)
 			seat.disabled = true
@@ -112,6 +115,7 @@ func _rebuild_slots() -> void:
 		if Net.role == Net.Role.HOST and not (controller is int):
 			var cycle := Button.new()
 			cycle.custom_minimum_size = Vector2(74, 26)
+			cycle.clip_text = true
 			cycle.text = str(controller).to_upper()
 			cycle.pressed.connect(Net.host_toggle_slot.bind(team))
 			row.add_child(cycle)

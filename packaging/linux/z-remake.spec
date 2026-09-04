@@ -6,7 +6,7 @@
 # embedded in the binary by the export. Build and install it locally;
 # do not put it in a repository or attach it to a release.
 
-%global godot_ver 4.7.1
+%global godot_ver 4.7.2
 # no debuginfo to extract from a Godot export, and no ELF hardening to check
 %global debug_package %{nil}
 %undefine _missing_build_ids_terminate_build
@@ -16,7 +16,7 @@
 %global __requires_exclude_from ^%{_bindir}/z-remake$
 
 Name:           z-remake
-Version:        0.2.8
+Version:        0.2.9
 # BUILD STAMP. Without it every rebuild is the same NEVRA
 # (z-remake-0.1.0-1.fc44) with different contents, so dnf sees no reason
 # to replace what is installed and you cannot tell two builds apart --
@@ -77,6 +77,20 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
+* Fri Sep 04 2026 sha5b <ned.tabulov@gmail.com> - 0.2.9-1
+- UI parity sweep: selected units and buildings appear as clickable portrait
+  medallions above the command bar, and factory products use the original
+  up/down arrow selector beside the portrait.
+- Army gauges now count controlled zones and show each side's share of the
+  battlefield instead of counting units.
+- Original explosion, debris, smoke, oil, spark, track and crater effects now
+  get proximity-scaled world-camera shake without moving the HUD.
+- The title splash, generated-map settings, multiplayer lobby and pause menu
+  now stay inside the original 640x480 frame and scale cleanly at modern
+  resolutions.
+- Tutorial-focused regression checks cover the production arrows, selection
+  ribbon and territory gauges.
+
 * Tue Sep 01 2026 sha5b <ned.tabulov@gmail.com> - 0.2.8-1
 - Generated skirmish maps: the skirmish list leads with RANDOM MAP -
   players (2-8), starting money, size and theme, with a live preview of

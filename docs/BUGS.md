@@ -39,18 +39,6 @@ They are listed in the order I would tackle them.
    rather than guessing a sprite. `robots.dat` (a 44-byte named-robot
    roster) and `mult.dat` are unparsed.
 
-2. **The full original HUD frame is still unreferenced** —
-   `ui/hud/main_hud*.png` (10 files: the side panel per team, the bottom
-   strip and its three segments). The SELECTED-OBJECT trio it belonged
-   to is now wired (planet backdrop + portrait + name plate, see Fixed),
-   but the panel chrome itself would mean rebuilding the HUD layout
-   around a fixed 640x480 frame, and it cannot be verified headlessly.
-
-3. **42 of 48 production-GUI chrome files unconverted** — the original
-   production menu's own frame (`other/production_gui/fus_*`,
-   `object_back`, `selector_back`, the up/down/queue buttons). The panel
-   works and uses the plates it has; this is a look-and-feel rebuild.
-
 4. **Multiplayer is not bit-deterministic** — by design now, not by
    omission: host-only brains, relayed intents, a 5s economy resync and
    a 10s FULL-ENTITY resync (`Net.push_entities` ->

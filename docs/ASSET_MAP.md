@@ -19,8 +19,8 @@ asset — see `project/assets_map.json` for the machine-readable form.
 | vehicles/under_* jeep wheels | 135 | jeep wheel layer | **WIRED** | shared art, no team prefix |
 | vehicles/bullet.png | 149 | tank shell projectile sprite | **WIRED** |  |
 | vehicles death_effects | 34 | wreck smoke/fire overlay | **WIRED** | big_smoke/fire/little_fire loops on wrecks |
-| vehicles track marks | 84 | - | **NOT WIRED** | per-planet track decals (jeep_track_desert_...); gameplay effect |
-| vehicles tank_dirt/oil/sparks | 149 | - | **NOT WIRED** | movement/damage ground effects |
+| vehicles track marks | 84 | Decals.track | **WIRED** | per-planet tank tracks plus mirrored headings; jeep desert tracks |
+| vehicles tank_dirt/oil/sparks | 149 | damage smoke/oil/sparks | **PARTIAL** | oil stains and directional smoke/sparks wired; tank_dirt placement is unknown |
 | cannons/<type> | 3 | Vehicle2D (stationary) | **WIRED** | idle chain base->equiped->place(gunner)->fire; missiles spawn since art added |
 | buildings/<kind> base+destroyed | 21 | Building2D textures | **WIRED** | destroyed naming: base_destroyed_<planet>.png |
 | buildings overlays | 21 | radar dish, factory spinners, repair smoke | **WIRED** | def-driven `anims`; hidden when destroyed |
@@ -29,20 +29,20 @@ asset — see `project/assets_map.json` for the machine-readable form.
 | planets rocks/bridges | 20 | rock sprites, bridge art | **WIRED** |  |
 | other/explosions | 7 | Fx explosion sprite anims | **WIRED** | side_explosion; tank_missile_explosion for the big one |
 | other/fire | 24 | burning fire loops | **WIRED** | wreck fires |
-| other/particles, birds, hut_animals | 44 | - | **NOT WIRED** | ambient life; maps carry no animal objects in our conversion |
+| other/particles, birds, hut_animals | 44 | ambient map life | **WIRED** | planet pools spawn birds and hut animals with their original calls |
 | hud unit icons | 156 | selection bar portraits | **WIRED** | icon_<type>_<team>.png (converted from bmp) |
-| hud unit labels | 156 | - | **COPIED, NOT WIRED** | unit_label_<type>_<team> name plates |
-| hud amount bar | 156 | fort HP bar (world) | **WIRED** | unit_amount_bar_<team>.png, cropped to remaining health (selection-ring bars are procedural) |
+| hud unit labels | 156 | selected-object name plates | **WIRED** | unit_label_<type>_<team> with neutral weapon-label fallback |
+| hud amount bar | 156 | bottom territory gauges | **WIRED** | one team-coloured bar and controlled-zone count per active side |
 | hud grenade icon | 156 | upgrade indicator (top bar) | **WIRED** |  |
 | hud backdrop | 156 | minimap radar frame per planet | **WIRED** |  |
-| hud main_hud_side | 156 | - | **COPIED, NOT WIRED** | the original's full side HUD chrome |
-| hud a/b/d/g buttons | 156 | - | **COPIED, NOT WIRED** | original in-game action buttons |
+| hud main_hud_side | 156 | fixed side and bottom HUD chrome | **WIRED** | team sidebar, split bottom bar and resolution fillers |
+| hud a/b/d/g buttons | 156 | HUD actions and modes | **WIRED** | A/T/D/Z and R/V/B/G/Menu use all three original states |
 | GOG Buttons.png | 0 | menu button plates (all states) | **WIRED (GOG)** | 2x3 grid of 32x32 faces; UiTheme atlas-regions + margins, tint/offset per state |
 | GOG Box* menu chrome | 0 | menu panel 3-slice | **WIRED (GOG)** | OriginalPanel; BoxInfo/BoxDivide spare |
 | GOG IP* multiplayer set | 0 | multiplayer screens backdrop | **PARTIAL (GOG)** | IPBackground backs the MP browse + lobby screens; IPSplash/MultiPlayer.png atlas/2x IPBox* chrome spare |
 | GOG planet thumbs | 0 | campaign brief world art | **WIRED (GOG)** | 320x200, base + alt lighting pass |
 | GOG menu plaques | 0 | - | **COPIED (GOG), NOT WIRED** | 64x128 section headers + 64x64 exit icon |
-| GOG PMHSprites | 0 | - | **COPIED (GOG), NOT WIRED** | in-game HUD atlas: panel outline, round buttons, arrows, unit medallions |
+| GOG PMHSprites | 0 | visual reference | **REFERENCE ONLY** | duplicate port atlas; runtime uses cleaner extracted zod HUD pieces and unit icons |
 | GOG Font.png + Fonts/*.fnt | 0 | - | **COPIED (GOG), NOT WIRED** | Mac-port AHF bitmap font; superseded by zod per-char sets |
 | zod fonts | 0 | menu font (BMFont) via tools/zod/pack_fonts.py | **WIRED** | 83 chars each; $ ( ) & # absent - engine fallback covers |
 | menus+main_menu_gui buttons | 0 | UiTheme fallback chrome + list/popup art | **WIRED** | nine-piece styleboxes back the GOG plates; list_* skins ItemList/popups |
@@ -50,5 +50,5 @@ asset — see `project/assets_map.json` for the machine-readable form.
 | cursors | 196 | default in-game pointer | **PARTLY WIRED** | animated contextual set (attack/grenade/enter/...) available |
 | sfx | 0 | all weapon/explosion/UI sounds | **WIRED (GOG)** | 115 sounds, RAW->wav 11025Hz u8 |
 | music | 0 | menu/battle loops, win/lose stingers | **WIRED (GOG)** |  |
-| voices | 0 | acknowledge + selected voices | **WIRED** | 75 ROB barks + COMP computer voice available, not wired |
+| voices | 0 | robot and commander voices | **WIRED** | selected/acknowledge lines mapped; ROB23-75 safely used as unlabelled chatter |
 | GOG sprites.rsc | 0 | - | **PACKED, NOT EXTRACTED** | 7211 sprites + offset table + per-planet PAL; codec/SHEADBI TBD; zod PNGs are the same art pre-extracted (see RESEARCH.md 2b) |

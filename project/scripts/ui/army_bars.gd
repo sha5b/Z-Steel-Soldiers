@@ -1,17 +1,16 @@
 class_name ArmyBars
 extends Control
-## The bottom bar's army gauges — the original's `unit_amount_bar` art,
-## which shipped in the pack and had no consumer (docs/RESEARCH.md 2d
-## listed it as missing).
+## The bottom bar's territory gauges — the original's `unit_amount_bar`
+## art. Despite that asset name, the HUD number is controlled ZONES, not
+## standing units: territory is Z's economy and the value changes on a
+## flag capture.
 ##
-## One gauge per team in the match: a count in the number window and a bar
-## whose LENGTH is that team's share of all units on the field. The
-## screenshots show exactly two, red and blue, reading "04" and "06" —
-## each side's standing army, which is the number that matters in a game
-## with no resources to count.
+## One gauge per team in the match: a zone count in the number window and
+## a bar whose length is that team's share of the map's zones. Neutral
+## territory remains unfilled, so the strip also shows how much is left.
 ##
-## Rebuilt when the team list changes, resized on a unit being built or
-## dying (UnitRegistry's roster signal) — never per frame.
+## Rebuilt when the team list changes and refreshed on capture — never
+## polled per frame.
 
 const HUD_DIR := "res://assets/z/ui/hud"
 const BAR_ART := Vector2(62.0, 16.0)
@@ -29,11 +28,7 @@ var _pending_rebuild := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# a build or a death changes the count; a capture can change who is
-	# even on the board
-	# _rebuild inside a signal handler would free nodes mid-emit
-	UnitRegistry.current.unit_spawned.connect(func(_u): _refresh())
-	UnitRegistry.current.unit_died.connect(func(_u): _refresh())
+	# _rebuild inside a signal handler would free nodes mid-emit.
 	MatchState.current.zone_captured.connect(func(_team): _refresh())
 	_rebuild()
 
@@ -155,13 +150,10 @@ func _refresh() -> void:
 		_rebuild_deferred()
 		return
 	var counts := {}
-	var total := 0
+	var total := MatchState.current.zones.size()
 	for team in _gauges:
-		# COUNT, not pop cost: the original's gauge reads "how many
-		# robots do I have", and a tank is one unit on it like a grunt
-		var n: int = UnitRegistry.current.alive_of_team(team).size()
+		var n: int = MatchState.current.zones_owned_by(team)
 		counts[team] = n
-		total += n
 	for team in _gauges:
 		var g: Dictionary = _gauges[team]
 		(g["label"] as Label).text = "%02d" % int(counts[team])

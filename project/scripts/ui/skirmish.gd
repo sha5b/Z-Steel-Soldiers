@@ -18,7 +18,7 @@ const MONEY_STEPS := [0, 500, 1000, 2000, 5000]  # 0 = rules default
 @onready var map_name_label: Label = %MapName
 @onready var map_info_label: Label = %MapInfo
 
-var _gen_panel: HBoxContainer = null
+var _gen_panel: GridContainer = null
 var _gen_players: OptionButton
 var _gen_money: OptionButton
 var _gen_size: OptionButton
@@ -117,8 +117,16 @@ func _start() -> void:
 # ---- generated-map settings --------------------------------------------
 
 func _build_gen_panel() -> void:
-	_gen_panel = HBoxContainer.new()
-	_gen_panel.add_theme_constant_override("separation", 6)
+	# This row used to be an HBoxContainer. Its five controls need over
+	# 500px, while the preview column is only about 300px at the supported
+	# 640x480 viewport; the HBox minimum therefore enlarged the whole
+	# Columns container past the screen and clipped both edges. Two compact
+	# columns keep every setting reachable without imposing that width.
+	_gen_panel = GridContainer.new()
+	_gen_panel.columns = 2
+	_gen_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_gen_panel.add_theme_constant_override("h_separation", 6)
+	_gen_panel.add_theme_constant_override("v_separation", 6)
 	_gen_panel.visible = false
 	_gen_players = _option(["2 PLAYERS", "3 PLAYERS", "4 PLAYERS", "6 PLAYERS",
 		"8 PLAYERS"], 0)
@@ -128,6 +136,9 @@ func _build_gen_panel() -> void:
 		"CITY"], 0)
 	var reroll := Button.new()
 	reroll.text = "REROLL"
+	reroll.custom_minimum_size.y = 30.0
+	reroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	reroll.add_theme_font_size_override("font_size", 12)
 	reroll.pressed.connect(func():
 		Fx.ui_click()
 		_gen_seed = -1
@@ -141,6 +152,11 @@ func _build_gen_panel() -> void:
 
 func _option(items: Array, default_idx: int) -> OptionButton:
 	var o := OptionButton.new()
+	o.custom_minimum_size = Vector2(130, 30)
+	o.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	o.add_theme_font_size_override("font_size", 12)
+	o.fit_to_longest_item = false
+	o.clip_text = true
 	for item in items:
 		o.add_item(String(item))
 	o.selected = default_idx
@@ -170,6 +186,6 @@ func _refresh_generated() -> void:
 	_gen_data = MapGen.generate(int(s.players), String(s.size),
 		String(s.theme), _gen_seed)
 	preview.texture = MapPreview.texture_for_data(_gen_data)
-	map_name_label.text = "GENERATED — %s  %dx%d  %dP" % [
+	map_name_label.text = "GENERATED — %s\n%d × %d  ·  %d PLAYERS" % [
 		String(_gen_data.terrain).to_upper(), int(_gen_data.width),
 		int(_gen_data.height), int(s.players)]

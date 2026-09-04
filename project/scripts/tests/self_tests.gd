@@ -281,7 +281,7 @@ static func run(ctx: Node) -> void:
 			# and the status plates the time readout sits beside)
 			for art in ["base_image", "ok_button", "cancel_button",
 					"building_label", "buildingless_label", "paused_label",
-					"object_button"]:
+					"object_button", "down_button", "down_button_pressed"]:
 				if not ResourceLoader.exists(
 						"res://assets/z/ui/production/%s.png" % art):
 					fails.append("build menu art %s" % art)
@@ -347,6 +347,21 @@ static func run(ctx: Node) -> void:
 			# which is what this check used to do.
 			var panel: ProductionPanel = ctx.get_node_or_null(
 				"CanvasLayer/HUD/ProductionPanel")
+			var ribbon: SelectionRibbon = ctx.get_node_or_null(
+				"CanvasLayer/HUD/SelectionRibbon")
+			if ribbon == null:
+				fails.append("selection ribbon missing")
+			var territory := frame._bottom.get_node_or_null("ArmyBars") \
+					as ArmyBars if frame != null else null
+			if territory == null or territory._gauges.is_empty():
+				fails.append("territory gauges missing")
+			else:
+				for team in territory._gauges:
+					var shown: String = (territory._gauges[team]["label"] as Label).text
+					var want := "%02d" % MatchState.current.zones_owned_by(team)
+					if shown != want:
+						fails.append("team %d territory gauge says %s, want %s"
+							% [team, shown, want])
 			var any_facility = null
 			for b2 in ctx.get_tree().get_nodes_in_group(Groups.FACILITIES):
 				if b2 is Building2D and b2.alive \
@@ -359,6 +374,11 @@ static func run(ctx: Node) -> void:
 				SelectionManager.current.clear_selection()
 				SelectionManager.current.toggle_select(any_facility, false)
 				await tree.process_frame
+				if panel.get_node_or_null("PreviousProduct") == null \
+						or panel.get_node_or_null("NextProduct") == null:
+					fails.append("production arrow selectors missing")
+				if ribbon != null and ribbon._row.get_child_count() != 1:
+					fails.append("selection ribbon did not show selected factory")
 				MatchState.current.set_money(MatchState.current.player_team, 500)
 				var roster: Array = any_facility.build_options()
 				var running: String = any_facility.selected_product()
@@ -396,6 +416,10 @@ static func run(ctx: Node) -> void:
 					if panel._object.texture != null:
 						fails.append("panel object window still shows a unit "
 							+ "on a stopped line")
+					panel._cycle_product(1)
+					if any_facility.selected_product() == "":
+						fails.append("production arrow did not select a unit")
+					any_facility.stop_line()
 				SelectionManager.current.clear_selection()
 			# SIGNAL ARITY AUDIT. A 0-arg method connected to a 1-arg
 			# signal is not a parse error — it throws
@@ -3151,6 +3175,8 @@ static func run(ctx: Node) -> void:
 			Fx.explosion(fx_cam.position + Vector2(0, -10), true)
 			Fx.impact(fx_cam.position + Vector2(60, 0))
 			Fx.play("muzzle", fx_cam.position + Vector2(110, 0))
+			if fx_cam is RtsCamera2D and not (fx_cam as RtsCamera2D).is_shaking():
+				vproblems.append("nearby explosions did not shake the world camera")
 
 		# muzzle and impact must resolve REAL sprite art (particle
 		# fallbacks were the old bug); wreck flame variants resolve too
@@ -4782,6 +4808,4 @@ static func run(ctx: Node) -> void:
 					wrong_team_art.append("%s t%d" % [u.unit_name, u.team])
 		print("TEAMART: %s" % ("OK" if wrong_team_art.is_empty()
 			else "WRONG %s" % wrong_team_art))
-
-
 

@@ -12,9 +12,15 @@ const EDGE_MARGIN := 24.0
 const ZOOM_MIN := 0.35
 const ZOOM_MAX := 2.5
 const ZOOM_STEP := 1.15
+const SHAKE_MAX_PX := 8.0
 
 @export var bounds := Rect2(0.0, 0.0, 1280.0, 1536.0)
 @export var enable_edge_pan := true
+
+var _view_offset := Vector2.ZERO
+var _shake_power_px := 0.0
+var _shake_left := 0.0
+var _shake_duration := 0.0
 
 
 func _ready() -> void:
@@ -71,7 +77,44 @@ func _process(delta: float) -> void:
 			elif m.y > view.end.y - EDGE_MARGIN:
 				move.y += PAN_SPEED * delta / zoom.x
 	_sync_view_offset()
+	_update_shake(delta)
 	_clamp_move(move)
+
+
+## Explosion feedback affects only the world camera; the CanvasLayer HUD stays
+## pinned and readable. Strength is expressed in screen pixels and falls off
+## with distance, so an off-screen battle cannot shake the player's view.
+func shake(world_pos: Vector2, strength_px := 5.0, duration := 0.24) -> void:
+	var world_view := HudFrame.view_rect().size / zoom
+	var reach := maxf(world_view.length() * 0.65, 1.0)
+	var falloff := clampf(1.0 - position.distance_to(world_pos) / reach, 0.0, 1.0)
+	if falloff <= 0.0:
+		return
+	_shake_power_px = maxf(_shake_power_px,
+		minf(strength_px * falloff, SHAKE_MAX_PX))
+	_shake_duration = maxf(_shake_duration, duration)
+	_shake_left = maxf(_shake_left, duration)
+
+
+func is_shaking() -> bool:
+	return _shake_left > 0.0
+
+
+func _update_shake(delta: float) -> void:
+	if _shake_left <= 0.0:
+		offset = _view_offset
+		return
+	_shake_left = maxf(_shake_left - delta, 0.0)
+	var fade := _shake_left / maxf(_shake_duration, 0.001)
+	var amplitude := _shake_power_px * fade
+	# Quantised screen-pixel impulses preserve the nearest-filtered pixel art.
+	var screen_impulse := Vector2(
+		roundf(randf_range(-amplitude, amplitude)),
+		roundf(randf_range(-amplitude, amplitude)))
+	offset = _view_offset + screen_impulse / zoom
+	if _shake_left <= 0.0:
+		_shake_power_px = 0.0
+		_shake_duration = 0.0
 
 
 ## Jump (e.g. from the minimap) — same bounds as free panning.
@@ -104,7 +147,9 @@ func _clamp_move(move: Vector2) -> void:
 func _sync_view_offset() -> void:
 	var vp := Vector2(get_viewport().get_visible_rect().size)
 	var view := HudFrame.view_rect()
-	offset = Vector2(vp.x - view.size.x, vp.y - view.size.y) * 0.5 / zoom
+	_view_offset = Vector2(vp.x - view.size.x, vp.y - view.size.y) * 0.5 / zoom
+	if not is_shaking():
+		offset = _view_offset
 
 
 ## Whole-SCREEN-pixel position: the same world texel always maps to the

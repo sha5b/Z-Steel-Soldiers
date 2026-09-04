@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://scripts/game/match.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/game/rts_camera2d.gd" id="2"]
@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://scripts/ui/hud_frame.gd" id="16"]
 [ext_resource type="Script" path="res://scripts/core/selection_manager.gd" id="12"]
 [ext_resource type="Script" path="res://scripts/core/match_state.gd" id="13"]
+[ext_resource type="Script" path="res://scripts/ui/selection_ribbon.gd" id="17"]
 
 [node name="Main" type="Node2D"]
 y_sort_enabled = true
@@ -59,6 +60,20 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 script = ExtResource("16")
+
+[node name="SelectionRibbon" type="Control" parent="CanvasLayer/HUD"]
+anchors_preset = 12
+anchor_right = 1.0
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = -88.0
+offset_right = -108.0
+offset_bottom = -40.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+script = ExtResource("17")
 
 [node name="AnnouncePlaque" type="Control" parent="CanvasLayer/HUD"]
 anchors_preset = 5

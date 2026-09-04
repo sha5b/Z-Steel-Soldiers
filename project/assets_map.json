@@ -1140,9 +1140,9 @@
     "tank_track_volcanic_r135_n01": 1,
     "tank_track_volcanic_r135_n02": 1
    },
-   "game_usage": "-",
-   "status": "NOT WIRED",
-   "notes": "per-planet track decals (jeep_track_desert_...); gameplay effect",
+   "game_usage": "Decals.track",
+   "status": "WIRED",
+   "notes": "per-planet tank tracks plus mirrored headings; jeep desert tracks",
    "parity_diff_vs_working_set": 84,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
@@ -1301,9 +1301,9 @@
     "track_spark_r315_n02": 1,
     "track_spark_r315_n03": 1
    },
-   "game_usage": "-",
-   "status": "NOT WIRED",
-   "notes": "movement/damage ground effects",
+   "game_usage": "damage smoke/oil/sparks",
+   "status": "PARTIAL",
+   "notes": "oil stains and directional smoke/sparks wired; tank_dirt placement is unknown",
    "parity_diff_vs_working_set": 14,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
@@ -1556,9 +1556,9 @@
     "yellow_2": 1,
     "yellow_3": 1
    },
-   "game_usage": "-",
-   "status": "NOT WIRED",
-   "notes": "ambient life; maps carry no animal objects in our conversion",
+   "game_usage": "ambient map life",
+   "status": "WIRED",
+   "notes": "planet pools spawn birds and hut animals with their original calls",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
@@ -1720,9 +1720,9 @@
     "unit_label_sniper": 5,
     "unit_label_tough": 5
    },
-   "game_usage": "-",
-   "status": "COPIED, NOT WIRED",
-   "notes": "unit_label_<type>_<team> name plates",
+   "game_usage": "selected-object name plates",
+   "status": "WIRED",
+   "notes": "unit_label_<type>_<team> with neutral weapon-label fallback",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
@@ -1802,9 +1802,9 @@
     "unit_label_sniper": 5,
     "unit_label_tough": 5
    },
-   "game_usage": "fort HP bar (world)",
+   "game_usage": "bottom territory gauges",
    "status": "WIRED",
-   "notes": "unit_amount_bar_<team>.png, cropped to remaining health (selection-ring bars are procedural)",
+   "notes": "one team-coloured bar and controlled-zone count per active side",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
@@ -2048,9 +2048,9 @@
     "unit_label_sniper": 5,
     "unit_label_tough": 5
    },
-   "game_usage": "-",
-   "status": "COPIED, NOT WIRED",
-   "notes": "the original's full side HUD chrome",
+   "game_usage": "fixed side and bottom HUD chrome",
+   "status": "WIRED",
+   "notes": "team sidebar, split bottom bar and resolution fillers",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
@@ -2130,9 +2130,9 @@
     "unit_label_sniper": 5,
     "unit_label_tough": 5
    },
-   "game_usage": "-",
-   "status": "COPIED, NOT WIRED",
-   "notes": "original in-game action buttons",
+   "game_usage": "HUD actions and modes",
+   "status": "WIRED",
+   "notes": "A/T/D/Z and R/V/B/G/Menu use all three original states",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
@@ -2196,9 +2196,9 @@
    "zod_source": "gog/PNG/PMHSprites.png",
    "file_count": 0,
    "prefixes": {},
-   "game_usage": "-",
-   "status": "COPIED (GOG), NOT WIRED",
-   "notes": "in-game HUD atlas: panel outline, round buttons, arrows, unit medallions",
+   "game_usage": "visual reference",
+   "status": "REFERENCE ONLY",
+   "notes": "duplicate port atlas; runtime uses cleaner extracted zod HUD pieces and unit icons",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },
@@ -2375,9 +2375,9 @@
    "zod_source": "zod sounds + GOG lproj RAWs",
    "file_count": 0,
    "prefixes": {},
-   "game_usage": "acknowledge + selected voices",
+   "game_usage": "robot and commander voices",
    "status": "WIRED",
-   "notes": "75 ROB barks + COMP computer voice available, not wired",
+   "notes": "selected/acknowledge lines mapped; ROB23-75 safely used as unlabelled chatter",
    "parity_diff_vs_working_set": null,
    "gog": "packed in sprites.rsc (7211 entries, codec TBD)"
   },

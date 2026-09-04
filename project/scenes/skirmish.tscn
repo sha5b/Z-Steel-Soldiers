@@ -46,7 +46,7 @@ grow_vertical = 2
 theme_override_constants/separation = 16
 
 [node name="LeftCol" type="VBoxContainer" parent="Columns"]
-custom_minimum_size = Vector2(280, 0)
+custom_minimum_size = Vector2(264, 0)
 theme_override_constants/separation = 8
 
 [node name="Chips" type="HBoxContainer" parent="Columns/LeftCol"]
@@ -134,9 +134,10 @@ expand_mode = 1
 [node name="MapName" type="Label" parent="Columns/RightCol"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 16
 text = " "
 horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="MapInfo" type="Label" parent="Columns/RightCol"]
 unique_name_in_owner = true

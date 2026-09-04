@@ -49,7 +49,7 @@ shipped 2026-08 — see the bottom section.
       TerrainAnimator walks the tileinfo effect rings per cell
 - [x] Building impassables for the repair shop and both factories
 - [x] Control-group hotkeys, veterancy, MP full-entity resync + late join
-- [x] Every test flag asserts through TestRig (49 flags)
+- [x] Every test flag asserts through TestRig (54 flags)
 - [x] Unreferenced pack art wired: selected-object panel, escape_tank /
       tank_fire / jump-*, per-planet rock + bridge debris, building level
       digits, announcer plaques, order-confirmation cursors, ambient
@@ -58,7 +58,7 @@ shipped 2026-08 — see the bottom section.
 ## Phase 5 — the quality-of-life sweep (2026-08-21) ✅
 
 The commands the original never had, all additions, all guarded by the
-new `--qol-test` lane (49 lanes now). Details in `docs/HANDOFF.md`.
+new `--qol-test` lane (54 lanes now). Details in `docs/HANDOFF.md`.
 
 - [x] **The pan keys were also command keys.** WASD panned AND pressed
       the HUD plates (holding `D` to look right flipped the DEFEND

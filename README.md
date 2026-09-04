@@ -30,7 +30,7 @@ copy — see [Asset licensing](#asset-licensing).
 
 **Status.** Single player is feature complete. Multiplayer has a P2P
 lobby, intent replication, host-authoritative resync and late join. The
-test suite is 49 headless lanes, and all of them assert. Every lane is
+test suite is 54 headless lanes, and all of them assert. Every lane is
 green in the editor and green inside the exported binary.
 
 ## The Zod Engine source is the reference
@@ -63,7 +63,9 @@ radar window shows the planet's own minimap colors.
 
 A robot factory on the city streets, with the production window on the
 release's own 112x80 frame — the Time countdown, the building health
-readout, and the level and progress gauges.
+readout, the original up/down product selector, and the level and progress
+gauges. Selected units and buildings also appear as clickable portrait
+medallions above the command bar; the two army gauges count controlled zones.
 
 ![City, with the production menu open](docs/screenshots/03-city.png)
 
@@ -97,9 +99,10 @@ order. `Ctrl`+right-click **queues** the order behind what the unit is
 already doing.
 
 **Production is a line, not a queue.** Z has no build queue. Select a
-factory, pick one unit type, and it turns that out indefinitely until you
-pick something else — switching keeps the build clock, Cancel stops the
-line, and every producer starts on the first entry of its own list. Units
+factory and use the up/down arrows beside its portrait to pick one unit type;
+it turns that out indefinitely until you pick something else — switching
+keeps the build clock, Cancel stops the line, and every producer starts on
+the first entry of its own list. Units
 do not enter buildings; a fort defends itself with the four tower guns it
 builds, which can be shot back off it.
 
@@ -293,7 +296,7 @@ content, copy a `.tres` and drop an art folder — the steps are in
 
 ## Tests
 
-49 headless lanes. Run them in parallel from `project/`:
+54 headless lanes. Run them in parallel from `project/`:
 
 ```bash
 res://scenes/main.tscn --<flag>-test --quit-after 6000
