@@ -98,6 +98,17 @@ They are listed in the order I would tackle them.
     (destructible, firing scenery), so it needs a scope decision.
 
 ## Fixed
+- 2026-09-04 — **final original-UI sweep:** the production window's
+  up/down triangles floated directly over the battlefield because the
+  tall bevel-edged carriers visible in retail tutorial page 7 were never
+  rebuilt; both metal tabs now attach to the window, and the upper button
+  uses its dedicated `up_button` / pressed art instead of a flipped down
+  texture. The pause menu also stretched the original 384x256 three-slice
+  panel to 384x284 and sat below the HUD in draw order, leaving the sidebar
+  undimmed. Its contents now fit the native panel, the panel keeps its
+  aspect, and the overlay covers the complete game UI. `--ui-test` guards
+  the arrow assets/carriers and native pause-panel dimensions;
+  `--pause-screen` supplies a visual screenshot lane.
 - 2026-09-01 — **review-sweep batch** (the "last sweep for logical
   mistakes"): (1) the in-world HEALTH BAR was dead code — the
   attack-radius port stranded the `hp < max_hp` draw block after a

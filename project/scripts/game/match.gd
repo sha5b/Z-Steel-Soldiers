@@ -136,6 +136,11 @@ func _screenshot(delay_text: String) -> void:
 		# let the plume build up before the frame is taken
 		for _i in 90:
 			await get_tree().process_frame
+	if "--pause-screen" in shot_all:
+		var pause := get_node_or_null("CanvasLayer/PauseMenu")
+		if pause:
+			pause.open()
+			await get_tree().process_frame
 	if "--dump-visible" in (OS.get_cmdline_args() + OS.get_cmdline_user_args()):
 		_dump_ground_nodes()
 	var image := get_viewport().get_texture().get_image()

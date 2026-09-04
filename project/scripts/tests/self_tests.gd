@@ -281,10 +281,28 @@ static func run(ctx: Node) -> void:
 			# and the status plates the time readout sits beside)
 			for art in ["base_image", "ok_button", "cancel_button",
 					"building_label", "buildingless_label", "paused_label",
-					"object_button", "down_button", "down_button_pressed"]:
+					"object_button", "up_button", "up_button_pressed",
+					"down_button", "down_button_pressed"]:
 				if not ResourceLoader.exists(
 						"res://assets/z/ui/production/%s.png" % art):
 					fails.append("build menu art %s" % art)
+			var production: ProductionPanel = ctx.get_node_or_null(
+				"CanvasLayer/HUD/ProductionPanel")
+			if production == null:
+				fails.append("ProductionPanel missing from the match scene")
+			else:
+				for control_name in ["PreviousProduct", "NextProduct",
+						"PreviousProductBacking", "NextProductBacking"]:
+					if production.get_node_or_null(control_name) == null:
+						fails.append("build menu control %s" % control_name)
+			# The pause screen uses the narrow 384x256 original panel at
+			# native aspect. Growing it vertically distorts all three slices.
+			var pause_panel: Control = ctx.get_node_or_null("CanvasLayer/PauseMenu/Panel")
+			if pause_panel == null:
+				fails.append("pause panel missing from the match scene")
+			elif pause_panel.size != OriginalPanel.PANEL_NARROW:
+				fails.append("pause panel distorted to %s, expected %s"
+					% [pause_panel.size, OriginalPanel.PANEL_NARROW])
 			# the release's own TUTORIAL pages, and the viewer that shows
 			# them (they shipped unconverted and unreachable)
 			var pages: Array = TutorialScreen.load_pages()

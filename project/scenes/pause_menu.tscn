@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/ui/pause_menu.gd" id="1"]
 
 [node name="PauseMenu" type="Control"]
+z_index = 90
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -21,9 +22,9 @@ anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
 offset_left = -192.0
-offset_top = -142.0
+offset_top = -128.0
 offset_right = 192.0
-offset_bottom = 142.0
+offset_bottom = 128.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -35,42 +36,44 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/margin_left = 76
-theme_override_constants/margin_top = 8
+theme_override_constants/margin_top = 10
 theme_override_constants/margin_right = 76
-theme_override_constants/margin_bottom = 8
+theme_override_constants/margin_bottom = 10
 
 [node name="Menu" type="VBoxContainer" parent="Panel/Margin"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 4
+alignment = 1
 
 [node name="PauseLabel" type="Label" parent="Panel/Margin/Menu"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 32
+custom_minimum_size = Vector2(0, 28)
+theme_override_font_sizes/font_size = 24
 text = "Paused"
 horizontal_alignment = 1
 
 [node name="Resume" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(220, 36)
+custom_minimum_size = Vector2(220, 32)
 layout_mode = 2
 text = "Resume"
 
 [node name="Restart" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(220, 36)
+custom_minimum_size = Vector2(220, 32)
 layout_mode = 2
 text = "Restart Map"
 
 [node name="Save" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(220, 36)
+custom_minimum_size = Vector2(220, 32)
 layout_mode = 2
 text = "Save Game"
 
 [node name="Skirmish" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(220, 36)
+custom_minimum_size = Vector2(220, 32)
 layout_mode = 2
 text = "Skirmish"
 
 [node name="Title" type="Button" parent="Panel/Margin/Menu"]
-custom_minimum_size = Vector2(220, 36)
+custom_minimum_size = Vector2(220, 32)
 layout_mode = 2
 text = "Quit to Title"
 

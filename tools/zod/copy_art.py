@@ -55,6 +55,8 @@ COPIES: list[tuple[str, str]] = [
     ("other/production_gui/cancel_button_pressed.png", "ui/production/"),
     ("other/production_gui/paused_label.png", "ui/production/"),
     ("other/production_gui/buildingless_label.png", "ui/production/"),
+    ("other/production_gui/up_button.png", "ui/production/"),
+    ("other/production_gui/up_button_pressed.png", "ui/production/"),
     ("other/production_gui/down_button.png", "ui/production/"),
     ("other/production_gui/down_button_pressed.png", "ui/production/"),
     # Per-planet battle themes. The GOG release ships arctic/city/jungle

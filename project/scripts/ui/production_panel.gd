@@ -60,10 +60,13 @@ const STATUS_PLATE := Rect2(65, 18, 47, 12)
 const TIME_SLOT := Rect2(86, 32, 22, 12)
 const CANCEL_BUTTON := Rect2(68, 46, 40, 14)
 const OK_BUTTON := Rect2(68, 62, 40, 15)
-## Tutorial page 7 shows these outside the portrait's left edge. The pack
-## only stores the down face; the upper control is that same art flipped.
-const UP_BUTTON := Rect2(-12, 20, 16, 8)
-const DOWN_BUTTON := Rect2(-12, 50, 16, 8)
+## Tutorial page 7 shows these on tall bevel-edged tabs attached outside
+## the portrait's left edge. The tiny up/down textures are only the inner
+## faces; drawing them alone left the triangles floating over the map.
+const UP_TAB := Rect2(-14, 6, 14, 27)
+const DOWN_TAB := Rect2(-14, 48, 14, 32)
+const UP_BUTTON := Rect2(-14, 14, 16, 8)
+const DOWN_BUTTON := Rect2(-14, 57, 16, 8)
 ## Roster flyout: object_button plates, four to a row, above the window.
 const ROSTER_SLOT := Vector2(45, 51)
 const ROSTER_COLUMNS := 4
@@ -91,6 +94,10 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
 	custom_minimum_size = WINDOW * SCALE
 	size = WINDOW * SCALE
+	# These sit behind the frame so their square right edge disappears
+	# under its left rail, exactly as in the retail tutorial screenshot.
+	_arrow_backing(UP_TAB, "PreviousProductBacking")
+	_arrow_backing(DOWN_TAB, "NextProductBacking")
 	var frame := TextureRect.new()
 	frame.texture = _tex("base_image")
 	frame.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -249,6 +256,60 @@ func _bar(at: Rect2, fill: Color) -> ColorRect:
 	return bar
 
 
+## The original retail window has a tall metal carrier behind each tiny
+## arrow face. Zod extracted the 16x8 faces but not the carriers, so rebuild
+## their simple six-sided bevel from the reference rather than leaving bare
+## arrows over the world. The rust flecks keep the tabs from reading as new,
+## flat Godot controls beside the weathered bitmap chrome.
+func _arrow_backing(at: Rect2, backing_name: String) -> void:
+	var p := at.position * SCALE
+	var s := at.size * SCALE
+	var cut := 6.0 * SCALE
+	var outer := Polygon2D.new()
+	outer.name = backing_name
+	outer.polygon = PackedVector2Array([
+		p + Vector2(s.x, 0), p + Vector2(cut, 0),
+		p + Vector2(0, cut), p + Vector2(0, s.y - cut),
+		p + Vector2(cut, s.y), p + s,
+	])
+	outer.color = Color("343638")
+	add_child(outer)
+
+	var inset := 1.0 * SCALE
+	var inner := Polygon2D.new()
+	inner.polygon = PackedVector2Array([
+		p + Vector2(s.x, inset), p + Vector2(cut + inset, inset),
+		p + Vector2(inset, cut + inset),
+		p + Vector2(inset, s.y - cut - inset),
+		p + Vector2(cut + inset, s.y - inset),
+		p + Vector2(s.x, s.y - inset),
+	])
+	inner.color = Color("77787a")
+	add_child(inner)
+
+	var shine := Line2D.new()
+	shine.width = 1.0 * SCALE
+	shine.default_color = Color("a9aaab")
+	shine.points = PackedVector2Array([
+		p + Vector2(s.x, inset), p + Vector2(cut + inset, inset),
+		p + Vector2(inset, cut + inset),
+	])
+	add_child(shine)
+
+	# Two restrained, deterministic patina marks, matching the surrounding
+	# base_image without introducing a noisy generated texture.
+	for fleck in [Vector2(9, 4), Vector2(5, at.size.y - 7)]:
+		var mark := Polygon2D.new()
+		mark.polygon = PackedVector2Array([
+			p + fleck * SCALE,
+			p + (fleck + Vector2(1, 0)) * SCALE,
+			p + (fleck + Vector2(1, 1)) * SCALE,
+			p + (fleck + Vector2(0, 1)) * SCALE,
+		])
+		mark.color = Color("916b5c")
+		add_child(mark)
+
+
 ## A button whose whole face is the original's plate art.
 func _art_button(at: Rect2, art: String, tooltip: String) -> Button:
 	var btn := Button.new()
@@ -286,17 +347,17 @@ func _arrow_button(at: Rect2, points_up: bool, tooltip: String) -> Button:
 	for state in ["normal", "hover", "pressed", "focus"]:
 		btn.add_theme_stylebox_override(state, StyleBoxEmpty.new())
 	var face := TextureRect.new()
-	face.texture = _tex("down_button")
-	face.flip_v = points_up
+	var art := "up_button" if points_up else "down_button"
+	face.texture = _tex(art)
 	face.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	face.set_anchors_preset(Control.PRESET_FULL_RECT)
 	btn.add_child(face)
 	btn.button_down.connect(func():
-		face.texture = _tex("down_button_pressed"))
+		face.texture = _tex("%s_pressed" % art))
 	btn.button_up.connect(func():
-		face.texture = _tex("down_button"))
+		face.texture = _tex(art))
 	add_child(btn)
 	return btn
 
