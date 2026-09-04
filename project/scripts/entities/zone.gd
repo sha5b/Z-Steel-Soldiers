@@ -1,8 +1,9 @@
 @tool
 class_name Zone
 extends Node2D
-## Territory sector (from Zod map zone rects): flag at center, capture by
-## presence, feeds GameState income. Territory look is the ORIGINAL's:
+## Territory sector (from Zod map zone rects): infantry must stand at the
+## flag to capture it; merely entering the sector is not enough. Feeds
+## GameState income. Territory look is the ORIGINAL's:
 ## a lattice of small team-coloured marker stamps, one per passable tile
 ## (zone_marker_<team>.png), water tiles getting the bobbing water
 ## variant — no borders, no fill. The zone node sits at (0,0) so y-sort
@@ -13,6 +14,10 @@ signal captured(new_team: int)
 var _capture_seconds := 2.0
 const MARKER_SCALE := 1.0  # native 8x4 stamps, centred in their 16px tile (zod DoZoneEffects)
 const BOB_SECONDS := 0.45  # water marker redraw cadence
+## Close enough for an infantry sprite to be touching the 16px flag tile.
+## This is deliberately much smaller than a zone: tanks driving through and
+## robots fighting elsewhere in the sector must not capture it by accident.
+const FLAG_CAPTURE_RADIUS := 18.0
 
 @export var zone_rect := Rect2i()
 @export var owner_team := 0
@@ -45,6 +50,11 @@ func _ready() -> void:
 var _flag_pending := true  # buildings spawn after zones — decide once
 
 func _build_visuals() -> void:
+	# Promote the flag into the world's Y-sort group. The zone's own marker
+	# lattice remains at y=0 (under the world), while the flag sorts at the
+	# height of its pole base so infantry can pass behind/in front naturally.
+	y_sort_enabled = true
+	z_index = -1
 	_rebuild_marker_cells()
 	queue_redraw()
 
@@ -78,6 +88,9 @@ func _place_flag() -> void:
 	_flag.sprite_frames = AnimLibrary.flag_frames(owner_team)
 	_flag.position = _authored_flag_spot(r)
 	_flag.scale = AnimLibrary.FLAG_SCALE  # the art is a 2x redraw
+	# The parent zone is a ground layer for its perimeter stamps. Keep the
+	# flag at world z=0 so only the stamps inherit that under-world layer.
+	_flag.z_as_relative = false
 	add_child(_flag)
 	if _flag.sprite_frames and _flag.sprite_frames.has_animation("wave"):
 		_flag.play("wave")
@@ -151,9 +164,13 @@ func _process(delta: float) -> void:
 		_place_flag()
 	var occupying := 0
 	var contested := false
+	var flag_at := capture_point()
 	for u in UnitRegistry.current.world_units():
-		# neutral hardware (empty vehicles) does not hold territory
-		if u.team != 0 and world_rect().has_point(u.global_position):
+		# Only living infantry can grab a flag. Vehicles, cannons, carried
+		# robots, and troops elsewhere in the zone neither capture nor contest.
+		if u is Unit2D and u.alive and not u.carried and u.kind == "robot" \
+				and u.team != 0 \
+				and u.global_position.distance_to(flag_at) <= FLAG_CAPTURE_RADIUS:
 			if occupying == 0:
 				occupying = u.team
 			elif u.team != occupying:
@@ -194,6 +211,15 @@ func _process(delta: float) -> void:
 
 func world_rect() -> Rect2:
 	return Rect2(zone_rect.position * 16, zone_rect.size * 16)
+
+
+## The actual world-space point an infantry unit must reach to take this
+## sector. AI and smart-idle orders use the same point as capture detection,
+## so an authored off-centre flag is never replaced by the zone centre.
+func capture_point() -> Vector2:
+	if is_instance_valid(_flag):
+		return _flag.global_position
+	return _authored_flag_spot(world_rect())
 
 
 func _draw() -> void:

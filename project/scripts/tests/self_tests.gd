@@ -351,17 +351,36 @@ static func run(ctx: Node) -> void:
 				"CanvasLayer/HUD/SelectionRibbon")
 			if ribbon == null:
 				fails.append("selection ribbon missing")
-			var territory := frame._bottom.get_node_or_null("ArmyBars") \
-					as ArmyBars if frame != null else null
-			if territory == null or territory._gauges.is_empty():
-				fails.append("territory gauges missing")
 			else:
-				for team in territory._gauges:
-					var shown: String = (territory._gauges[team]["label"] as Label).text
-					var want := "%02d" % MatchState.current.zones_owned_by(team)
-					if shown != want:
-						fails.append("team %d territory gauge says %s, want %s"
-							% [team, shown, want])
+				# Original selection medallions contain top-down world art. The
+				# production icon is not interchangeable: icon_grunt is a rifle.
+				var icon_probe: Unit2D = null
+				for probe in UnitRegistry.current.world_units():
+					if probe.team == MatchState.current.player_team:
+						icon_probe = probe
+						break
+				if icon_probe == null:
+					fails.append("no player unit for selection-medallion audit")
+				else:
+					var world_icon := SelectionRibbon._world_unit_icon(icon_probe)
+					if world_icon == null or world_icon.get_size() != Vector2(
+							SelectionRibbon.ICON_CANVAS):
+						fails.append("selection medallion did not render 36px world art")
+					elif world_icon.get_image().get_used_rect().get_area() == 0:
+						fails.append("selection medallion world art is transparent")
+			var amount := frame._bottom.get_node_or_null("ArmyBars") \
+					as ArmyBars if frame != null else null
+			if amount == null or amount._bar == null or amount._label == null:
+				fails.append("unit amount gauge missing")
+			else:
+				var team := MatchState.current.player_team
+				var shown := amount._label.text
+				var want := str(MatchState.current.unit_pop(team))
+				if shown != want:
+					fails.append("unit amount gauge says %s, want %s" % [shown, want])
+				if amount._bar.position != HudFrame.COUNT_WINDOW.position + Vector2(2, 4) \
+						or amount._bar.size.y != ArmyBars.BAR_ART.y:
+					fails.append("unit amount bar is outside the original 62x16 window")
 			var any_facility = null
 			for b2 in ctx.get_tree().get_nodes_in_group(Groups.FACILITIES):
 				if b2 is Building2D and b2.alive \
@@ -762,19 +781,57 @@ static func run(ctx: Node) -> void:
 	if "--capture-test" in args:
 		var u: Unit2D = null
 		for unit in tree.get_nodes_in_group(Groups.UNITS):
-			if unit.team == MatchState.current.player_team:
+			if unit.team == MatchState.current.player_team \
+					and unit.kind == "robot" and unit.alive and not unit.carried:
 				u = unit
 				break
 		var cap_rig := TestRig.start("CAPTURE")
-		cap_rig.check(u != null, "no player unit on the map")
-		var z: Node2D = MatchState.current.zones[0]
-		u.position = z.position + z.world_rect().get_center()
+		cap_rig.check(u != null, "no player infantry on the map")
+		var z: Zone = null
+		for candidate: Zone in MatchState.current.zones:
+			if candidate.owner_team != MatchState.current.player_team \
+					and not candidate._held_by_fort():
+				z = candidate
+				break
+		cap_rig.check(z != null, "no capturable zone on the map")
+		if u == null or z == null:
+			cap_rig.finish()
+			return
+		# Being elsewhere inside the rectangle is not a capture. This pins
+		# the actual flag-grab rule rather than the former whole-zone presence.
+		var away := Vector2(z.world_rect().position) + Vector2(8, 8)
+		if away.distance_to(z.capture_point()) <= Zone.FLAG_CAPTURE_RADIUS:
+			away = Vector2(z.world_rect().end) - Vector2(8, 8)
+		u.global_position = away
+		var owner_before := z.owner_team
+		for i in 30:
+			z._process(0.1)
+		cap_rig.check(z.owner_team == owner_before,
+			"infantry captured a zone without touching its flag")
+		# A vehicle on the flag cannot take or contest territory.
+		var vehicle: Vehicle2D = null
+		for candidate in tree.get_nodes_in_group(Groups.UNITS):
+			if candidate is Vehicle2D and candidate.alive:
+				vehicle = candidate
+				break
+		if vehicle != null:
+			var old_vehicle_pos := vehicle.global_position
+			var old_vehicle_team := vehicle.team
+			vehicle.team = MatchState.current.player_team
+			vehicle.global_position = z.capture_point()
+			for i in 30:
+				z._process(0.1)
+			cap_rig.check(z.owner_team == owner_before,
+				"a vehicle captured a zone without infantry")
+			vehicle.global_position = old_vehicle_pos
+			vehicle.team = old_vehicle_team
+		u.global_position = z.capture_point()
 		var money_at_start := MatchState.current.player_money()
 		for i in 30:
 			z._process(0.1)
 			MatchState.current._process(1.0)
 		cap_rig.check(z.owner_team == MatchState.current.player_team,
-			"zone never flipped to the player (owner %d after 3s of presence)"
+			"zone never flipped to the player (owner %d after 3s at the flag)"
 			% z.owner_team)
 		cap_rig.check(MatchState.current.player_money() > money_at_start,
 			"captured territory paid nothing (%d -> %d)"
@@ -796,7 +853,7 @@ static func run(ctx: Node) -> void:
 					held = zh
 					break
 			if held != null and held.owner_team == enemy_fort.team:
-				u.position = held.world_rect().get_center()
+				u.global_position = held.capture_point()
 				for ci in 30:
 					held._process(0.1)
 				fort_holds = held.owner_team == enemy_fort.team
@@ -3883,11 +3940,20 @@ static func run(ctx: Node) -> void:
 		var authored := 0
 		var pre_owned := 0
 		for z in MatchState.current.zones:
+			fl.check(z.y_sort_enabled and z.z_index < 0,
+				"zone flag/marker layers do not separate ground from Y-sorted art")
 			if z.flag_tile != Vector2i.MAX:
 				authored += 1
 				fl.check(z.zone_rect.has_point(z.flag_tile),
 					"zone flag tile %s sits outside its own zone %s" % [
 						z.flag_tile, z.zone_rect])
+				fl.check(z.capture_point().distance_to(
+						NavWorld.cell_center(z.flag_tile)) < 0.1,
+					"capture point %s does not match authored flag tile %s" % [
+						z.capture_point(), z.flag_tile])
+			if is_instance_valid(z._flag):
+				fl.check(not z._flag.z_as_relative and z._flag.z_index == 0,
+					"zone flag inherited the ground-marker z layer")
 			if z.owner_team != 0:
 				pre_owned += 1
 		var expect := MatchState.current.zones.size() - forts
@@ -4808,4 +4874,3 @@ static func run(ctx: Node) -> void:
 					wrong_team_art.append("%s t%d" % [u.unit_name, u.team])
 		print("TEAMART: %s" % ("OK" if wrong_team_art.is_empty()
 			else "WRONG %s" % wrong_team_art))
-

@@ -1274,7 +1274,7 @@ func _collect_targets(all_out: bool) -> Array:
 			bias *= 0.5
 		if z.owner_team != 0:
 			bias *= 1.5  # neutral land before a fight
-		flags.append({"at": _zone_center(z), "node": null, "kind": "flag",
+		flags.append({"at": z.capture_point(), "node": null, "kind": "flag",
 			"slots": 1, "bias": bias, "zone": z})
 	# the profile's max_claims keeps its old meaning — how many zone
 	# grabs may be in flight — as a cap on the FLAG targets offered per
@@ -1320,6 +1320,8 @@ func _can_take(u: Node, t: Dictionary) -> bool:
 	if float(u.hp) / float(maxi(u.max_hp, 1)) < RETREAT_AT and u is Vehicle2D:
 		return false
 	match kind:
+		"flag":
+			return u.kind == "robot"
 		"crate":
 			return u.kind == "robot"
 		"unit":
@@ -1581,10 +1583,11 @@ func _nearest_takeable(from: Vector2) -> Vector2:
 	for z in MatchState.current.zones:
 		if z.owner_team == team or _blacklisted(z):
 			continue
-		var d: float = from.distance_squared_to(_zone_center(z))
+		var flag_at: Vector2 = z.capture_point()
+		var d: float = from.distance_squared_to(flag_at)
 		if d < best_d:
 			best_d = d
-			best = _zone_center(z)
+			best = flag_at
 	return best
 
 

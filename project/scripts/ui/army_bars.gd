@@ -1,163 +1,74 @@
 class_name ArmyBars
 extends Control
-## The bottom bar's territory gauges — the original's `unit_amount_bar`
-## art. Despite that asset name, the HUD number is controlled ZONES, not
-## standing units: territory is Z's economy and the value changes on a
-## flag capture.
-##
-## One gauge per team in the match: a zone count in the number window and
-## a bar whose length is that team's share of the map's zones. Neutral
-## territory remains unfilled, so the strip also shows how much is left.
-##
-## Rebuilt when the team list changes and refreshed on capture — never
-## polled per frame.
+## The original bottom-left UNIT AMOUNT gauge. Zod's HUD draws exactly one
+## 62x16 team-coloured strip at (132,460), crops it by unit_amount/max_units,
+## then prints the current amount over it. The long centre trough is chat
+## space, not one territory gauge per army.
 
 const HUD_DIR := "res://assets/z/ui/hud"
 const BAR_ART := Vector2(62.0, 16.0)
-const GAUGE_GAP := 6.0
-const COUNT_W := 30.0
-## The black count window the left cap draws, and the metal strip between
-## it and the start of the grey track.
-const WINDOW_W := 66.0
-const METAL_W := 10.0
 
-var _region := Rect2()
-var _gauges := {}   # team -> {label: Label, bar: TextureRect}
-var _pending_rebuild := false
+var _bar: TextureRect
+var _label: Label
+var _last_pop := -1
+var _last_cap := -1
+var _last_team := -1
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# _rebuild inside a signal handler would free nodes mid-emit.
-	MatchState.current.zone_captured.connect(func(_team): _refresh())
-	_rebuild()
+	_bar = TextureRect.new()
+	_bar.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_bar.stretch_mode = TextureRect.STRETCH_KEEP
+	_bar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_bar.clip_contents = true
+	_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_bar)
+	_label = Label.new()
+	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	HudFrame._apply_hud_font(_label, 10)
+	add_child(_label)
+	MatchState.current.zone_captured.connect(func(_team): _refresh(true))
+	UnitRegistry.current.unit_spawned.connect(func(_unit): _refresh(true))
+	UnitRegistry.current.unit_died.connect(func(_unit): _refresh(true))
+	_refresh(true)
 
 
-## The bar's own window, handed down by the frame (it owns the geometry).
+## The 66x24 black window in the left HUD cap. The original inset is 2px
+## from its left and 4px from its top, yielding the native 62x16 bar.
 func lay_out(region: Rect2) -> void:
-	_region = region
-	_place()
-	_refresh()   # also the seam that first builds the gauges once a map is up
+	var at := region.position + Vector2(2.0, 4.0)
+	_bar.position = at
+	_bar.size = BAR_ART
+	_label.position = at + Vector2(3.0, 0.0)
+	_label.size = BAR_ART - Vector2(3.0, 0.0)
+	_refresh(true)
 
 
-func _rebuild() -> void:
-	_pending_rebuild = false
-	for c in get_children():
-		c.queue_free()
-	_gauges.clear()
-	for team in _teams():
-		# a dark plate behind the figure: only the FIRST gauge gets the
-		# frame's own black window, and a bare numeral on the bar's grey
-		# metal was the unreadable part of the bottom bar
-		var backing := ColorRect.new()
-		backing.color = Color(0.02, 0.02, 0.02, 0.85)
-		backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(backing)
-		var count := Label.new()
-		count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		count.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		HudFrame._apply_hud_font(count, 16)
-		add_child(count)
-		var bar := TextureRect.new()
-		bar.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		# KEEP, not stretch: the bar shows strength by LENGTH, and a
-		# stretched 62px plate would just squash its bevel
-		bar.stretch_mode = TextureRect.STRETCH_KEEP
-		bar.clip_contents = true
-		# IGNORE_SIZE, or the 62px art is the bar's MINIMUM width and it
-		# can never shrink below ~50% share — the gauge read as frozen
-		bar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var path := "%s/unit_amount_bar_%s.png" % [HUD_DIR,
-				AnimLibrary.team_name(team)]
-		if ResourceLoader.exists(path):
-			bar.texture = load(path)
-		add_child(bar)
-		_gauges[team] = {"label": count, "bar": bar, "backing": backing}
-	_place()
+func _process(_delta: float) -> void:
+	# Manning/ejecting changes teams without spawning or killing hardware.
+	# The integer guard keeps this effectively event-driven while covering that
+	# transition and save-restore removals too.
 	_refresh()
 
 
-## Rebuild on the next idle frame: _refresh can run from a signal, and
-## freeing the gauge nodes while that signal is still being emitted is
-## how you get "attempt to call on a previously freed instance".
-func _rebuild_deferred() -> void:
-	if _pending_rebuild:
+func _refresh(force := false) -> void:
+	if MatchState.current == null or UnitRegistry.current == null \
+			or _bar == null or _label == null:
 		return
-	_pending_rebuild = true
-	_rebuild.call_deferred()
-
-
-## Every team with a fort on this map, player first — the gauges read
-## left to right in the order the bottom bar's windows do.
-func _teams() -> Array[int]:
-	var found: Array[int] = []
-	var mine: int = MatchState.current.player_team
-	for b in Engine.get_main_loop().root.get_tree().get_nodes_in_group(
-			Groups.BUILDINGS):
-		if b is FortBuilding and b.team != 0 and not found.has(b.team):
-			found.append(b.team)
-	found.sort()
-	if found.has(mine):
-		found.erase(mine)
-		found.push_front(mine)
-	return found
-
-
-## The first gauge's count goes in the frame's own black window; the bars
-## run along the grey TRACK, which starts where the left cap ends. Laying
-## every gauge out by an even split put bar art on the solid metal strip
-## between the two.
-func _place() -> void:
-	if _region.size.x <= 0.0 or _gauges.is_empty():
+	var team := MatchState.current.player_team
+	var used := MatchState.current.unit_pop(team)
+	var cap := MatchState.current.unit_cap(team)
+	if not force and used == _last_pop and cap == _last_cap and team == _last_team:
 		return
-	var track_x: float = _region.position.x + WINDOW_W + METAL_W
-	var track_w: float = maxf(_region.end.x - track_x, 1.0)
-	var n: float = float(_gauges.size())
-	var slot: float = (track_w - GAUGE_GAP * (n - 1.0)) / n
-	var i := 0
-	for team in _gauges:
-		var g: Dictionary = _gauges[team]
-		var label: Label = g["label"]
-		var bar: TextureRect = g["bar"]
-		var slot_x: float = track_x + float(i) * (slot + GAUGE_GAP)
-		# gauge 1 reads out of the black window the art draws for it;
-		# the rest label themselves at the head of their own bar
-		label.position = Vector2(_region.position.x if i == 0 else slot_x,
-				_region.position.y)
-		label.size = Vector2(WINDOW_W if i == 0 else COUNT_W, _region.size.y)
-		# the frame already draws a black window for gauge 1
-		var backing: ColorRect = g["backing"]
-		backing.visible = i > 0
-		backing.position = label.position
-		backing.size = label.size
-		var bar_x: float = slot_x + (0.0 if i == 0 else COUNT_W + 2.0)
-		bar.position = Vector2(bar_x,
-				_region.position.y + (_region.size.y - BAR_ART.y) * 0.5)
-		bar.size = Vector2(maxf(slot_x + slot - bar_x, 1.0), BAR_ART.y)
-		bar.set_meta("full_width", bar.size.x)
-		i += 1
-	_refresh()
-
-
-func _refresh() -> void:
-	# The map loads AFTER the HUD is built, so at _ready there are no
-	# forts and no gauges. Bailing out on an empty set meant the gauges
-	# could never appear at all — the team check has to run first.
-	var live := _teams()
-	if live.size() != _gauges.size() or live.any(func(t): return not _gauges.has(t)):
-		_rebuild_deferred()
-		return
-	var counts := {}
-	var total := MatchState.current.zones.size()
-	for team in _gauges:
-		var n: int = MatchState.current.zones_owned_by(team)
-		counts[team] = n
-	for team in _gauges:
-		var g: Dictionary = _gauges[team]
-		(g["label"] as Label).text = "%02d" % int(counts[team])
-		var bar: TextureRect = g["bar"]
-		var full: float = float(bar.get_meta("full_width", bar.size.x))
-		var share: float = float(counts[team]) / float(maxi(total, 1))
-		bar.size.x = maxf(roundf(full * share), 1.0)
+	_last_pop = used
+	_last_cap = cap
+	_last_team = team
+	var path := "%s/unit_amount_bar_%s.png" % [HUD_DIR,
+		AnimLibrary.team_name(team)]
+	_bar.texture = load(path) if ResourceLoader.exists(path) else null
+	var share := clampf(float(used) / float(maxi(cap, 1)), 0.0, 1.0)
+	_bar.size.x = roundf(BAR_ART.x * share)
+	_label.text = str(used)

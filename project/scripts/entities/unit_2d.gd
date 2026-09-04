@@ -1373,16 +1373,16 @@ func _smart_idle(delta: float) -> void:
 		_auto_tried[v.get_instance_id()] = true
 		_auto_order(Order.for_target(v))
 		return
-	# else a flag we could walk onto — presence is what captures
+	# else a flag we could walk onto — only infantry touching it captures
 	for z: Zone in MatchState.current.zones:
 		if z.owner_team == team or _auto_tried.has(z):
 			continue
-		if z.world_rect().has_point(global_position):
+		var flag_at := z.capture_point()
+		if global_position.distance_to(flag_at) <= Zone.FLAG_CAPTURE_RADIUS:
 			continue
-		var center := z.world_rect().get_center()
-		if global_position.distance_to(center) < AUTO_RADIUS:
+		if global_position.distance_to(flag_at) < AUTO_RADIUS:
 			_auto_tried[z] = true
-			_auto_order(Order.move(center))
+			_auto_order(Order.move(flag_at))
 			return
 
 

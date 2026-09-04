@@ -9,6 +9,8 @@ extends Control
 ## 640x480 view. A 32px slot made both hardware and buildings read as dots.
 const SLOT := Vector2(44.0, 44.0)
 const GAP := 4.0
+const ICON_CANVAS := Vector2i(36, 36)
+const ICON_CONTENT := 30.0
 
 var _row: HBoxContainer
 var _selection: Array = []
@@ -59,26 +61,23 @@ func _button_for(entity: Node) -> Button:
 	var button := Button.new()
 	button.custom_minimum_size = SLOT
 	button.focus_mode = Control.FOCUS_NONE
-	button.expand_icon = true
+	button.expand_icon = false
 	button.icon = _icon(entity)
 	button.tooltip_text = _name(entity)
-	var team := int(entity.get("team"))
-	if entity is Building2D:
-		team = int(entity.owner_team)
-	var colour := Teams.minimap_color(team if team > 0 else 1)
-	button.add_theme_stylebox_override("normal", _medallion(colour, false))
-	button.add_theme_stylebox_override("hover", _medallion(colour, true))
-	button.add_theme_stylebox_override("pressed", _medallion(colour, true))
+	button.add_theme_stylebox_override("normal", _medallion(false))
+	button.add_theme_stylebox_override("hover", _medallion(true))
+	button.add_theme_stylebox_override("pressed", _medallion(true))
 	button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	button.pressed.connect(_choose.bind(entity))
 	return button
 
 
-func _medallion(colour: Color, bright: bool) -> StyleBoxFlat:
+func _medallion(bright: bool) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.10, 0.08, 0.94)
-	style.border_color = colour.lightened(0.25) if bright else colour.darkened(0.15)
-	style.set_border_width_all(2)
+	style.bg_color = Color(0.12, 0.25, 0.16, 0.96)
+	style.border_color = Color(0.78, 0.79, 0.73) if bright \
+		else Color(0.31, 0.43, 0.33)
+	style.set_border_width_all(3 if bright else 2)
 	style.set_corner_radius_all(22)
 	style.content_margin_left = 4.0
 	style.content_margin_right = 4.0
@@ -89,7 +88,7 @@ func _medallion(colour: Color, bright: bool) -> StyleBoxFlat:
 
 func _icon(entity: Node) -> Texture2D:
 	if entity is Unit2D:
-		return ProductionPanel.icon_for(entity.kind, entity.unit_name, entity.team)
+		return _world_unit_icon(entity)
 	if entity is Building2D:
 		var def := ContentDB.building_def(entity.building_id)
 		if def != null:
@@ -97,6 +96,52 @@ func _icon(entity: Node) -> Texture2D:
 			if ResourceLoader.exists(path):
 				return UiTheme.trimmed(path)
 	return null
+
+
+## Selection medallions in the original show the actual top-down unit art,
+## not the `icon_*` HUD sheets (those are side-view production/equipment
+## pictures; `icon_grunt`, for example, is only a rifle). Flatten the live
+## hull + wheels + turret layers into a small nearest-neighbour thumbnail.
+static func _world_unit_icon(entity: Unit2D) -> Texture2D:
+	var layers: Array[Dictionary] = []
+	var bounds := Rect2()
+	var first := true
+	for child in entity.get_children():
+		if not (child is AnimatedSprite2D) or not child.visible:
+			continue
+		var spr := child as AnimatedSprite2D
+		if spr.sprite_frames == null or not spr.sprite_frames.has_animation(spr.animation):
+			continue
+		var tex := spr.sprite_frames.get_frame_texture(spr.animation, spr.frame)
+		if tex == null:
+			continue
+		var size := tex.get_size() * spr.scale.abs()
+		var pos := spr.position + spr.offset * spr.scale
+		var rect := Rect2(pos - size * 0.5 if spr.centered else pos, size)
+		layers.append({"sprite": spr, "texture": tex, "rect": rect})
+		bounds = rect if first else bounds.merge(rect)
+		first = false
+	if layers.is_empty() or bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
+		return ProductionPanel.icon_for(entity.kind, entity.unit_name, entity.team)
+	var scale := minf(2.0, ICON_CONTENT / maxf(bounds.size.x, bounds.size.y))
+	var out := Image.create_empty(ICON_CANVAS.x, ICON_CANVAS.y, false,
+		Image.FORMAT_RGBA8)
+	var centre := Vector2(ICON_CANVAS) * 0.5
+	for layer in layers:
+		var spr: AnimatedSprite2D = layer.sprite
+		var img: Image = (layer.texture as Texture2D).get_image()
+		if spr.flip_h:
+			img.flip_x()
+		if spr.flip_v:
+			img.flip_y()
+		var want := Vector2i((Vector2(img.get_size()) * spr.scale.abs() * scale).round())
+		want = want.max(Vector2i.ONE)
+		if img.get_size() != want:
+			img.resize(want.x, want.y, Image.INTERPOLATE_NEAREST)
+		var rect: Rect2 = layer.rect
+		var dst := Vector2i((centre + (rect.position - bounds.get_center()) * scale).round())
+		out.blend_rect(img, Rect2i(Vector2i.ZERO, img.get_size()), dst)
+	return ImageTexture.create_from_image(out)
 
 
 func _name(entity: Node) -> String:

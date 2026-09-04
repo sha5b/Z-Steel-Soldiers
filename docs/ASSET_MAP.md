@@ -32,7 +32,7 @@ asset — see `project/assets_map.json` for the machine-readable form.
 | other/particles, birds, hut_animals | 44 | ambient map life | **WIRED** | planet pools spawn birds and hut animals with their original calls |
 | hud unit icons | 156 | selection bar portraits | **WIRED** | icon_<type>_<team>.png (converted from bmp) |
 | hud unit labels | 156 | selected-object name plates | **WIRED** | unit_label_<type>_<team> with neutral weapon-label fallback |
-| hud amount bar | 156 | bottom territory gauges | **WIRED** | one team-coloured bar and controlled-zone count per active side |
+| hud amount bar | 156 | bottom unit-population gauge | **WIRED** | the player's native 62x16 team bar, cropped by current population / cap with the count over it |
 | hud grenade icon | 156 | upgrade indicator (top bar) | **WIRED** |  |
 | hud backdrop | 156 | minimap radar frame per planet | **WIRED** |  |
 | hud main_hud_side | 156 | fixed side and bottom HUD chrome | **WIRED** | team sidebar, split bottom bar and resolution fillers |

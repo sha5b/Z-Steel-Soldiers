@@ -14,7 +14,7 @@ shipped 2026-08 — see the bottom section.
       planets) with tileinfo passability; 256×256 maps supported
 - [x] TileMapLayer terrain, rock scenery (zod sheet layout), bridges,
       per-planet building sprites with ownership flags
-- [x] Territory: zone flags, capture by presence, income ticking
+- [x] Territory: zone flags, capture by infantry touching the flag, income ticking
 - [x] All 6 robots + 5 vehicles + 4 cannons; manning; APC transport
 - [x] Forts as win/lose objectives; CPU opponent with difficulty
 - [x] A* pathfinding with robot/vehicle rule split (water, rocks)

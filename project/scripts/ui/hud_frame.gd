@@ -55,11 +55,9 @@ const BAR_BUTTONS := [Vector2(8, 10), Vector2(38, 10), Vector2(68, 10),
 	Vector2(98, 10)]
 const MENU_BUTTON := Vector2(64, 10)
 const MENU_SIZE := Vector2(56, 20)
-## The black window in the left piece is the first team's count; the
-## grey track across the centre piece is where the amount bars draw.
+## The original draws one unit-population gauge inside this black window.
+## The long centre trough is chat/message space, not a territory track.
 const COUNT_WINDOW := Rect2(130, 8, 66, 24)
-const TRACK_TOP := 8.0
-const TRACK_H := 24.0
 
 ## The live frame, for the camera and the match input (both need the
 ## world's screen rect and neither should hunt the scene tree for it).
@@ -343,9 +341,7 @@ func _build_bottom() -> void:
 func _sync_army_bars() -> void:
 	var bars := _bottom.get_node_or_null("ArmyBars") as ArmyBars
 	if bars:
-		bars.lay_out(Rect2(COUNT_WINDOW.position,
-				Vector2(_bottom.size.x - COUNT_WINDOW.position.x - BAR_RIGHT_W,
-				TRACK_H)))
+		bars.lay_out(COUNT_WINDOW)
 
 
 func _process(_delta: float) -> void:
