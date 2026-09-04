@@ -16,7 +16,7 @@
 %global __requires_exclude_from ^%{_bindir}/z-remake$
 
 Name:           z-remake
-Version:        0.2.9
+Version:        0.2.10
 # BUILD STAMP. Without it every rebuild is the same NEVRA
 # (z-remake-0.1.0-1.fc44) with different contents, so dnf sees no reason
 # to replace what is installed and you cannot tell two builds apart --
@@ -77,6 +77,14 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/%{name}.desktop
 %{_datadir}/icons/hicolor/*/apps/%{name}.png
 
 %changelog
+* Fri Sep 04 2026 sha5b <ned.tabulov@gmail.com> - 0.2.10-1
+- Restore the retail production selector's tall bevel-edged metal carriers
+  behind its up/down arrows and use the dedicated up-arrow pressed states.
+- Keep the pause menu's original 384x256 panel at native aspect, fit all five
+  controls inside it, and dim the complete HUD behind the overlay.
+- Add regression checks for the production controls and pause-panel dimensions,
+  plus a pause-screen screenshot lane for visual release validation.
+
 * Fri Sep 04 2026 sha5b <ned.tabulov@gmail.com> - 0.2.9-1
 - UI parity sweep: selected units and buildings appear as clickable portrait
   medallions above the command bar, and factory products use the original

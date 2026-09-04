@@ -5,9 +5,9 @@
 #   tools/build_releases.sh linux      # one target: linux | windows | macos
 #
 # Requirements
-#   - Godot 4.7.1 (flatpak by default; override with GODOT=...)
+#   - Godot 4.7.2 (flatpak by default; override with GODOT=...)
 #   - the matching EXPORT TEMPLATES, installed into
-#       ~/.var/app/org.godotengine.Godot/data/godot/export_templates/4.7.1.stable/
+#       ~/.var/app/org.godotengine.Godot/data/godot/export_templates/4.7.2.stable/
 #     (Editor > Manage Export Templates, or unzip the .tpz there)
 #   - project/assets/icon/ generated: python3 tools/gog/make_icons.py
 #

@@ -109,6 +109,16 @@ They are listed in the order I would tackle them.
   aspect, and the overlay covers the complete game UI. `--ui-test` guards
   the arrow assets/carriers and native pause-panel dimensions;
   `--pause-screen` supplies a visual screenshot lane.
+- 2026-09-04 — **authored flags on solid terrain jumped to the zone
+  centre.** The retail maps occasionally place a flag pole on a tile the
+  navigation mask marks solid; infantry can still touch it from an
+  adjacent 16px cell inside the 18px capture radius. Flag placement now
+  respects every in-zone authored tile regardless of its navigation bit,
+  keeping the visible pole, capture point, and AI objective together. The
+  AI now gives flag runners a direct move and reserves its assignment slice
+  before the general attack consumes idle troops, so the precise capture
+  rule does not strand it on its starting sectors. The tactics fixture also
+  advances zones on the same game clock as units and factories.
 - 2026-09-01 — **review-sweep batch** (the "last sweep for logical
   mistakes"): (1) the in-world HEALTH BAR was dead code — the
   attack-radius port stranded the `hp < max_hp` draw block after a

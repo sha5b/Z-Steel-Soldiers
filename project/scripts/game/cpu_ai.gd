@@ -226,8 +226,11 @@ func _think() -> void:
 	# the operational layer: squads first, so the per-unit passes below
 	# only ever see the units no squad claimed
 	_command_squads(robots, vehicles)
-	_attack(robots, vehicles, enemy_army)
+	# Claim neutral flags before the general push consumes the remaining
+	# idle army.  This is the ordering described by the tactical pipeline
+	# above: assignment reserves its posture-sized slice, attack takes rest.
 	_assign(robots, vehicles)
+	_attack(robots, vehicles, enemy_army)
 	_update_rallies()
 
 
@@ -1406,15 +1409,20 @@ func _issue(u: Node, t: Dictionary) -> void:
 	match String(t.kind):
 		"crate":
 			_order(u, Order.move(Vector2(t.at)))  # walking over it picks it up
+		"flag":
+			# A claim is a precise errand: the robot has to enter the flag's
+			# capture radius.  Move-attack can pin it outside that radius on a
+			# nearby enemy forever, leaving the AI with its starting sectors.
+			_order(u, Order.move(Vector2(t.at)))
+			if u.waypoints.is_empty():
+				# no route (island/enclosed): park this zone for a while
+				_zone_blacklist[t.zone] = clock_ms + BLACKLIST_MS
 		"unit":
 			_order(u, Order.attack(t.node))
 		"building":
 			_order(u, Order.attack(t.node))
 		_:
 			_order(u, Order.move_attack(Vector2(t.at)))
-			if String(t.kind) == "flag" and u.waypoints.is_empty():
-				# no route (island/enclosed): park this zone for a while
-				_zone_blacklist[t.zone] = clock_ms + BLACKLIST_MS
 
 
 ## One assignment cycle, gated by the posture's own order delay.

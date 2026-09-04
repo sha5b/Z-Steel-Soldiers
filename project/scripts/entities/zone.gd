@@ -96,12 +96,15 @@ func _place_flag() -> void:
 		_flag.play("wave")
 
 
-## The map's flag tile when it authored one and the tile is usable,
-## otherwise the derived centre spot.
+## The map's authored flag tile is authoritative. A few retail maps put
+## the pole on terrain marked solid for pathfinding; infantry can still
+## touch it from an adjacent 16px cell because FLAG_CAPTURE_RADIUS is 18px.
+## Moving those flags to the zone centre both contradicts the map data and
+## can send the AI to a different place from the visible objective.
 func _authored_flag_spot(r: Rect2) -> Vector2:
-	if flag_tile != Vector2i.MAX and NavWorld.current.nav_grid != null \
-			and NavWorld.current.nav_grid.region.has_point(flag_tile) \
-			and not NavWorld.current.nav_grid.is_point_solid(flag_tile):
+	if flag_tile != Vector2i.MAX and zone_rect.has_point(flag_tile) \
+			and (NavWorld.current.nav_grid == null \
+			or NavWorld.current.nav_grid.region.has_point(flag_tile)):
 		return NavWorld.cell_center(flag_tile)
 	return _flag_spot(r)
 

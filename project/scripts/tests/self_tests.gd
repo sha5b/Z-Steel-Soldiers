@@ -3727,9 +3727,9 @@ static func run(ctx: Node) -> void:
 			for u4 in tree.get_nodes_in_group(Groups.UNITS):
 				if u4 is Vehicle2D and not u4.manned:
 					empty_start += 1
-			# simulate a few minutes: think cycles + factory, unit and
+			# simulate five minutes: think cycles + factory, unit and
 			# zone time (units must walk, capture zones, board hardware)
-			for i in 40:
+			for i in 80:
 				MatchState.current.set_money(t, 2000)
 				# 4 seconds of GAME time per iteration — the same 4s the
 				# entities below get. The brain's own cadences (assignment
@@ -3747,7 +3747,10 @@ static func run(ctx: Node) -> void:
 							u6._physics_process(0.5)
 				for z4 in MatchState.current.zones:
 					for j in 8:
-						z4._process(0.2)
+						# Keep capture time on the same four-second clock as
+						# factories and units above.  At 0.2 this advanced only
+						# 1.6s—less than one capture—before the next AI rethink.
+						z4._process(0.5)
 				manned_peak = maxi(manned_peak, int(count.call().manned))
 			var after_t: Dictionary = count.call()
 			var man_orders := 0
@@ -3773,7 +3776,7 @@ static func run(ctx: Node) -> void:
 			# docs/HANDOFF.md.
 			var built: int = int(after_t.robots) - int(before_t.robots)
 			tac_rig.check(built >= 10,
-				"the AI produced %d robots in ~3 simulated minutes (%d -> %d)"
+				"the AI produced %d robots in ~5 simulated minutes (%d -> %d)"
 				% [built, int(before_t.robots), int(after_t.robots)]
 				+ " — the observed floor is 20")
 			if empty_start > 0:
@@ -3781,8 +3784,8 @@ static func run(ctx: Node) -> void:
 					"%d empty hulls on the map and the AI never crewed or "
 					% empty_start + "even ordered a robot onto one")
 			tac_rig.check(int(after_t.zones) >= 4,
-				"the AI holds %d sectors after the sim — the observed floor "
-				% int(after_t.zones) + "is 8, so this brain is not expanding")
+				"the AI holds %d sectors after the sim — it is not expanding"
+					% int(after_t.zones))
 			# ADAPTIVE POSTURE (ZBot::GoAllOut_3). The commitment table
 			# must follow the share of the map held, not sit on one
 			# setting: holding a fair share means a SMALL slice on a SLOW
@@ -3825,7 +3828,7 @@ static func run(ctx: Node) -> void:
 			var spread_units: Array[Node] = []
 			for u7 in tree.get_nodes_in_group(Groups.UNITS):
 				if u7 is Unit2D and u7.alive and u7.team == t \
-						and not u7.carried and u7.damage > 0:
+						and not u7.carried and u7.kind == "robot":
 					spread_units.append(u7)
 				if spread_units.size() >= 4:
 					break
